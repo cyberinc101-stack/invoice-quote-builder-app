@@ -1,0 +1,96 @@
+name: cv_builder_app
+description: A highly customizable and professional CV Builder application
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  path_provider: ^2.1.5
+  path: ^1.9.0
+  share_plus: ^10.0.0
+  shared_preferences: ^2.2.2
+  file_picker: ^8.1.4
+  intl: ^0.19.0
+  flutter_colorpicker: ^1.1.0
+  google_fonts: ^6.2.1
+  image_picker: ^1.1.2
+  provider: ^6.1.2
+  url_launcher: ^6.3.0
+  country_flags: ^2.0.0
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  mobile_scanner: ^5.2.3
+  qr_flutter: ^4.1.0
+  excel: ^4.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Roboto/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lato/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lora/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Montserrat/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Nunito/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Open_Sans/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Playfair/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Raleway/static/
+    - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Space_Grotesk/static/
+
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Roboto/static/Roboto-Regular.ttf
+          weight: 400
+
+    - family: Lato
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lato/Lato-Regular.ttf
+          weight: 400
+
+    - family: Lora
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lora/static/Lora-Regular.ttf
+          weight: 400
+
+    - family: Montserrat
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Montserrat/static/Montserrat-Regular.ttf
+          weight: 400
+
+    - family: Nunito
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Nunito/static/Nunito-Regular.ttf
+          weight: 400
+
+    - family: Open Sans
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Open_Sans/static/OpenSans-Regular.ttf
+          weight: 400
+
+    - family: Playfair
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Playfair/static/Playfair_9pt-Regular.ttf
+          weight: 400
+
+    - family: Raleway
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Raleway/static/Raleway-Regular.ttf
+          weight: 400
+
+    - family: Space Grotesk
+      fonts:
+        - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Space_Grotesk/static/SpaceGrotesk-Regular.ttf
+          weight: 400

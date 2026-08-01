@@ -1,0 +1,35 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+android {
+    namespace = "com.invoicequotegenerator.app"
+    compileSdk = 36
+    defaultConfig {
+        applicationId = "com.invoicequotegenerator.app"
+        minSdkVersion = flutter.minSdkVersion
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0.0"
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled = true
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+dependencies {
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
+}
+flutter {
+    source = "../.."
+}

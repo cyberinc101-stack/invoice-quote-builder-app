@@ -1,0 +1,131 @@
+// lib/screens/scan_screen.dart
+//
+// Combined scan screen: live camera (mobile_scanner) with a torch toggle,
+// plus an "Upload from gallery" fallback (image_picker + analyzeImage) for
+// codes that are easier to photograph than to hold up to the camera live.
+//
+// On a successful decode of one of this app's own expense QR codes (see
+// qr_service.dart), pops this screen and returns the ScannedExpenseDraft to
+// the caller — wire it up like:
+//
+//   final draft = await Navigator.push<ScannedExpenseDraft>(
+//     context, MaterialPageRoute(builder: (_) => const ScanScreen()));
+//   if (draft != null) { /* open AddExpenseScreen prefilled with draft */ }
+
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+
+import '../services/qr_service.dart';
+
+class ScanScreen extends StatefulWidget {
+  const ScanScreen({super.key});
+
+  @override
+  State<ScanScreen> createState() => _ScanScreenState();
+}
+
+class _ScanScreenState extends State<ScanScreen> {
+  final MobileScannerController _controller = MobileScannerController();
+  bool _handledDetection = false;
+  bool _torchOn = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleRawValue(String? raw) {
+    if (raw == null || _handledDetection) return;
+    final result = QrService.decode(raw);
+    if (!result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.error!),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+      return;
+    }
+    _handledDetection = true;
+    Navigator.pop(context, result.draft);
+  }
+
+  Future<void> _pickFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    final capture = await _controller.analyzeImage(picked.path);
+    if (!mounted) return;
+
+    if (capture == null || capture.barcodes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Couldn't find a code in that image."),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    _handleRawValue(capture.barcodes.first.rawValue);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Scan a code'),
+        actions: [
+          IconButton(
+            icon: Icon(_torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded),
+            onPressed: () {
+              _controller.toggleTorch();
+              setState(() => _torchOn = !_torchOn);
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          MobileScanner(
+            controller: _controller,
+            onDetect: (capture) {
+              if (capture.barcodes.isEmpty) return;
+              _handleRawValue(capture.barcodes.first.rawValue);
+            },
+          ),
+          // Simple viewfinder frame overlay
+          Center(
+            child: Container(
+              width: 240, height: 240,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white.withOpacity(0.85), width: 2.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0, right: 0, bottom: 32,
+            child: Center(
+              child: ElevatedButton.icon(
+                onPressed: _pickFromGallery,
+                icon: const Icon(Icons.photo_library_rounded),
+                label: const Text('Upload from gallery'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
