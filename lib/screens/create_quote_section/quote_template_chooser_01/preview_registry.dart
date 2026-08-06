@@ -16,6 +16,7 @@ import '../../../doc_templates/02_nordic/nordic_template.dart' show NordicQuoteP
 import '../../../doc_templates/03_vibrant/vibrant_template.dart' show VibrantQuotePreview;
 import '../../../doc_templates/04_tech_dark/tech_dark_template.dart' show TechDarkQuotePreview;
 import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart' show GradientModernQuotePreview;
+import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialQuotePreview;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Template metadata model
@@ -87,9 +88,10 @@ const List<QuoteTemplateInfo> kQuoteTemplates = [
   QuoteTemplateInfo(
     id: 7,
     name: 'Editorial',
-    description: 'Coming soon',
+    description: 'Bold masthead banner, letterhead-style double rule',
     tag: 'Bold',
     accentColor: Color(0xFFD0021B),
+    available: true,
   ),
   QuoteTemplateInfo(
     id: 8,
@@ -161,6 +163,8 @@ Widget? buildQuotePreview(int templateId, QuoteData data) {
       return TechDarkQuotePreview(data: data);
     case 6:
       return GradientModernQuotePreview(data: data);
+    case 7:
+      return EditorialQuotePreview(data: data);
     default:
       return null; // no layout built yet for this id
   }
