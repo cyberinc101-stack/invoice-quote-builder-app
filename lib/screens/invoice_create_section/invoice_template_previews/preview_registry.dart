@@ -15,6 +15,7 @@ import '../../../doc_templates/03_vibrant/vibrant_template.dart' show VibrantInv
 import '../../../doc_templates/04_tech_dark/tech_dark_template.dart' show TechDarkInvoicePreview;
 import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart' show GradientModernInvoicePreview;
 import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialInvoicePreview;
+import '../../../doc_templates/08_pastel_soft/pastel_soft_template.dart' show PastelSoftInvoicePreview;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Template metadata model
@@ -94,9 +95,10 @@ const List<InvoiceTemplateInfo> kInvoiceTemplates = [
   InvoiceTemplateInfo(
     id: 8,
     name: 'Pastel Soft',
-    description: 'Coming soon',
+    description: 'Flat lavender tint panel, rounded corners, quiet and minimal',
     tag: 'Minimal',
     accentColor: Color(0xFF7C5CBF),
+    available: true,
   ),
   InvoiceTemplateInfo(
     id: 9,
@@ -159,6 +161,8 @@ Widget? buildInvoicePreview(int templateId, InvoiceData data) {
       return GradientModernInvoicePreview(data: data);
     case 7:
       return EditorialInvoicePreview(data: data);
+    case 8:
+      return PastelSoftInvoicePreview(data: data);
     default:
       return null; // no layout built yet for this id
   }
