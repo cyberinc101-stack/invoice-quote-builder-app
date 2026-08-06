@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({Key? key}) : super(key: key);
 
-  static const String _lastUpdated = 'January 1, 2025';
-  static const String _appName = 'CV Builder';
+  static const String _lastUpdated = 'August 6, 2026';
+  static const String _appName = 'Invoice & Quote Generator Pro';
   static const String _companyName = 'CyberInc';
   static const String _contactEmail = 'cyberinc101@gmail.com';
 
@@ -95,39 +95,41 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
             _section(context, '1. Introduction',
               Icons.info_outline_rounded,
-              '$_companyName ("we," "our," or "us") operates the $_appName mobile application (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App. Please read this policy carefully. If you disagree with its terms, please discontinue use of the App immediately.',
+              '$_companyName ("we," "our," or "us") operates the $_appName mobile application (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App to create invoices, quotes, and receipts. Please read this policy carefully. If you disagree with its terms, please discontinue use of the App immediately.',
             ),
             _section(context, '2. Information We Collect',
               Icons.folder_open_rounded,
               'We may collect information about you in a variety of ways. The information we may collect via the App includes:\n\n'
-              '• Personal Data: Personally identifiable information, such as your name, email address, and professional details, that you voluntarily give us when you create a CV or register for the App.\n\n'
-              '• CV Content: Text, images, and other content you enter to create your curriculum vitae documents.\n\n'
-              '• Device Data: Information about your mobile device, including device ID, operating system, browser type, and IP address, collected automatically when you access the App.\n\n'
-              '• Usage Data: Information about how you use the App, such as features accessed and time spent, collected through analytics tools.',
+              '• Business Profile Data: Your business name, logo, address, email, phone number, and payment or banking details that you enter to appear on the invoices, quotes, and receipts you create.\n\n'
+              '• Client Data: Names, email addresses, phone numbers, and billing addresses of your clients or customers, entered by you for the purpose of generating documents.\n\n'
+              '• Document Content: Line items, descriptions, pricing, tax rates, discounts, notes, and payment terms you enter into invoices, quotes, and receipts.\n\n'
+              '• Device Data: Information about your mobile device, including device ID, operating system, and IP address, collected automatically when you access the App.\n\n'
+              '• Usage Data: Information about how you use the App, such as which features you access and how often, collected through analytics tools where enabled.',
             ),
             _section(context, '3. How We Use Your Information',
               Icons.settings_outlined,
               'Having accurate information about you permits us to provide you with a smooth, efficient, and customised experience. Specifically, we may use information collected about you to:\n\n'
-              '• Create and manage your account.\n'
-              '• Generate and store your CV documents on your device.\n'
+              '• Generate and store your invoices, quotes, and receipts on your device.\n'
+              '• Populate document previews and exported PDFs with your business and client details.\n'
+              '• Send you in-app alerts and reminders, such as notices about overdue invoices or expiring quotes.\n'
               '• Send you administrative information, such as updates or changes to our terms.\n'
               '• Respond to customer service requests and support needs.\n'
               '• Monitor and analyse usage to improve the App.\n'
-              '• Prevent fraudulent transactions and monitor against theft.',
+              '• Prevent fraudulent transactions and monitor against misuse.',
             ),
             _section(context, '4. Data Storage',
               Icons.storage_rounded,
-              'Your CV data is stored locally on your device. We do not transmit your personal CV content to our servers unless you explicitly choose to use a cloud backup or export feature. You are responsible for maintaining the security of your device and any backup copies of your data.',
+              'Your business profile, client details, and documents are stored locally on your device. We do not transmit this data to our servers unless you explicitly choose to share or export a document (for example, emailing a PDF invoice to a client). You are responsible for maintaining the security of your device and any backup copies of your data.',
             ),
             _section(context, '5. Disclosure of Your Information',
               Icons.share_outlined,
               'We do not sell, trade, or otherwise transfer your personally identifiable information to third parties. We may share information with:\n\n'
-              '• Service Providers: Third-party vendors who assist us in operating the App, provided that those parties agree to keep this information confidential.\n\n'
+              '• Service Providers: Third-party vendors who assist us in operating the App, such as subscription billing processors, provided that those parties agree to keep this information confidential.\n\n'
               '• Legal Requirements: If required by law or in response to valid requests by public authorities, we may disclose your information.',
             ),
             _section(context, '6. Third-Party Services',
               Icons.link_rounded,
-              'The App may contain links to third-party websites or use third-party services (such as analytics providers). These third parties have their own privacy policies, and we do not accept any responsibility or liability for their policies or processing of your personal information.',
+              'The App may use third-party services to operate certain features, including subscription and payment processing through the Google Play Store or Apple App Store, and analytics providers. These third parties have their own privacy policies, and we do not accept any responsibility or liability for their policies or processing of your personal information.',
             ),
             _section(context, '7. Children\'s Privacy',
               Icons.child_care_rounded,
@@ -135,7 +137,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             ),
             _section(context, '8. Security of Your Information',
               Icons.lock_outline_rounded,
-              'We use administrative, technical, and physical security measures to help protect your personal information. While we have taken reasonable steps to secure the information you provide to us, please be aware that no security measures are perfect or impenetrable.',
+              'We use administrative, technical, and physical security measures to help protect your personal, business, and client information. While we have taken reasonable steps to secure the information you provide to us, please be aware that no security measures are perfect or impenetrable.',
             ),
             _section(context, '9. Your Data Rights',
               Icons.verified_user_outlined,
@@ -144,7 +146,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               '• The right to correction — you can request that we correct any inaccurate data.\n'
               '• The right to deletion — you can request that we delete your personal data.\n'
               '• The right to withdraw consent — where processing is based on consent, you may withdraw it at any time.\n\n'
-              'To exercise these rights, please contact us at $_contactEmail.',
+              'Because your business, client, and document data lives locally on your device, you can also delete it directly within the App at any time. To exercise your other rights, please contact us at $_contactEmail.',
             ),
             _section(context, '10. Changes to This Policy',
               Icons.update_rounded,

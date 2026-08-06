@@ -13,6 +13,7 @@ import 'providers/expense_provider.dart';
 import 'alerts/alert_prefs.dart';
 import 'alerts/custom_reminders/reminder_provider.dart';
 import 'alerts/notifications/notification_service.dart';
+import 'screens/reports/reports_prefs.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -132,6 +133,7 @@ Future<void> main() async {
   final reminderProvider = ReminderProvider();
   final categoryProvider = CategoryProvider();
   final expenseProvider  = ExpenseProvider();
+  final reportsPrefs     = ReportsPrefs();
 
   await NotificationService.instance.init();
   // Prompts for notification + exact-alarm permission on Android 13+/12+.
@@ -147,6 +149,7 @@ Future<void> main() async {
     reminderProvider.loadPersistedReminders(),
     categoryProvider.loadPersistedCategories(),
     expenseProvider.loadPersistedExpenses(),
+    reportsPrefs.load(),
   ]);
 
   runApp(
@@ -160,6 +163,7 @@ Future<void> main() async {
         ChangeNotifierProvider<ReminderProvider>.value(value: reminderProvider),
         ChangeNotifierProvider<CategoryProvider>.value(value: categoryProvider),
         ChangeNotifierProvider<ExpenseProvider>.value(value: expenseProvider),
+        ChangeNotifierProvider<ReportsPrefs>.value(value: reportsPrefs),
       ],
       child: const InvoiceBuilderApp(),
     ),

@@ -1,3 +1,4 @@
+// expense_provider.dart
 // lib/providers/expense_provider.dart
 
 import 'dart:convert';
@@ -77,7 +78,7 @@ class ExpenseProvider extends ChangeNotifier {
     await _persist();
   }
 
-  // ── Aggregation helpers (used by ReportsScreen) ──────────────────────────
+  // ── Month aggregation (used by ReportsScreen in single-month mode) ───────
 
   List<ExpenseEntry> forMonth(DateTime month) {
     return _expenses
@@ -88,10 +89,33 @@ class ExpenseProvider extends ChangeNotifier {
   double totalForMonth(DateTime month) =>
       forMonth(month).fold(0.0, (sum, e) => sum + e.amount);
 
-  /// categoryId -> total amount, for the given month.
   Map<String, double> byCategoryForMonth(DateTime month) {
     final out = <String, double>{};
     for (final e in forMonth(month)) {
+      out[e.categoryId] = (out[e.categoryId] ?? 0) + e.amount;
+    }
+    return out;
+  }
+
+  // ── Range aggregation (used by ReportsScreen when a custom start/end
+  // date range is active instead of a single month) — computed directly
+  // against the exact date bounds rather than summing whole months, so a
+  // range that starts or ends mid-month doesn't over- or under-count. ────
+
+  List<ExpenseEntry> forRange(DateTime start, DateTime end) {
+    final rangeStart = DateTime(start.year, start.month, start.day);
+    final rangeEndExclusive = DateTime(end.year, end.month, end.day + 1);
+    return _expenses
+        .where((e) => !e.date.isBefore(rangeStart) && e.date.isBefore(rangeEndExclusive))
+        .toList();
+  }
+
+  double totalForRange(DateTime start, DateTime end) =>
+      forRange(start, end).fold(0.0, (sum, e) => sum + e.amount);
+
+  Map<String, double> byCategoryForRange(DateTime start, DateTime end) {
+    final out = <String, double>{};
+    for (final e in forRange(start, end)) {
       out[e.categoryId] = (out[e.categoryId] ?? 0) + e.amount;
     }
     return out;

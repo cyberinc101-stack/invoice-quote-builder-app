@@ -1,6 +1,6 @@
-// lib/screens/create_quote_section/quote_client_library.dart
+﻿// lib/screens/create_quote_section/quote_client_library.dart
 //
-// Saved-client "library" feature for the quote flow — same UX as
+// Saved-client "library" feature for the quote flow â€” same UX as
 // invoice_create_section/step_customers.dart (tap a saved card to reuse a
 // client's details instead of retyping them), but kept self-contained per
 // the existing convention in quote_edit_widgets.dart: its own model, its
@@ -8,11 +8,11 @@
 //
 // Usage: drop QuoteClientLibrarySection into the Client & Details step,
 // above the manual fields. Tapping a card calls onClientSelected(client)
-// so the caller can copy the data into its own TextEditingControllers —
+// so the caller can copy the data into its own TextEditingControllers â€”
 // this widget does not own those controllers.
 //
 // UPDATED (this pass): added QuoteClientLibraryController, mirroring
-// QuoteBusinessProfileLibraryController — lets QuoteEditorScreen trigger a
+// QuoteBusinessProfileLibraryController â€” lets QuoteEditorScreen trigger a
 // save/update of the client library from outside (e.g. when the user taps
 // "Next") using whatever is currently typed into the manual fields.
 //
@@ -21,7 +21,7 @@
 // matching QuoteLogoPicker's new reposition feature in quote_edit_widgets.dart.
 //
 // UPDATED (this pass, 3): button label changed from "Save New Client" to
-// "Add New Client" to match the invoice app's "Add New Customer" wording —
+// "Add New Client" to match the invoice app's "Add New Customer" wording â€”
 // QuoteEditorScreen no longer shows inline client fields on the page, so
 // this button (which opens the add/edit bottom sheet) is now the only way
 // to enter client info, same as the invoice flow's customer step.
@@ -52,6 +52,9 @@ class QuoteClient {
   double logoOffsetDy;
   double logoScale;
 
+  String defaultCurrency;
+  double defaultTaxRate;
+
   QuoteClient({
     required this.id,
     this.name = '',
@@ -62,6 +65,8 @@ class QuoteClient {
     this.logoOffsetDx = 0.0,
     this.logoOffsetDy = 0.0,
     this.logoScale = 1.0,
+    this.defaultCurrency = 'USD',
+    this.defaultTaxRate = 0.0,
   });
 
   Offset get logoOffset => Offset(logoOffsetDx, logoOffsetDy);
@@ -76,6 +81,8 @@ class QuoteClient {
         'logoOffsetDx': logoOffsetDx,
         'logoOffsetDy': logoOffsetDy,
         'logoScale': logoScale,
+        'defaultCurrency': defaultCurrency,
+        'defaultTaxRate': defaultTaxRate,
       };
 
   factory QuoteClient.fromJson(Map<String, dynamic> j) => QuoteClient(
@@ -88,6 +95,8 @@ class QuoteClient {
         logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
         logoScale: (j['logoScale'] as num?)?.toDouble() ?? 1.0,
+        defaultCurrency: j['defaultCurrency'] as String? ?? 'USD',
+        defaultTaxRate: (j['defaultTaxRate'] as num?)?.toDouble() ?? 0.0,
       );
 }
 
@@ -117,7 +126,7 @@ Future<List<QuoteClient>> _loadQuoteClients() async {
 }
 
 // =============================================================================
-// Controller — lets the parent screen trigger a save/update of the library
+// Controller â€” lets the parent screen trigger a save/update of the library
 // from outside (e.g. when the user taps "Next"), mirroring
 // QuoteBusinessProfileLibraryController.
 // =============================================================================
@@ -135,7 +144,7 @@ class QuoteClientLibraryController {
   /// - Else if an identical entry already exists, just selects it (avoids
   ///   duplicates if Next is pressed twice without changes).
   /// - Else creates a new saved client (respecting the max-count cap).
-  /// No-ops if [name] is blank — nothing meaningful to save.
+  /// No-ops if [name] is blank â€” nothing meaningful to save.
   Future<void> autoSave({
     required String name,
     String email = '',
@@ -645,7 +654,7 @@ class _QuoteClientCard extends StatelessWidget {
   }
 }
 
-/// Renders a saved client logo honoring its saved reposition/zoom crop —
+/// Renders a saved client logo honoring its saved reposition/zoom crop â€”
 /// mirrors _CardLogo in quote_business_profile_library.dart.
 class _CardLogo extends StatelessWidget {
   final QuoteClient client;
@@ -698,6 +707,8 @@ class _QuoteClientSheetState extends State<_QuoteClientSheet> {
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneCtrl;
   late TextEditingController _addressCtrl;
+  late TextEditingController _currencyCtrl;
+  late TextEditingController _taxRateCtrl;
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
@@ -712,6 +723,8 @@ class _QuoteClientSheetState extends State<_QuoteClientSheet> {
     _emailCtrl = TextEditingController(text: e?.email ?? '');
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _addressCtrl = TextEditingController(text: e?.address ?? '');
+    _currencyCtrl = TextEditingController(text: e?.defaultCurrency ?? 'USD');
+    _taxRateCtrl = TextEditingController(text: (e == null || e.defaultTaxRate == 0.0) ? '' : e.defaultTaxRate.toString());
     _logoPath = e?.logoPath;
     _logoOffset = e?.logoOffset ?? Offset.zero;
     _logoScale = e?.logoScale ?? 1.0;
@@ -723,6 +736,8 @@ class _QuoteClientSheetState extends State<_QuoteClientSheet> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _currencyCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
   }
 
@@ -738,6 +753,8 @@ class _QuoteClientSheetState extends State<_QuoteClientSheet> {
       logoOffsetDx: _logoOffset.dx,
       logoOffsetDy: _logoOffset.dy,
       logoScale: _logoScale,
+      defaultCurrency: _currencyCtrl.text.trim().isEmpty ? 'USD' : _currencyCtrl.text.trim().toUpperCase(),
+      defaultTaxRate: double.tryParse(_taxRateCtrl.text.trim()) ?? 0.0,
     ));
     Navigator.pop(context);
   }
@@ -843,6 +860,25 @@ class _QuoteClientSheetState extends State<_QuoteClientSheet> {
                           maxLines: 2,
                           accent: accent,
                         ),
+                        QuoteField(
+                          ctrl: _currencyCtrl,
+                          label: 'Default Currency',
+                          hint: 'e.g. USD',
+                          icon: Icons.attach_money_rounded,
+                          max: 3,
+                          accent: accent,
+                        ),
+                        const SizedBox(height: 12),
+                        QuoteField(
+                          ctrl: _taxRateCtrl,
+                          label: 'Default Tax Rate (%)',
+                          hint: 'e.g. 8.5',
+                          icon: Icons.percent_rounded,
+                          max: 6,
+                          keyboard: TextInputType.numberWithOptions(decimal: true),
+                          accent: accent,
+                        ),
+                        const SizedBox(height: 12),
                         const SizedBox(height: 28),
                         SizedBox(
                           width: double.infinity,

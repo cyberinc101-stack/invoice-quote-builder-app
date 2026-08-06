@@ -1,17 +1,17 @@
-// lib/models/client_info.dart
+﻿// lib/models/client_info.dart
 
 import 'invoice_data.dart'; // for InvoiceColor
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ClientInfo  (aliased as Customer via invoice_models.dart)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // UPDATED (this pass): added logoOffsetDx/Dy, logoScale, logoShape so the
 // customer logo can be repositioned/zoomed/shaped via SharedLogoPicker
 // (lib/widgets/shared_logo_picker.dart), matching BusinessInfo below and
 // the receipt/quote business profiles. logoShape is stored as a plain
 // String ('circle' | 'square' | 'roundedSquare') so this model file has no
-// dependency on the widgets layer — UI code converts via
+// dependency on the widgets layer â€” UI code converts via
 // logoShapeFromString()/.storageName.
 
 class ClientInfo {
@@ -26,6 +26,9 @@ class ClientInfo {
   double logoScale;
   String logoShape;
 
+  double  defaultTaxRate;
+  String  defaultCurrency;
+
   ClientInfo({
     String? id,
     this.name     = '',
@@ -37,6 +40,8 @@ class ClientInfo {
     this.logoOffsetDy = 0.0,
     this.logoScale    = 1.0,
     this.logoShape    = 'circle',
+    this.defaultCurrency = 'USD',
+    this.defaultTaxRate    = 0.0,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +55,8 @@ class ClientInfo {
         'logoOffsetDy': logoOffsetDy,
         'logoScale':    logoScale,
         'logoShape':    logoShape,
+        'defaultCurrency': defaultCurrency,
+        'defaultTaxRate':  defaultTaxRate,
       };
 
   factory ClientInfo.fromJson(Map<String, dynamic> j) => ClientInfo(
@@ -63,15 +70,17 @@ class ClientInfo {
         logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
         logoScale:    (j['logoScale'] as num?)?.toDouble() ?? 1.0,
         logoShape:    j['logoShape'] as String? ?? 'circle',
+        defaultCurrency: j['defaultCurrency'] as String? ?? 'USD',
+        defaultTaxRate:  (j['defaultTaxRate'] as num?)?.toDouble() ?? 0.0,
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // BusinessInfo
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
-// UPDATED (this pass): same addition as ClientInfo above — logoOffsetDx/Dy,
-// logoScale, logoShape — so the business logo in the Template step gets the
+// UPDATED (this pass): same addition as ClientInfo above â€” logoOffsetDx/Dy,
+// logoScale, logoShape â€” so the business logo in the Template step gets the
 // same reposition/zoom/shape editor via SharedLogoPicker.
 
 class BusinessInfo {
@@ -160,9 +169,9 @@ class BusinessInfo {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // InvoiceTemplate
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class InvoiceTemplate {
   final String      id;
@@ -198,9 +207,9 @@ class InvoiceTemplate {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Invoice  (the generated invoice document)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class Invoice {
   final String      id;
@@ -210,7 +219,7 @@ class Invoice {
   DateTime          dueDate;
   BusinessInfo      businessInfo;
   ClientInfo        customer;
-  List<dynamic>     items; // List<LineItem> — avoid circular import by using dynamic
+  List<dynamic>     items; // List<LineItem> â€” avoid circular import by using dynamic
   double            taxRate;
   double            discountRate;
   String            notes;
@@ -259,36 +268,36 @@ class Invoice {
       };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CurrencyHelper
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class CurrencyHelper {
   static const _currencies = <Map<String, String>>[
     {'code': 'USD', 'symbol': '\$',   'name': 'US Dollar'},
-    {'code': 'EUR', 'symbol': '€',   'name': 'Euro'},
-    {'code': 'GBP', 'symbol': '£',   'name': 'British Pound'},
+    {'code': 'EUR', 'symbol': 'â‚¬',   'name': 'Euro'},
+    {'code': 'GBP', 'symbol': 'Â£',   'name': 'British Pound'},
     {'code': 'AUD', 'symbol': 'A\$',  'name': 'Australian Dollar'},
     {'code': 'CAD', 'symbol': 'C\$',  'name': 'Canadian Dollar'},
     {'code': 'CHF', 'symbol': 'Fr',   'name': 'Swiss Franc'},
-    {'code': 'JPY', 'symbol': '¥',   'name': 'Japanese Yen'},
-    {'code': 'CNY', 'symbol': '¥',   'name': 'Chinese Yuan'},
+    {'code': 'JPY', 'symbol': 'Â¥',   'name': 'Japanese Yen'},
+    {'code': 'CNY', 'symbol': 'Â¥',   'name': 'Chinese Yuan'},
     {'code': 'NZD', 'symbol': 'NZ\$', 'name': 'New Zealand Dollar'},
     {'code': 'SGD', 'symbol': 'S\$',  'name': 'Singapore Dollar'},
     {'code': 'HKD', 'symbol': 'HK\$', 'name': 'Hong Kong Dollar'},
     {'code': 'MYR', 'symbol': 'RM',   'name': 'Malaysian Ringgit'},
-    {'code': 'INR', 'symbol': '₹',   'name': 'Indian Rupee'},
+    {'code': 'INR', 'symbol': 'â‚¹',   'name': 'Indian Rupee'},
     {'code': 'IDR', 'symbol': 'Rp',   'name': 'Indonesian Rupiah'},
-    {'code': 'THB', 'symbol': '฿',   'name': 'Thai Baht'},
+    {'code': 'THB', 'symbol': 'à¸¿',   'name': 'Thai Baht'},
     {'code': 'BRL', 'symbol': 'R\$',  'name': 'Brazilian Real'},
     {'code': 'MXN', 'symbol': 'MX\$', 'name': 'Mexican Peso'},
     {'code': 'ZAR', 'symbol': 'R',    'name': 'South African Rand'},
-    {'code': 'AED', 'symbol': 'د.إ', 'name': 'UAE Dirham'},
-    {'code': 'SAR', 'symbol': 'ï·¼',   'name': 'Saudi Riyal'},
+    {'code': 'AED', 'symbol': 'Ø¯.Ø¥', 'name': 'UAE Dirham'},
+    {'code': 'SAR', 'symbol': 'Ã¯Â·Â¼',   'name': 'Saudi Riyal'},
     {'code': 'SEK', 'symbol': 'kr',   'name': 'Swedish Krona'},
     {'code': 'NOK', 'symbol': 'kr',   'name': 'Norwegian Krone'},
     {'code': 'DKK', 'symbol': 'kr',   'name': 'Danish Krone'},
-    {'code': 'PLN', 'symbol': 'zł',   'name': 'Polish Zloty'},
+    {'code': 'PLN', 'symbol': 'zÅ‚',   'name': 'Polish Zloty'},
   ];
 
   static List<Map<String, String>> getAllCurrencies() => _currencies;
@@ -300,9 +309,9 @@ class CurrencyHelper {
       )['symbol']!;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Extension kept for any code that calls InvoiceColor.allSchemes
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 extension InvoiceColorSchemeExtension on InvoiceColor {
   static List<InvoiceColor> get allSchemes => InvoiceColor.values;

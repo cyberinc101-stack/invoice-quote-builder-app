@@ -1,5 +1,5 @@
-name: cv_builder_app
-description: A highly customizable and professional CV Builder application
+﻿name: invoice_quote_receipt_builder
+description: Create, manage, and track professional invoices, quotes, and receipts
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -29,6 +29,7 @@ dependencies:
   mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
   excel: ^4.0.6
+  open_file: ^3.3.2
 
 dev_dependencies:
   flutter_test:

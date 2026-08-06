@@ -3,10 +3,9 @@
 //
 // Enums shared by the filter bar, filter_logic.dart, and home_screen.dart.
 //
-// UPDATED (this pass): QuickFilter gained three aging-bucket variants
-// (overdue1to30 / overdue31to60 / overdue61plus) alongside the existing
-// blanket "overdue"; added SortOption and DateRangePreset for the new
-// sort control and date-range filter.
+// UPDATED (this pass): added QuickFilter.paid (invoices) and
+// QuickFilter.accepted (quotes) — quick-access chips for the two most
+// common "good" statuses, alongside the existing overdue/drafts/etc.
 
 enum QuickFilter {
   none,
@@ -16,6 +15,8 @@ enum QuickFilter {
   overdue31to60,
   overdue61plus,
   drafts,
+  paid,
+  accepted,
 }
 
 String quickFilterLabel(QuickFilter f) {
@@ -32,6 +33,10 @@ String quickFilterLabel(QuickFilter f) {
       return 'Overdue 61+d';
     case QuickFilter.drafts:
       return 'Drafts';
+    case QuickFilter.paid:
+      return 'Paid';
+    case QuickFilter.accepted:
+      return 'Accepted';
     case QuickFilter.none:
       return '';
   }

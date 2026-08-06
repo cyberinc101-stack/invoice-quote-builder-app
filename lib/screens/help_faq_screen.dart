@@ -14,81 +14,87 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   final List<_FaqItem> _faqItems = [
     _FaqItem(
       category: 'Getting Started',
-      question: 'How do I create my first CV?',
+      question: 'How do I create my first invoice?',
       answer:
-          'Tap the "+" button on the home screen to start a new CV. Choose a template that suits your style, then fill in your personal details, work experience, education, and skills step by step. Your progress is saved automatically.',
+          'Tap the "+" button on the home screen and choose Invoice. Fill in your business profile, add your client\'s details, then add line items with descriptions, quantities, and prices. Your progress is saved automatically as you go.',
     ),
     _FaqItem(
       category: 'Getting Started',
-      question: 'Can I create more than one CV?',
+      question: 'Can I create quotes and receipts too, not just invoices?',
       answer:
-          'Yes! You can create multiple CVs for different roles or industries. Each CV is saved separately, so you can tailor them to specific job applications.',
+          'Yes. The App supports all three document types — Invoices, Quotes, and Receipts — from the same "+" menu on the home screen. Each has its own fields relevant to that document type (for example, quotes have an expiry date instead of a due date).',
     ),
     _FaqItem(
-      category: 'Templates',
-      question: 'How do I change my CV template?',
+      category: 'Invoices',
+      question: 'How do I mark an invoice as paid?',
       answer:
-          'Open your CV, tap the template icon at the top of the screen, and browse through available templates. Tap any template to preview it with your existing content. Confirm to apply it.',
+          'Open the invoice from your saved documents, tap the status badge or the 3-dot menu, and select "Mark as Paid." The paid date is recorded automatically and will show in the invoice\'s activity history.',
     ),
     _FaqItem(
-      category: 'Templates',
-      question: 'Are there free and premium templates?',
+      category: 'Invoices',
+      question: 'Can I get reminders about overdue or upcoming invoices?',
       answer:
-          'Yes. A selection of professional templates is available for free. Premium templates with advanced designs and colour palettes are available through a one-time purchase or subscription.',
+          'Yes. The Alerts feature (bell icon) tracks overdue invoices, invoices due soon, and expiring quotes automatically. You can turn Alerts on or off entirely in Settings.',
     ),
     _FaqItem(
-      category: 'Editing',
-      question: 'How do I add or remove sections?',
+      category: 'Quotes',
+      question: 'What happens when a quote expires?',
       answer:
-          'In the CV editor, scroll to the bottom of the screen and tap "Add Section" to include extras like Languages, Certifications, or Volunteer Work. To remove a section, tap the section header and select "Remove."',
+          'An expired quote is flagged in your saved documents and in Alerts, but it isn\'t deleted — you can still view, edit, resend, or convert it at any time.',
     ),
     _FaqItem(
-      category: 'Editing',
-      question: 'How do I reorder sections?',
+      category: 'Templates & Previews',
+      question: 'How do I preview what my document will look like before exporting?',
       answer:
-          'Long-press the drag handle (≡) next to any section header and drag it to your preferred position. Changes are saved automatically.',
+          'While creating or editing a document, tap "Preview" to see a full-page rendering that matches the layout, fonts, and colours of the final exported PDF.',
     ),
     _FaqItem(
-      category: 'Exporting',
-      question: 'How do I export my CV as a PDF?',
+      category: 'Templates & Previews',
+      question: 'Are more templates coming?',
       answer:
-          'Open your CV and tap the export button (share icon) in the top-right corner. Select "Export as PDF." You can then save it to your device, share it via email, WhatsApp, or upload it directly to job boards.',
+          'Yes — the Executive template is available now across invoices, quotes, and receipts, with more template designs planned for future updates.',
     ),
     _FaqItem(
-      category: 'Exporting',
-      question: 'What file formats are supported?',
+      category: 'Exporting & Sharing',
+      question: 'How do I export a document as a PDF?',
       answer:
-          'Currently the App supports exporting your CV as a high-quality PDF. Additional formats may be added in future updates.',
+          'Open the document and tap "Download" to save the PDF to your device, or "Share" to send it directly via email, messaging apps, or any other app installed on your device.',
+    ),
+    _FaqItem(
+      category: 'Exporting & Sharing',
+      question: 'Can I export multiple documents at once?',
+      answer:
+          'Yes. From your saved documents list, enter selection mode (long-press any document), select the ones you want, and use the bulk export option to export them together.',
     ),
     _FaqItem(
       category: 'Data & Privacy',
-      question: 'Where is my CV data stored?',
+      question: 'Where is my data stored?',
       answer:
-          'All your CV data is stored locally on your device. We do not upload your personal information to our servers. This means your data stays private and accessible offline.',
+          'All your business profile, client details, invoices, quotes, and receipts are stored locally on your device. We do not upload this information to our servers unless you explicitly export or share a document.',
     ),
     _FaqItem(
       category: 'Data & Privacy',
-      question: 'How do I back up my CVs?',
+      question: 'How do I back up my documents?',
       answer:
-          'Your CVs are included in your device\'s standard backup (Google Drive backup on Android, iCloud on iOS) if you have backup enabled in your device settings. You can also export individual CVs as PDFs to keep a copy.',
+          'Your data is included in your device\'s standard backup (Google Drive backup on Android, iCloud on iOS) if you have backup enabled in your device settings. You can also export individual documents as PDFs, or use the bulk export feature, to keep separate copies.',
+    ),
+    _FaqItem(
+      category: 'Troubleshooting',
+      question: 'My document isn\'t exporting correctly. What should I do?',
+      answer:
+          'Make sure you have enough storage space on your device, and check that your business logo (if used) isn\'t an unusually large file. If the problem continues, please contact our support team.',
     ),
     _FaqItem(
       category: 'Troubleshooting',
       question: 'The app is running slowly. What should I do?',
       answer:
-          'Try closing and reopening the app. If the problem persists, restart your device. Ensure you have the latest version of the app installed from the Play Store / App Store.',
-    ),
-    _FaqItem(
-      category: 'Troubleshooting',
-      question: 'My CV isn\'t exporting correctly. What should I do?',
-      answer:
-          'Make sure you have enough storage space on your device. Try reducing large images in your CV. If the problem continues, please contact our support team.',
+          'Try closing and reopening the app. If the problem persists, restart your device and ensure you have the latest version of the app installed from the Play Store / App Store.',
     ),
     _FaqItem(
       category: 'Troubleshooting',
       question: 'I forgot to save — is my work lost?',
       answer:
-          'Not at all! The app saves your progress continuously as you edit.',
+          'Not at all. The app saves your progress continuously as you edit a document, so you shouldn\'t lose your work if you navigate away.',
     ),
   ];
 
@@ -110,7 +116,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
       scheme: 'mailto',
       path: _contactEmail,
       queryParameters: {
-        'subject': 'CV Builder App - Support Request',
+        'subject': 'Invoice & Quote Generator Pro - Support Request',
         'body': 'Hi Support Team,\n\nI need help with the following:\n\n',
       },
     );
@@ -156,7 +162,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
       ),
       body: Column(
         children: [
-          // ── Category chips ────────────────────────────────────────────
+          // ── Category chips ────────────────────────────────────────
           Container(
             color: colorScheme.surface,
             child: SizedBox(
@@ -202,7 +208,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
           ),
           Divider(height: 1, color: colorScheme.outlineVariant),
 
-          // ── FAQ list ─────────────────────────────────────────────────
+          // ── FAQ list ───────────────────────────────────────────────
           Expanded(
             child: _filteredItems.isEmpty
                 ? Center(
@@ -231,7 +237,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                   ),
           ),
 
-          // ── Contact support banner — always dark gradient ─────────────
+          // ── Contact support banner — always dark gradient ──────────
           SafeArea(
             top: false,
             child: Container(

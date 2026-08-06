@@ -1,26 +1,26 @@
-// lib/widgets/swipable_cv_templates_homescreen_widgets/swipable_cv_templates.dart
+﻿// lib/widgets/swipable_invoice_templates_homescreen_widgets/swipable_invoice_templates.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../screens/cv_edit_section/cv_template_chooser_01/template_full_preview_modal.dart';
-import '../../screens/cv_edit_section/cv_template_chooser_01/preview_registry.dart'
-    show TemplateCardInfo, kAllTemplates, buildMiniPreview;
+import '../../screens/invoice_create_section/invoice_template_previews/template_full_preview_modal.dart';
+import '../../screens/invoice_create_section/invoice_template_previews/preview_registry.dart'
+    show InvoiceTemplateInfo, kInvoiceTemplates, buildInvoicePreview, sampleInvoiceData;
 import '../../helpers/lang_helper.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // Public widget
-// ─────────────────────────────────────────────────────────────────────────────
-class SwipableCvTemplates extends StatefulWidget {
+// ============================================================================
+class SwipableInvoiceTemplates extends StatefulWidget {
   final void Function(int templateId)? onTemplateSelected;
 
-  const SwipableCvTemplates({super.key, this.onTemplateSelected});
+  const SwipableInvoiceTemplates({super.key, this.onTemplateSelected});
 
   @override
-  State<SwipableCvTemplates> createState() => _SwipableCvTemplatesState();
+  State<SwipableInvoiceTemplates> createState() => _SwipableInvoiceTemplatesState();
 }
 
-class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
+class _SwipableInvoiceTemplatesState extends State<SwipableInvoiceTemplates> {
   late final PageController _ctrl;
   int _current = 0;
 
@@ -30,9 +30,9 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
   void initState() {
     super.initState();
     _ctrl = PageController(viewportFraction: 0.68);
-    _cachedPreviews = List.generate(kAllTemplates.length, (i) {
+    _cachedPreviews = List.generate(kInvoiceTemplates.length, (i) {
       return RepaintBoundary(
-        child: _ScaledMiniPreview(templateId: kAllTemplates[i].id),
+        child: _ScaledMiniPreview(templateId: kInvoiceTemplates[i].id),
       );
     });
   }
@@ -43,24 +43,18 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
     super.dispose();
   }
 
-  // FIX: accepts the BuildContext from the itemBuilder so the modal is
-  // opened from a context that is properly inside the Provider widget tree.
-  // Using the State's `context` caused "listened from outside widget tree".
-  void _openPreview(BuildContext itemContext, TemplateCardInfo tmplInfo) {
+  void _openPreview(BuildContext itemContext, InvoiceTemplateInfo tmplInfo) {
     HapticFeedback.lightImpact();
     showTemplateFullPreview(itemContext, info: tmplInfo);
   }
 
   @override
   Widget build(BuildContext context) {
-    // FIX: renamed from `t` to `lang` so it cannot be accidentally
-    // shadowed by any TemplateCardInfo parameter named `t`.
     final lang = getLang(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Section heading ───────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           child: Text(
@@ -74,7 +68,6 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
           ),
         ),
 
-        // ── Carousel ─────────────────────────────────────────────────
         LayoutBuilder(builder: (context, constraints) {
           final cardW     = constraints.maxWidth * 0.68;
           final carouselH = cardW * 1.08;
@@ -82,17 +75,16 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
             height: carouselH,
             child: PageView.builder(
               controller: _ctrl,
-              itemCount: kAllTemplates.length,
+              itemCount: kInvoiceTemplates.length,
               physics: const _SnapPagePhysics(),
               onPageChanged: (i) {
                 setState(() => _current = i);
                 HapticFeedback.selectionClick();
               },
               itemBuilder: (context, index) {
-                final tmpl     = kAllTemplates[index];
+                final tmpl     = kInvoiceTemplates[index];
                 final isActive = index == _current;
 
-                // Resolve translated name & description using `lang`
                 final translatedName = lang[tmpl.name] ?? tmpl.name;
                 final translatedDesc = lang[tmpl.description] ?? tmpl.description;
 
@@ -109,7 +101,6 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
                       template:        tmpl,
                       isActive:        isActive,
                       cachedPreview:   _cachedPreviews[index],
-                      photoBadgeLabel: lang['swipe_photo_badge'] ?? 'Photo',
                       translatedName:  translatedName,
                       translatedDesc:  translatedDesc,
                       onTap:           () => _openPreview(context, tmpl),
@@ -121,14 +112,13 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
           );
         }),
 
-        // ── Dot indicator ─────────────────────────────────────────────
         const SizedBox(height: 12),
         SizedBox(
           height: 6,
           child: Center(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: kAllTemplates.length,
+              itemCount: kInvoiceTemplates.length,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -141,7 +131,7 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
                   height: 5,
                   decoration: BoxDecoration(
                     color: active
-                        ? kAllTemplates[_current].accentColor
+                        ? kInvoiceTemplates[_current].accentColor
                         : const Color(0xFFD0D0D0),
                     borderRadius: BorderRadius.circular(3),
                   ),
@@ -155,9 +145,9 @@ class _SwipableCvTemplatesState extends State<SwipableCvTemplates> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // Custom scroll physics
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 class _SnapPagePhysics extends PageScrollPhysics {
   const _SnapPagePhysics() : super(parent: const ClampingScrollPhysics());
 
@@ -170,14 +160,13 @@ class _SnapPagePhysics extends PageScrollPhysics {
       const SpringDescription(mass: 200, stiffness: 30, damping: 1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // Individual card
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 class _TemplateCard extends StatelessWidget {
-  final TemplateCardInfo template;
+  final InvoiceTemplateInfo template;
   final bool isActive;
   final Widget cachedPreview;
-  final String photoBadgeLabel;
   final String translatedName;
   final String translatedDesc;
   final VoidCallback onTap;
@@ -186,7 +175,6 @@ class _TemplateCard extends StatelessWidget {
     required this.template,
     required this.isActive,
     required this.cachedPreview,
-    required this.photoBadgeLabel,
     required this.translatedName,
     required this.translatedDesc,
     required this.onTap,
@@ -252,31 +240,6 @@ class _TemplateCard extends StatelessWidget {
                   ],
                 ),
               ),
-
-              if (template.hasPhoto)
-                Positioned(
-                  top: 10, right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.42),
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.22)),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.add_a_photo_rounded,
-                          color: Colors.white70, size: 9),
-                      const SizedBox(width: 3),
-                      Text(photoBadgeLabel,
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w600)),
-                    ]),
-                  ),
-                ),
             ],
           ),
         ),
@@ -285,9 +248,9 @@ class _TemplateCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // Scaled mini-preview
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 class _ScaledMiniPreview extends StatelessWidget {
   final int templateId;
   const _ScaledMiniPreview({required this.templateId});
@@ -296,6 +259,24 @@ class _ScaledMiniPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final preview = buildInvoicePreview(templateId, sampleInvoiceData());
+
+    if (preview == null) {
+      return const ColoredBox(
+        color: Color(0xFFE5E7EB),
+        child: Center(
+          child: Text(
+            'Coming Soon',
+            style: TextStyle(
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
+
     return LayoutBuilder(builder: (_, constraints) {
       final scale = constraints.maxWidth / _designW;
 
@@ -309,7 +290,7 @@ class _ScaledMiniPreview extends StatelessWidget {
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: _designW,
-              child: buildMiniPreview(templateId),
+              child: preview,
             ),
           ),
         ),

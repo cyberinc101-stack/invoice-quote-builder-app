@@ -19,22 +19,57 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedLanguageName = 'English';
-  String _selectedLanguageFlag = '????';
+  String _selectedLanguageFlag = '\u{1F1FA}\u{1F1F8}';
   String _selectedLanguageCode = 'en';
 
   static const String _supportEmail = 'cyberinc101@gmail.com';
   static const String _appVersion   = '1.0.0';
 
+  // FIX (this pass): previous flag literals were corrupted mojibake
+  // ('????' for every entry). Rebuilt using Unicode regional-indicator
+  // escape pairs (\u{XXXXX}\u{YYYYY}) instead of literal emoji glyphs —
+  // escapes can't be mangled by terminal/clipboard encoding the way raw
+  // emoji characters can, so this won't silently corrupt again on the
+  // next copy/paste round-trip. Language system itself is still a stub
+  // (see lib/helpers/lang_helper.dart) — this only fixes the flag icons,
+  // not translation. Left as-is per decision to wire real translations
+  // later, once everything else is confirmed working.
   static const Map<String, String> _flagMap = {
-    'en':    '????', 'ru':    '????', 'zh':    '????', 'hi':    '????',
-    'bn':    '????', 'fr':    '????', 'de':    '????', 'ko':    '????',
-    'ja':    '????', 'tr':    '????', 'it':    '????', 'pt_br': '????',
-    'ur':    '????', 'he':    '????', 'ar':    '????', 'es':    '????',
-    'es_mx': '????', 'id':    '????', 'ms':    '????', 'uk':    '????',
-    'pl':    '????', 'fa':    '????', 'sw':    '????', 'th':    '????',
-    'vi':    '????', 'tl':    '????', 'nl':    '????', 'sv':    '????',
-    'el':    '????', 'ro':    '????', 'hu':    '????', 'cs':    '????',
-    'fi':    '????', 'no':    '????', 'pt':    '????',
+    'en':    '\u{1F1FA}\u{1F1F8}', // US
+    'ru':    '\u{1F1F7}\u{1F1FA}', // RU
+    'zh':    '\u{1F1E8}\u{1F1F3}', // CN
+    'hi':    '\u{1F1EE}\u{1F1F3}', // IN
+    'bn':    '\u{1F1E7}\u{1F1E9}', // BD
+    'fr':    '\u{1F1EB}\u{1F1F7}', // FR
+    'de':    '\u{1F1E9}\u{1F1EA}', // DE
+    'ko':    '\u{1F1F0}\u{1F1F7}', // KR
+    'ja':    '\u{1F1EF}\u{1F1F5}', // JP
+    'tr':    '\u{1F1F9}\u{1F1F7}', // TR
+    'it':    '\u{1F1EE}\u{1F1F9}', // IT
+    'pt_br': '\u{1F1E7}\u{1F1F7}', // BR
+    'ur':    '\u{1F1F5}\u{1F1F0}', // PK
+    'he':    '\u{1F1EE}\u{1F1F1}', // IL
+    'ar':    '\u{1F1F8}\u{1F1E6}', // SA
+    'es':    '\u{1F1EA}\u{1F1F8}', // ES
+    'es_mx': '\u{1F1F2}\u{1F1FD}', // MX
+    'id':    '\u{1F1EE}\u{1F1E9}', // ID
+    'ms':    '\u{1F1F2}\u{1F1FE}', // MY
+    'uk':    '\u{1F1FA}\u{1F1E6}', // UA
+    'pl':    '\u{1F1F5}\u{1F1F1}', // PL
+    'fa':    '\u{1F1EE}\u{1F1F7}', // IR
+    'sw':    '\u{1F1F0}\u{1F1EA}', // KE
+    'th':    '\u{1F1F9}\u{1F1ED}', // TH
+    'vi':    '\u{1F1FB}\u{1F1F3}', // VN
+    'tl':    '\u{1F1F5}\u{1F1ED}', // PH
+    'nl':    '\u{1F1F3}\u{1F1F1}', // NL
+    'sv':    '\u{1F1F8}\u{1F1EA}', // SE
+    'el':    '\u{1F1EC}\u{1F1F7}', // GR
+    'ro':    '\u{1F1F7}\u{1F1F4}', // RO
+    'hu':    '\u{1F1ED}\u{1F1FA}', // HU
+    'cs':    '\u{1F1E8}\u{1F1FF}', // CZ
+    'fi':    '\u{1F1EB}\u{1F1EE}', // FI
+    'no':    '\u{1F1F3}\u{1F1F4}', // NO
+    'pt':    '\u{1F1F5}\u{1F1F9}', // PT
   };
 
   @override
@@ -47,7 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final code  = prefs.getString('app_language_code') ?? 'en';
     final name  = prefs.getString('app_language_name') ?? 'English';
-    final flag  = prefs.getString('app_language_flag') ?? (_flagMap[code] ?? '??');
+    final flag  = prefs.getString('app_language_flag') ?? (_flagMap[code] ?? '\u{1F1FA}\u{1F1F8}');
     if (mounted) {
       setState(() {
         _selectedLanguageCode = code;

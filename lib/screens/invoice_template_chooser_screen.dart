@@ -1,8 +1,8 @@
-// invoice_template_chooser_screen.dart
+﻿// invoice_template_chooser_screen.dart
 // lib/screens/invoice_template_chooser_screen.dart
 //
 // Shown when "Create Invoice" is pressed, BEFORE the editor stepper.
-// Card/grid layout (not the CV app's swipeable carousel — Jesse asked for
+// Card/grid layout (not the CV app's swipeable carousel â€” Jesse asked for
 // grid/rows here specifically). Tapping an available card jumps straight
 // into EditorScreen with that layout template pre-selected; tapping a
 // "Coming Soon" stub just shows a snackbar.
@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 import 'invoice_create_section/editor_screen.dart';
 import 'invoice_create_section/invoice_step_template_chooser_registry.dart';
-import 'invoice_create_section/invoice_template_chooser_01/preview_registry.dart';
+import 'invoice_create_section/invoice_template_previews/preview_registry.dart';
 
 class InvoiceTemplateChooserScreen extends StatelessWidget {
   const InvoiceTemplateChooserScreen({super.key});
@@ -126,9 +126,9 @@ class InvoiceTemplateChooserScreen extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Grid card
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _TemplateCard extends StatelessWidget {
   final InvoiceTemplateInfo info;
@@ -246,3 +246,4 @@ class _TemplateCard extends StatelessWidget {
     );
   }
 }
+

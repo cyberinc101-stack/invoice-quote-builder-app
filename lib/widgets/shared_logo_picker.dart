@@ -15,6 +15,13 @@
 //   SharedLogoPicker         — the tappable picker + "Gallery/Camera/Reposition/
 //                              Shape/Remove" bottom sheet
 //   SharedLogoThumbnail      — read-only render of a saved logo (card thumbnails)
+//
+// SharedLogoPicker.compact — when true, renders ONLY the tappable logo box
+//   (no inline Gallery/Camera/Reposition/Remove chip row next to it). Tap
+//   still opens the full bottom sheet with all four options. Use this in
+//   tight header layouts (e.g. saved-document editable canvas screens) where
+//   there isn't enough horizontal room for the chip row's Expanded content.
+//   Defaults to false, so every existing call site keeps the chip row.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -142,6 +149,17 @@ class SharedLogoPicker extends StatelessWidget {
   final Color accent;
   final void Function(String? path, Offset normOffset, double scale, LogoShape shape) onChanged;
 
+  /// When true, renders only the tappable logo box — no inline chip row.
+  /// Tap still opens the full bottom sheet (Gallery/Camera/Reposition/Remove).
+  /// Use in tight layouts where there's no room for the chip row's Expanded
+  /// content (that row needs a bounded parent width to lay out its flex
+  /// children).
+  final bool compact;
+
+  /// Box size in compact mode. Ignored when [compact] is false (full mode
+  /// always uses its original 90px box to preserve existing layouts).
+  final double compactBoxSize;
+
   const SharedLogoPicker({
     super.key,
     required this.logoPath,
@@ -150,6 +168,8 @@ class SharedLogoPicker extends StatelessWidget {
     required this.logoShape,
     required this.accent,
     required this.onChanged,
+    this.compact = false,
+    this.compactBoxSize = 56.0,
   });
 
   bool get _hasLogo =>
@@ -253,10 +273,8 @@ class SharedLogoPicker extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _logoBox(BuildContext context, double boxSize) {
     final colorScheme = Theme.of(context).colorScheme;
-    const double boxSize = 90.0;
     const double overScale = 1.35;
 
     final maxTravel = (boxSize * overScale * logoScale - boxSize) / 2;
@@ -265,46 +283,62 @@ class SharedLogoPicker extends StatelessWidget {
       logoOffset.dy * maxTravel,
     );
 
+    return GestureDetector(
+      onTap: () => _showOptions(context),
+      child: Container(
+        width: boxSize,
+        height: boxSize,
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: logoShape.radiusFor(boxSize),
+          border: Border.all(color: accent.withOpacity(0.4), width: 1.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _hasLogo
+            ? OverflowBox(
+                alignment: Alignment.center,
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: Transform.translate(
+                  offset: pixelOffset,
+                  child: Image.file(
+                    File(logoPath!),
+                    fit: BoxFit.cover,
+                    width: boxSize * overScale * logoScale,
+                    height: boxSize * overScale * logoScale,
+                  ),
+                ),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.business_rounded,
+                      size: boxSize * 0.31, color: accent.withOpacity(0.5)),
+                  SizedBox(height: boxSize * 0.045),
+                  Text('Upload',
+                      style: TextStyle(
+                          fontSize: boxSize * 0.11,
+                          color: accent.withOpacity(0.6),
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      // Just the tappable box — no Row, no Expanded chip content, so this
+      // has no minimum-width requirement from its parent.
+      return _logoBox(context, compactBoxSize);
+    }
+
+    const double boxSize = 90.0;
+
     return Row(
       children: [
-        GestureDetector(
-          onTap: () => _showOptions(context),
-          child: Container(
-            width: boxSize,
-            height: boxSize,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: logoShape.radiusFor(boxSize),
-              border: Border.all(color: accent.withOpacity(0.4), width: 1.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: _hasLogo
-                ? OverflowBox(
-                    alignment: Alignment.center,
-                    maxWidth: double.infinity,
-                    maxHeight: double.infinity,
-                    child: Transform.translate(
-                      offset: pixelOffset,
-                      child: Image.file(
-                        File(logoPath!),
-                        fit: BoxFit.cover,
-                        width: boxSize * overScale * logoScale,
-                        height: boxSize * overScale * logoScale,
-                      ),
-                    ),
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.business_rounded, size: 28, color: accent.withOpacity(0.5)),
-                      const SizedBox(height: 4),
-                      Text('Upload',
-                          style: TextStyle(
-                              fontSize: 10, color: accent.withOpacity(0.6), fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-          ),
-        ),
+        _logoBox(context, boxSize),
         const SizedBox(width: 14),
         Expanded(
           child: Column(

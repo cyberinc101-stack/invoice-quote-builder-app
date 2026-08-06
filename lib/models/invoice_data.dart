@@ -80,6 +80,11 @@ class InvoiceData {
   String        fontFamily;
   InvoiceColor  colorScheme;
 
+  // NEW: system-stamped (not user-typed, unlike issueDate/dueDate) — set the
+  // moment paymentStatus flips to PaymentStatus.paid, cleared if it's ever
+  // changed away from paid. See InvoiceProvider.updateSavedInvoiceStatus.
+  DateTime? paidDate;
+
   InvoiceData({
     this.businessName     = '',
     this.businessEmail    = '',
@@ -92,7 +97,7 @@ class InvoiceData {
     this.clientAddress    = '',
     this.invoiceNumber    = '',
     this.issueDate        = '',
-    this.dueDate          = '',
+    this.dueDate           = '',
     this.notes            = '',
     this.currency         = 'USD',
     List<LineItem>? lineItems,
@@ -101,6 +106,7 @@ class InvoiceData {
     this.paymentStatus    = PaymentStatus.unpaid,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = InvoiceColor.blue,
+    this.paidDate,
   }) : lineItems = lineItems ?? [];
 
   // ── Computed totals ────────────────────────────────────────────────────────
@@ -133,6 +139,7 @@ class InvoiceData {
         'paymentStatus':    paymentStatus.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'paidDate':         paidDate?.toIso8601String(),
       };
 
   factory InvoiceData.fromJson(Map<String, dynamic> j) => InvoiceData(
@@ -164,9 +171,17 @@ class InvoiceData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => InvoiceColor.blue,
         ),
+        paidDate: j['paidDate'] != null
+            ? DateTime.tryParse(j['paidDate'] as String)
+            : null,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
+  //
+  // clearPaidDate: pass true to explicitly wipe paidDate back to null — plain
+  // `paidDate: null` alone can never clear an existing value through the
+  // standard `?? this.paidDate` pattern (same reasoning as SavedInvoice's
+  // clearFolderName).
 
   InvoiceData copyWith({
     String?         businessName,
@@ -189,6 +204,8 @@ class InvoiceData {
     PaymentStatus?  paymentStatus,
     String?         fontFamily,
     InvoiceColor?   colorScheme,
+    DateTime?       paidDate,
+    bool            clearPaidDate = false,
   }) =>
       InvoiceData(
         businessName:     businessName     ?? this.businessName,
@@ -211,6 +228,7 @@ class InvoiceData {
         paymentStatus:    paymentStatus    ?? this.paymentStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        paidDate: clearPaidDate ? null : (paidDate ?? this.paidDate),
       );
 
   InvoiceData deepCopy() => copyWith(
@@ -230,6 +248,7 @@ class SavedInvoice {
   final DateTime    createdAt;
   final DateTime    lastEditedAt;
   final int         completionPercent;
+  final String?     folderName;
 
   SavedInvoice({
     required this.id,
@@ -239,6 +258,7 @@ class SavedInvoice {
     required this.createdAt,
     required this.lastEditedAt,
     required this.completionPercent,
+    this.folderName,
   });
 
   String lastEditedDisplay() {
@@ -266,6 +286,7 @@ class SavedInvoice {
         'createdAt':         createdAt.toIso8601String(),
         'lastEditedAt':      lastEditedAt.toIso8601String(),
         'completionPercent': completionPercent,
+        'folderName':        folderName,
       };
 
   factory SavedInvoice.fromJson(Map<String, dynamic> j) => SavedInvoice(
@@ -276,14 +297,21 @@ class SavedInvoice {
         createdAt:    DateTime.parse(j['createdAt']    as String),
         lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
         completionPercent: j['completionPercent'] as int? ?? 0,
+        folderName: j['folderName'] as String?,
       );
 
+  // NEW: folderName/clearFolderName — pass a folderName to set it, or pass
+  // clearFolderName: true to explicitly wipe it back to null (needed since
+  // `folderName: null ?? this.folderName` alone can never actually clear an
+  // existing value).
   SavedInvoice copyWith({
     String?      title,
     String?      templateName,
     InvoiceData? data,
     DateTime?    lastEditedAt,
     int?         completionPercent,
+    String?      folderName,
+    bool         clearFolderName = false,
   }) =>
       SavedInvoice(
         id:                id,
@@ -293,5 +321,6 @@ class SavedInvoice {
         createdAt:         createdAt,
         lastEditedAt:      lastEditedAt      ?? this.lastEditedAt,
         completionPercent: completionPercent ?? this.completionPercent,
+        folderName: clearFolderName ? null : (folderName ?? this.folderName),
       );
 }

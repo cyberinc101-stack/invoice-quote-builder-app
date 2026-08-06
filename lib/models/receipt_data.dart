@@ -196,6 +196,7 @@ class SavedReceipt {
   final DateTime    createdAt;
   final DateTime    lastEditedAt;
   final int         completionPercent;
+  final String?     folderName;
 
   SavedReceipt({
     required this.id,
@@ -205,6 +206,7 @@ class SavedReceipt {
     required this.createdAt,
     required this.lastEditedAt,
     required this.completionPercent,
+    this.folderName,
   });
 
   String lastEditedDisplay() {
@@ -232,6 +234,7 @@ class SavedReceipt {
         'createdAt':         createdAt.toIso8601String(),
         'lastEditedAt':      lastEditedAt.toIso8601String(),
         'completionPercent': completionPercent,
+        'folderName':        folderName,
       };
 
   factory SavedReceipt.fromJson(Map<String, dynamic> j) => SavedReceipt(
@@ -242,14 +245,18 @@ class SavedReceipt {
         createdAt:    DateTime.parse(j['createdAt']    as String),
         lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
         completionPercent: j['completionPercent'] as int? ?? 0,
+        folderName: j['folderName'] as String?,
       );
 
+  // NEW: folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
   SavedReceipt copyWith({
     String?      title,
     String?      templateName,
     ReceiptData? data,
     DateTime?    lastEditedAt,
     int?         completionPercent,
+    String?      folderName,
+    bool         clearFolderName = false,
   }) =>
       SavedReceipt(
         id:                id,
@@ -259,5 +266,6 @@ class SavedReceipt {
         createdAt:         createdAt,
         lastEditedAt:      lastEditedAt      ?? this.lastEditedAt,
         completionPercent: completionPercent ?? this.completionPercent,
+        folderName: clearFolderName ? null : (folderName ?? this.folderName),
       );
 }

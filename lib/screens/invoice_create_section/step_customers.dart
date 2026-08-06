@@ -1,4 +1,4 @@
-// lib/screens/invoice_create_section/step_customers.dart
+﻿// lib/screens/invoice_create_section/step_customers.dart
 //
 // UPDATED (this pass): Customer logo picking now uses SharedLogoPicker
 // (lib/widgets/shared_logo_picker.dart) instead of a plain ImagePicker +
@@ -16,10 +16,10 @@ import 'package:flutter/services.dart'; // required for LengthLimitingTextInputF
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-import 'package:cv_builder_app/models/invoice_data.dart';
-import 'package:cv_builder_app/models/client_info.dart';
-import 'package:cv_builder_app/services/storage_service.dart';
-import 'package:cv_builder_app/widgets/shared_logo_picker.dart';
+import 'package:invoice_quote_receipt_builder/models/invoice_data.dart';
+import 'package:invoice_quote_receipt_builder/models/client_info.dart';
+import 'package:invoice_quote_receipt_builder/services/storage_service.dart';
+import 'package:invoice_quote_receipt_builder/widgets/shared_logo_picker.dart';
 import 'invoice_edit_widgets.dart';
 
 // ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ class _StepCustomersState extends State<StepCustomers> {
         Expanded(
           child: CustomScrollView(
             slivers: [
-              // ── Header ──────────────────────────────────────────────────
+              // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
@@ -348,7 +348,7 @@ class _StepCustomersState extends State<StepCustomers> {
                 ),
               ),
 
-              // ── Library header ───────────────────────────────────────────
+              // â”€â”€ Library header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               if (!_loading && _library.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -382,7 +382,7 @@ class _StepCustomersState extends State<StepCustomers> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                _selectedIndex != null ? '1 ✓' : 'none',
+                                _selectedIndex != null ? '1 âœ“' : 'none',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -446,7 +446,7 @@ class _StepCustomersState extends State<StepCustomers> {
                   ),
                 ),
 
-              // ── Customer cards ───────────────────────────────────────────
+              // â”€â”€ Customer cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               if (!_loading && _showLibraryPanel && _library.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -468,7 +468,7 @@ class _StepCustomersState extends State<StepCustomers> {
                   ),
                 ),
 
-              // ── Empty state ──────────────────────────────────────────────
+              // â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               if (!_loading && _library.isEmpty)
                 SliverFillRemaining(
                   child: EmptyState(
@@ -774,7 +774,7 @@ class _CustomerCard extends StatelessWidget {
 }
 
 // =============================================================================
-// Bottom Sheet – add / edit a customer
+// Bottom Sheet â€“ add / edit a customer
 // =============================================================================
 
 class _CustomerSheet extends StatefulWidget {
@@ -794,6 +794,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneCtrl;
   late TextEditingController _addressCtrl;
+  late TextEditingController _currencyCtrl;
+  late TextEditingController _taxRateCtrl;
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
@@ -811,6 +813,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _emailCtrl = TextEditingController(text: e?.email ?? '');
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _addressCtrl = TextEditingController(text: e?.address ?? '');
+    _currencyCtrl = TextEditingController(text: e?.defaultCurrency ?? 'USD');
+    _taxRateCtrl = TextEditingController(text: (e == null || e.defaultTaxRate == 0.0) ? '' : e.defaultTaxRate.toString());
     _logoPath = e?.logoPath;
     _logoOffset = e != null ? Offset(e.logoOffsetDx, e.logoOffsetDy) : Offset.zero;
     _logoScale = e?.logoScale ?? 1.0;
@@ -827,6 +831,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _currencyCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
   }
 
@@ -843,6 +849,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
       logoOffsetDy: _logoOffset.dy,
       logoScale: _logoScale,
       logoShape: _logoShape.storageName,
+      defaultCurrency: _currencyCtrl.text.trim().isEmpty ? 'USD' : _currencyCtrl.text.trim().toUpperCase(),
+      defaultTaxRate: double.tryParse(_taxRateCtrl.text.trim()) ?? 0.0,
     ));
     Navigator.pop(context);
   }
@@ -976,7 +984,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                         ),
                         const SizedBox(height: 20),
 
-                        // ── Logo section ──────────────────────────────────
+                        // â”€â”€ Logo section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                         _sectionLabel('Customer Logo'),
                         SharedLogoPicker(
                           logoPath: _logoPath,
@@ -993,7 +1001,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                         ),
                         const SizedBox(height: 20),
 
-                        // ── Basic details ─────────────────────────────────
+                        // â”€â”€ Basic details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                         _sectionLabel('Customer Details'),
                         _SheetField(
                           ctrl: _nameCtrl,
@@ -1038,6 +1046,25 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                           accent: _accent,
                         ),
                         _counter(_addressCtrl.text.length, 200),
+                        _SheetField(
+                          ctrl: _currencyCtrl,
+                          label: 'Default Currency',
+                          hint: 'e.g. USD',
+                          icon: Icons.attach_money_rounded,
+                          max: 3,
+                          accent: _accent,
+                        ),
+                        const SizedBox(height: 12),
+                        _SheetField(
+                          ctrl: _taxRateCtrl,
+                          label: 'Default Tax Rate (%)',
+                          hint: 'e.g. 8.5',
+                          icon: Icons.percent_rounded,
+                          max: 6,
+                          keyboard: TextInputType.numberWithOptions(decimal: true),
+                          accent: _accent,
+                        ),
+                        const SizedBox(height: 12),
                         const SizedBox(height: 28),
 
                         // Save button

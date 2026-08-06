@@ -1,12 +1,12 @@
-// lib/create_receipt/receipt_client_library.dart
+﻿// lib/create_receipt/receipt_client_library.dart
 //
-// Saved "client" library for the receipt Client & Details step — same UX as
+// Saved "client" library for the receipt Client & Details step â€” same UX as
 // invoice_edit_section/step_customers/step_customers.dart (tap a saved card
 // to reuse a client's details instead of retyping them) and
 // create_quote_section/quote_client_library.dart, kept self-contained per
 // the receipt flow's existing convention (no dependency on invoice or quote
 // files). No inline client fields remain on the receipt Client & Details
-// step — only this saved-list section + "Add New Client" opening the sheet.
+// step â€” only this saved-list section + "Add New Client" opening the sheet.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -29,12 +29,17 @@ class ReceiptClient {
   String phone;
   String address;
 
+  String defaultCurrency;
+  double defaultTaxRate;
+
   ReceiptClient({
     required this.id,
     this.name = '',
     this.email = '',
     this.phone = '',
     this.address = '',
+    this.defaultCurrency = 'USD',
+    this.defaultTaxRate = 0.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +48,8 @@ class ReceiptClient {
         'email': email,
         'phone': phone,
         'address': address,
+        'defaultCurrency': defaultCurrency,
+        'defaultTaxRate': defaultTaxRate,
       };
 
   factory ReceiptClient.fromJson(Map<String, dynamic> j) => ReceiptClient(
@@ -51,6 +58,8 @@ class ReceiptClient {
         email: j['email'] as String? ?? '',
         phone: j['phone'] as String? ?? '',
         address: j['address'] as String? ?? '',
+        defaultCurrency: j['defaultCurrency'] as String? ?? 'USD',
+        defaultTaxRate: (j['defaultTaxRate'] as num?)?.toDouble() ?? 0.0,
       );
 }
 
@@ -498,6 +507,8 @@ class _ReceiptClientSheetState extends State<_ReceiptClientSheet> {
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneCtrl;
   late TextEditingController _addressCtrl;
+  late TextEditingController _currencyCtrl;
+  late TextEditingController _taxRateCtrl;
 
   bool get _isEditing => widget.existing != null;
 
@@ -509,6 +520,8 @@ class _ReceiptClientSheetState extends State<_ReceiptClientSheet> {
     _emailCtrl = TextEditingController(text: e?.email ?? '');
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _addressCtrl = TextEditingController(text: e?.address ?? '');
+    _currencyCtrl = TextEditingController(text: e?.defaultCurrency ?? 'USD');
+    _taxRateCtrl = TextEditingController(text: (e == null || e.defaultTaxRate == 0.0) ? '' : e.defaultTaxRate.toString());
   }
 
   @override
@@ -517,6 +530,8 @@ class _ReceiptClientSheetState extends State<_ReceiptClientSheet> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _currencyCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
   }
 
@@ -528,6 +543,8 @@ class _ReceiptClientSheetState extends State<_ReceiptClientSheet> {
       email: _emailCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
       address: _addressCtrl.text.trim(),
+      defaultCurrency: _currencyCtrl.text.trim().isEmpty ? 'USD' : _currencyCtrl.text.trim().toUpperCase(),
+      defaultTaxRate: double.tryParse(_taxRateCtrl.text.trim()) ?? 0.0,
     ));
     Navigator.pop(context);
   }
@@ -613,6 +630,23 @@ class _ReceiptClientSheetState extends State<_ReceiptClientSheet> {
                           max: 200,
                           maxLines: 2,
                         ),
+                        ReceiptField(
+                          ctrl: _currencyCtrl,
+                          label: 'Default Currency',
+                          accent: accent,
+                          icon: Icons.attach_money_rounded,
+                          max: 3,
+                        ),
+                        const SizedBox(height: 12),
+                        ReceiptField(
+                          ctrl: _taxRateCtrl,
+                          label: 'Default Tax Rate (%)',
+                          accent: accent,
+                          icon: Icons.percent_rounded,
+                          max: 6,
+                          keyboard: TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 12),
                         const SizedBox(height: 28),
                         SizedBox(
                           width: double.infinity,

@@ -30,6 +30,12 @@
 @import mobile_scanner;
 #endif
 
+#if __has_include(<open_file_ios/OpenFilePlugin.h>)
+#import <open_file_ios/OpenFilePlugin.h>
+#else
+@import open_file_ios;
+#endif
+
 #if __has_include(<printing/PrintingPlugin.h>)
 #import <printing/PrintingPlugin.h>
 #else
@@ -61,6 +67,7 @@
   [FlutterLocalNotificationsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterLocalNotificationsPlugin"]];
   [FLTImagePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTImagePickerPlugin"]];
   [MobileScannerPlugin registerWithRegistrar:[registry registrarForPlugin:@"MobileScannerPlugin"]];
+  [OpenFilePlugin registerWithRegistrar:[registry registrarForPlugin:@"OpenFilePlugin"]];
   [PrintingPlugin registerWithRegistrar:[registry registrarForPlugin:@"PrintingPlugin"]];
   [FPPSharePlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPSharePlusPlugin"]];
   [SharedPreferencesPlugin registerWithRegistrar:[registry registrarForPlugin:@"SharedPreferencesPlugin"]];

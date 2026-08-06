@@ -1,10 +1,15 @@
 // filter_logic.dart
 // lib/filters/filter_logic.dart
 //
-// "Needs Action" / "Overdue" (+ aging buckets) / "Drafts" logic, plus
-// search, date-range, amount-range, and sort helpers for the full filter
-// bar. Kept out of home_screen.dart so that file doesn't grow every time a
-// new filter is added.
+// "Needs Action" / "Overdue" (+ aging buckets) / "Drafts" / "Paid" /
+// "Accepted" logic, plus search, date-range, amount-range, folder, and
+// sort helpers for the full filter bar.
+//
+// UPDATED (this pass): added invoiceIsPaid / quoteIsAccepted predicates and
+// countPaid / countAccepted counters, wired into the three
+// applyQuickFilterToX() switches (kept exhaustive — every QuickFilter case
+// is handled per type, returning const [] where a filter doesn't apply to
+// that doc type).
 
 import '../models/invoice_data.dart';
 import '../models/quote_data.dart';
@@ -23,10 +28,14 @@ bool invoiceIsOverdue(SavedInvoice inv) {
   return isPastDate(parseDocDate(inv.data.dueDate));
 }
 
+bool invoiceIsPaid(SavedInvoice inv) => inv.data.paymentStatus == PaymentStatus.paid;
+
 bool quoteIsExpiringSoon(SavedQuote q) {
   if (q.data.quoteStatus != QuoteStatus.sent) return false;
   return isWithinDays(parseDocDate(q.data.expiryDate), kExpiringSoonWindowDays);
 }
+
+bool quoteIsAccepted(SavedQuote q) => q.data.quoteStatus == QuoteStatus.accepted;
 
 bool invoiceIsDraft(SavedInvoice inv) => inv.completionPercent < 100;
 bool quoteIsDraft(SavedQuote q) => q.completionPercent < 100;
@@ -79,6 +88,11 @@ List<SavedInvoice> applyQuickFilterToInvoices(
     case QuickFilter.overdue31to60:
     case QuickFilter.overdue61plus:
       return invoices.where((inv) => invoiceInAgingBucket(inv, filter)).toList();
+    case QuickFilter.paid:
+      return invoices.where(invoiceIsPaid).toList();
+    case QuickFilter.accepted:
+      // "Accepted" is a quote-only concept.
+      return const [];
   }
 }
 
@@ -93,11 +107,14 @@ List<SavedQuote> applyQuickFilterToQuotes(
       return quotes.where(quoteIsDraft).toList();
     case QuickFilter.needsAction:
       return quotes.where(quoteIsExpiringSoon).toList();
+    case QuickFilter.accepted:
+      return quotes.where(quoteIsAccepted).toList();
     case QuickFilter.overdue:
     case QuickFilter.overdue1to30:
     case QuickFilter.overdue31to60:
     case QuickFilter.overdue61plus:
-      // Overdue / aging buckets are a money-owed concept — invoices only.
+    case QuickFilter.paid:
+      // Overdue / aging buckets / Paid are money-owed concepts — invoices only.
       return const [];
   }
 }
@@ -116,6 +133,8 @@ List<SavedReceipt> applyQuickFilterToReceipts(
     case QuickFilter.overdue1to30:
     case QuickFilter.overdue31to60:
     case QuickFilter.overdue61plus:
+    case QuickFilter.paid:
+    case QuickFilter.accepted:
       // Receipts are already-settled records — none of these apply.
       return const [];
   }
@@ -137,6 +156,12 @@ int countOverdue(List<SavedInvoice> invoices) =>
 int countAgingBucket(List<SavedInvoice> invoices, QuickFilter bucket) =>
     invoices.where((inv) => invoiceInAgingBucket(inv, bucket)).length;
 
+int countPaid(List<SavedInvoice> invoices) =>
+    invoices.where(invoiceIsPaid).length;
+
+int countAccepted(List<SavedQuote> quotes) =>
+    quotes.where(quoteIsAccepted).length;
+
 int countDrafts({
   required List<SavedInvoice> invoices,
   required List<SavedQuote> quotes,
@@ -148,9 +173,6 @@ int countDrafts({
 }
 
 // ── Search ──────────────────────────────────────────────────────────────
-//
-// Matches against title + client name + the doc's own number field.
-// Case-insensitive, substring match.
 
 List<SavedInvoice> searchInvoices(List<SavedInvoice> items, String query) {
   final q = query.trim().toLowerCase();
@@ -186,10 +208,6 @@ List<SavedReceipt> searchReceipts(List<SavedReceipt> items, String query) {
 }
 
 // ── Date range ──────────────────────────────────────────────────────────
-//
-// ASSUMPTION: keys off lastEditedAt (a real DateTime on every saved doc)
-// rather than dueDate/issueDate/expiryDate/paymentDate, which are free-text
-// Strings of inconsistent format.
 
 List<SavedInvoice> filterInvoicesByDateRange(
   List<SavedInvoice> items,
@@ -260,6 +278,43 @@ List<SavedReceipt> filterReceiptsByAmountRange(
     if (max != null && amt > max) return false;
     return true;
   }).toList();
+}
+
+// ── Folders ─────────────────────────────────────────────────────────────
+
+List<String> collectFolderNames({
+  required List<SavedInvoice> invoices,
+  required List<SavedQuote> quotes,
+  required List<SavedReceipt> receipts,
+}) {
+  final names = <String>{};
+  for (final i in invoices) {
+    if (i.folderName != null && i.folderName!.isNotEmpty) names.add(i.folderName!);
+  }
+  for (final q in quotes) {
+    if (q.folderName != null && q.folderName!.isNotEmpty) names.add(q.folderName!);
+  }
+  for (final r in receipts) {
+    if (r.folderName != null && r.folderName!.isNotEmpty) names.add(r.folderName!);
+  }
+  final list = names.toList();
+  list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  return list;
+}
+
+List<SavedInvoice> filterInvoicesByFolder(List<SavedInvoice> items, String? folder) {
+  if (folder == null) return items;
+  return items.where((i) => i.folderName == folder).toList();
+}
+
+List<SavedQuote> filterQuotesByFolder(List<SavedQuote> items, String? folder) {
+  if (folder == null) return items;
+  return items.where((q) => q.folderName == folder).toList();
+}
+
+List<SavedReceipt> filterReceiptsByFolder(List<SavedReceipt> items, String? folder) {
+  if (folder == null) return items;
+  return items.where((r) => r.folderName == folder).toList();
 }
 
 // ── Sort ────────────────────────────────────────────────────────────────

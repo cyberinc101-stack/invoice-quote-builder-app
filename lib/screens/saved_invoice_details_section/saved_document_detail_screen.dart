@@ -9,7 +9,6 @@
 //   Invoice: renameInvoice(id, title) / deleteInvoice(id)
 //   Quote:   renameQuote(id, title)   / deleteQuote(id)
 //   Receipt: renameSavedReceipt(id, title) / deleteSavedReceipt(id)
-// Receipt editing routes to CreateReceiptScreen(existingReceiptId: ...).
 //
 // SavedDocumentDetailScreen.demo(...) — a second entry point for UI-preview
 // purposes while still in the design phase. Takes plain values instead of
@@ -18,62 +17,54 @@
 // When isDemo is true, _liveState() returns the demo values directly (no
 // provider reads at all) and Edit/Rename/Delete/Convert all just show a
 // "this is a demo" snackbar instead of touching a provider. Full Preview
-// now works for BOTH demo and real documents — see fix note below.
+// works for BOTH demo and real documents.
 //
-// FIX (this pass): _buildSliverAppBar and _buildBottomBar were being called
-// with (context, state) but declared to only take (context) — a straight
-// compile error left over from an in-progress refactor. Both now take state
-// as a real parameter instead of recomputing it internally. Full Preview is
-// wired to the new DocumentPdfPreviewScreen (previously stubbed with a
-// "coming soon" snackbar, and the file it imported didn't exist on disk).
+// FIX (this pass): Edit is now FULLY WIRED for all three document types.
+// Previously Invoice Edit was stubbed with a "wiring pending" snackbar,
+// Quote Edit was stubbed with "not built yet", and Receipt Edit routed to
+// CreateReceiptScreen(existingReceiptId:...) with an assumed constructor
+// param. All three now route to a dedicated tap-to-edit canvas screen:
+//   Invoice -> InvoiceEditableCanvasScreen(invoiceId: ...)
+//   Quote   -> QuoteEditableCanvasScreen(quoteId: ...)
+//   Receipt -> ReceiptEditableCanvasScreen(receiptId: ...)
+// Each canvas seeds its provider's draft from the saved record on open,
+// edits live via the provider, and only writes back to the saved list on
+// Save. Back/cancel discards cleanly. See each canvas file's header comment
+// for exact per-type mechanics (Receipt's provider only exposes a single
+// updateReceiptData() method rather than granular update*() methods, so its
+// canvas uses a local copyWith-based helper instead).
 //
-// FIX (this pass, cont.): Real PDF export wired in. Options sheet now has
-// "Download PDF" / "Share PDF" alongside Rename/Delete, calling the real
-// InvoicePdfService (lib/services/invoice_pdf_service.dart) against the
-// live SavedInvoice. Scoped to invoices only for now — quote/receipt PDF
-// export isn't built, so those types get the same "not built yet" pattern
-// already used for Quote Edit.
+// FIX (this pass, cont.): removed the now-unused CreateReceiptScreen import
+// — Receipt editing no longer routes there.
 //
-// FIX (this pass, cont. again): bottom bar was one dominant Edit button next
-// to a small square PDF icon — visually lopsided. Replaced with two
-// EQUAL-WIDTH buttons: Edit / Preview. Share was tried here too but has
-// since been removed again — it's still reachable from the PDF Preview
-// screen itself and from the "⋮" options sheet, so nothing was lost. Full
-// Preview still passes onDownloadPdf/onSharePdf callbacks through to
-// DocumentPdfPreviewScreen, so you can export directly from the preview
-// screen — same underlying invoice-only PDF logic either way.
+// FIX (latest pass): Activity card now shows a "Paid" row (green, check-
+// circle icon) whenever an invoice's InvoiceData.paidDate is set — i.e. the
+// invoice's status is currently Paid. Sourced through the same _liveState()
+// normalization used for every other date on this screen; quotes/receipts/
+// demo always pass paidDate: null since only InvoiceData tracks it.
 //
-// FIX (this pass, cont. again x2): Preview's low-opacity backgroundColor on
-// the shared DetailActionButton was reading as a hazy blur, not a clean
-// button. Preview now renders via a local _SecondaryActionButton (flat
-// tint, crisp border, no glow shadow) instead.
+// Everything below this point (PDF/export/convert/rename/delete/options
+// sheet) is unchanged from the previous pass.
 //
-// NEW (this pass): "Convert to Invoice" (on quotes) / "Convert to Receipt"
-// (on invoices) added to the "⋮" options sheet. Conversion logic itself
-// lives in lib/conversion/document_converter.dart (kept out of this file
-// since it's already large); this screen just calls it, saves the result
-// via InvoiceProvider.addConvertedInvoice / ReceiptProvider.addConvertedReceipt
-// (both NEW — save without touching whatever's open in the editor), and
-// navigates to the new saved document's detail screen.
+// Real PDF export wired in. Options sheet has "Download PDF" / "Share PDF"
+// alongside Rename/Delete, calling the real InvoicePdfService
+// (lib/services/invoice_pdf_service.dart) against the live SavedInvoice.
+// Scoped to invoices only for now — quote/receipt PDF export isn't built.
 //
-// NEW (this pass): "Export as Excel" / "Export as CSV" added to the "⋮"
-// options sheet, right below Share PDF. Calls the new InvoiceExportService
-// (lib/export/invoice_export_service.dart) — exportSingleXlsxToDownloads /
-// exportSingleCsvToDownloads — against the live SavedInvoice, same
-// invoice-only scoping and the same try/catch + snackbar pattern already
-// used by _handleDownloadPdf / _handleSharePdf. Quote/receipt spreadsheet
-// export isn't built (those models are different shapes to InvoiceData),
-// so those types get the same "not built yet" snackbar.
+// "Convert to Invoice" (on quotes) / "Convert to Receipt" (on invoices) in
+// the "⋮" options sheet. Conversion logic lives in
+// lib/conversion/document_converter.dart; this screen calls it, saves via
+// InvoiceProvider.addConvertedInvoice / ReceiptProvider.addConvertedReceipt,
+// and navigates to the new saved document's detail screen.
 //
-// Still open (unchanged from before):
-// 1. Invoice Edit is stubbed with a snackbar — need
-//    invoice_create_section/editor_screen.dart's constructor to route here
-//    with the existing invoice loaded.
-// 2. Quote Edit shows "not built yet". Quote/Receipt PDF and spreadsheet
-//    export not built — Download/Share PDF and Export XLSX/CSV only work
-//    for invoices right now.
-// 3. The preview card is a generic branded summary, not a pixel-accurate
-//    render of your real invoice_layout_templates/invoice_templates.
+// "Export as Excel" / "Export as CSV" in the "⋮" options sheet, via
+// InvoiceExportService — invoice-only for now, same scoping as PDF export.
+//
+// Still open:
+// 1. The preview card is a generic branded summary, not a pixel-accurate
+//    render of your real invoice/quote/receipt layout templates.
+// 2. Quote/Receipt PDF and spreadsheet export not built — Download/Share
+//    PDF and Export XLSX/CSV only work for invoices right now.
 // -----------------------------------------------------------------------------
 
 import 'package:flutter/material.dart';
@@ -90,9 +81,11 @@ import '../../export/invoice_export_service.dart';
 import '../../conversion/document_converter.dart';
 import '../../widgets/saved_documents_containers.dart'
     show DocType, kInvoiceAccent, kQuoteAccent, kReceiptAccent;
-import '../../create_receipt/create_receipt_screen.dart';
 import 'document_detail_widgets.dart';
 import 'document_pdf_preview_screen.dart';
+import 'invoice_editable_canvas_screen.dart';
+import 'quote_editable_canvas_screen.dart';
+import 'receipt_editable_canvas_screen.dart';
 
 // -----------------------------------------------------------------------------
 // Small per-type status mapping (duplicated intentionally from
@@ -349,11 +342,16 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   // call, since that method isn't confirmed to exist — the list itself is
   // confirmed, from saved_documents_containers.dart). In demo mode, skips
   // providers entirely and returns the plain demo values passed to .demo().
+  //
+  // FIX (this pass): added `paidDate` to the state shape — only ever
+  // non-null for a paid invoice (sourced from InvoiceData.paidDate); quotes,
+  // receipts, and demo documents always pass null since only invoices track
+  // a paid timestamp.
   ({String title, String templateName, DateTime createdAt, DateTime lastEditedAt,
     int completionPercent, String statusLabel, Color statusColor, IconData statusIcon,
     double total, String currency, List<({String desc, double qty, double unitPrice, double total})> items,
     String businessName, String clientName, String primaryDate, String? secondaryDateLabel,
-    String? secondaryDate, String notes})
+    String? secondaryDate, String notes, DateTime? paidDate})
       _liveState(BuildContext context) {
     if (widget.isDemo) {
       return (
@@ -376,6 +374,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
         secondaryDateLabel: widget.demoSecondaryDateLabel,
         secondaryDate: widget.demoSecondaryDate,
         notes: widget.demoNotes!,
+        paidDate: null,
       );
     }
 
@@ -402,6 +401,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDateLabel: 'Due',
           secondaryDate: inv.data.dueDate,
           notes: inv.data.notes,
+          paidDate: inv.data.paidDate,
         );
       case DocType.quote:
         final list = context.watch<QuoteProvider>().savedQuotes;
@@ -425,6 +425,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDateLabel: 'Expires',
           secondaryDate: q.data.expiryDate,
           notes: q.data.notes,
+          paidDate: null,
         );
       case DocType.receipt:
         final list = context.watch<ReceiptProvider>().savedReceipts;
@@ -448,6 +449,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDateLabel: null,
           secondaryDate: null,
           notes: r.data.notes,
+          paidDate: null,
         );
     }
   }
@@ -487,9 +489,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   }
 
   // --- Sliver App Bar --------------------------------------------------------
-  // FIX: now takes `state` as a real parameter instead of recomputing it via
-  // a Builder(...) + _liveState(context) call inside flexibleSpace — that
-  // mismatched the call site in build() above and wouldn't compile.
   Widget _buildSliverAppBar(BuildContext context, dynamic state) {
     return SliverAppBar(
       expandedHeight: 170,
@@ -571,7 +570,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // --- Preview card (generic branded summary — see flag #3 at top) ------------
+  // --- Preview card (generic branded summary — see flag #1 at top) ------------
   Widget _buildPreviewCard(BuildContext context, dynamic state) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -691,6 +690,8 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   }
 
   // --- Activity card ------------------------------------------------------------
+  // FIX (this pass): added a "Paid" row (green check-circle) whenever
+  // state.paidDate is non-null — only ever true for a paid invoice.
   Widget _buildActivityCard(BuildContext context, dynamic state) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -725,6 +726,15 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                   value: _timeAgo(state.lastEditedAt),
                   color: const Color(0xFF9C27B0),
                 ),
+                if (state.paidDate != null) ...[
+                  const SizedBox(height: 12),
+                  DetailActivityRow(
+                    icon: Icons.check_circle_rounded,
+                    label: 'Paid',
+                    value: _formatDate(state.paidDate!),
+                    color: const Color(0xFF4CAF50),
+                  ),
+                ],
                 if (state.notes.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Align(
@@ -744,19 +754,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   }
 
   // --- Bottom bar -----------------------------------------------------------
-  // FIX: Share removed from this bar — it's still available on the PDF
-  // Preview screen itself and in the "⋮" options sheet, so it's not lost,
-  // just not duplicated here. Now just two EQUAL-WIDTH buttons: Edit
-  // (primary/filled) / Preview.
-  //
-  // FIX (cont.): Preview was previously built with the shared
-  // DetailActionButton at low-opacity backgroundColor, which read as a hazy
-  // blur rather than a clean button (that widget's shadow styling doesn't
-  // hold up well at low opacity). Preview now uses a local
-  // _SecondaryActionButton with a flat tint, a crisp border, and no glow
-  // shadow — Edit still uses DetailActionButton since that one looks right
-  // filled solid. IntrinsicHeight + stretch keeps both the same height even
-  // though they're two different widgets.
   Widget _buildBottomBar(BuildContext context, dynamic state) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -804,6 +801,13 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     ));
   }
 
+  // FIX (this pass): fully wired for all three document types — each routes
+  // to its own tap-to-edit canvas screen, seeded from this saved document's
+  // id. `.then((_) { setState... })` forces a rebuild on return so the
+  // header/stats/preview reflect whatever was just saved (the underlying
+  // data itself already updates live via context.watch in _liveState, but
+  // this also covers the case where nothing changed and we still want a
+  // clean repaint).
   void _handleEdit(BuildContext context) {
     if (widget.isDemo) {
       _demoSnack(context, 'This is a demo document — editing is disabled.');
@@ -811,24 +815,30 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
     switch (widget.type) {
       case DocType.invoice:
-        // TODO: need invoice_create_section/editor_screen.dart's constructor
-        // to route here with the existing invoice loaded. Paste it and this
-        // becomes a one-line Navigator.push.
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Invoice editing wiring pending — send me EditorScreen\'s constructor.'),
-        ));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InvoiceEditableCanvasScreen(invoiceId: widget.invoice!.id),
+          ),
+        ).then((_) {
+          if (context.mounted) setState(() {});
+        });
         break;
       case DocType.quote:
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Quote editing isn\'t built yet.'),
-        ));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QuoteEditableCanvasScreen(quoteId: widget.quote!.id),
+          ),
+        ).then((_) {
+          if (context.mounted) setState(() {});
+        });
         break;
       case DocType.receipt:
         Navigator.push(
           context,
           MaterialPageRoute(
-            // ASSUMED param name — confirm against your create_receipt_screen.dart
-            builder: (_) => CreateReceiptScreen(existingReceiptId: widget.receipt!.id),
+            builder: (_) => ReceiptEditableCanvasScreen(receiptId: widget.receipt!.id),
           ),
         ).then((_) {
           if (context.mounted) setState(() {});
@@ -837,11 +847,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // FIX: wired to the new DocumentPdfPreviewScreen. Works for BOTH real and
-  // demo documents — it's a plain-values mockup screen, so the already-
-  // normalized `state` (identical shape for demo/real) feeds it directly
-  // with zero extra branching. Also now passes onDownloadPdf/onSharePdf so
-  // you can export straight from the preview screen, not just this one.
+  // Wired to DocumentPdfPreviewScreen. Works for BOTH real and demo
+  // documents — it's a plain-values mockup screen, so the already-
+  // normalized `state` (identical shape for demo/real) feeds it directly.
   void _handleFullPreview(BuildContext context, dynamic state) {
     Navigator.push(
       context,
@@ -873,10 +881,8 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // NEW: Downloads the invoice PDF to the Downloads folder via InvoicePdfService.
-  // Only wired for invoices right now — quote/receipt PDF export isn't built,
-  // so those types fall back to the same "not built yet" pattern used for
-  // Quote Edit above.
+  // Downloads the invoice PDF to the Downloads folder via InvoicePdfService.
+  // Only wired for invoices right now — quote/receipt PDF export isn't built.
   Future<void> _handleDownloadPdf(BuildContext context) async {
     if (widget.type != DocType.invoice || widget.invoice == null) {
       _demoSnack(context, 'PDF export for this document type isn\'t built yet.');
@@ -900,7 +906,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // NEW: Generates the invoice PDF and triggers the OS share sheet via
+  // Generates the invoice PDF and triggers the OS share sheet via
   // InvoicePdfService. Same invoice-only scoping as _handleDownloadPdf above.
   Future<void> _handleSharePdf(BuildContext context) async {
     if (widget.type != DocType.invoice || widget.invoice == null) {
@@ -919,11 +925,8 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // NEW: Exports the invoice as an .xlsx file to the Downloads folder via
-  // InvoiceExportService. Same invoice-only scoping as the PDF handlers
-  // above — quote/receipt spreadsheet export isn't built (different model
-  // shapes to InvoiceData), so those types get the same "not built yet"
-  // snackbar.
+  // Exports the invoice as an .xlsx file to the Downloads folder via
+  // InvoiceExportService. Same invoice-only scoping as the PDF handlers.
   Future<void> _handleExportXlsx(BuildContext context) async {
     if (widget.type != DocType.invoice || widget.invoice == null) {
       _demoSnack(context, 'Spreadsheet export for this document type isn\'t built yet.');
@@ -947,7 +950,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // NEW: Same idea as _handleExportXlsx but for .csv.
+  // Same idea as _handleExportXlsx but for .csv.
   Future<void> _handleExportCsv(BuildContext context) async {
     if (widget.type != DocType.invoice || widget.invoice == null) {
       _demoSnack(context, 'Spreadsheet export for this document type isn\'t built yet.');
@@ -971,12 +974,11 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // NEW: Builds a fresh InvoiceData from this quote via
+  // Builds a fresh InvoiceData from this quote via
   // convertQuoteDataToInvoiceData(), saves it as a brand-new SavedInvoice
   // via InvoiceProvider.addConvertedInvoice() (doesn't touch whatever's
   // open in the invoice editor), then navigates to that new invoice's
-  // detail screen. Only reachable when widget.type == DocType.quote (see
-  // _showOptionsSheet below).
+  // detail screen. Only reachable when widget.type == DocType.quote.
   void _handleConvertQuoteToInvoice(BuildContext context) {
     if (widget.isDemo || widget.quote == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
@@ -1003,7 +1005,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // NEW: same idea as above but for Invoice -> Receipt. Only reachable when
+  // Same idea as above but for Invoice -> Receipt. Only reachable when
   // widget.type == DocType.invoice.
   Future<void> _handleConvertInvoiceToReceipt(BuildContext context) async {
     if (widget.isDemo || widget.invoice == null) {
@@ -1042,100 +1044,102 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: colorScheme.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).padding.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(height: 20),
-            DetailSheetOption(
-              icon: Icons.drive_file_rename_outline_rounded,
-              label: 'Rename',
-              color: const Color(0xFFFF9800),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showRenameDialog(context);
-              },
-            ),
-            // NEW: Convert to Invoice — quotes only.
-            if (widget.type == DocType.quote)
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).padding.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 20),
               DetailSheetOption(
-                icon: Icons.receipt_long_rounded,
-                label: 'Convert to Invoice',
-                color: kInvoiceAccent,
+                icon: Icons.drive_file_rename_outline_rounded,
+                label: 'Rename',
+                color: const Color(0xFFFF9800),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleConvertQuoteToInvoice(context);
+                  _showRenameDialog(context);
                 },
               ),
-            // NEW: Convert to Receipt — invoices only.
-            if (widget.type == DocType.invoice)
+              // Convert to Invoice — quotes only.
+              if (widget.type == DocType.quote)
+                DetailSheetOption(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Convert to Invoice',
+                  color: kInvoiceAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handleConvertQuoteToInvoice(context);
+                  },
+                ),
+              // Convert to Receipt — invoices only.
+              if (widget.type == DocType.invoice)
+                DetailSheetOption(
+                  icon: Icons.receipt_rounded,
+                  label: 'Convert to Receipt',
+                  color: kReceiptAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handleConvertInvoiceToReceipt(context);
+                  },
+                ),
+              // Download / Share PDF, invoice-only for now.
               DetailSheetOption(
-                icon: Icons.receipt_rounded,
-                label: 'Convert to Receipt',
-                color: kReceiptAccent,
+                icon: Icons.download_rounded,
+                label: 'Download PDF',
+                color: const Color(0xFF2196F3),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleConvertInvoiceToReceipt(context);
+                  _handleDownloadPdf(context);
                 },
               ),
-            // Download / Share PDF, invoice-only for now (see
-            // _handleDownloadPdf / _handleSharePdf above). Share also lives
-            // in the bottom bar now — kept here too since Download doesn't
-            // have a bottom-bar slot.
-            DetailSheetOption(
-              icon: Icons.download_rounded,
-              label: 'Download PDF',
-              color: const Color(0xFF2196F3),
-              onTap: () {
-                Navigator.pop(ctx);
-                _handleDownloadPdf(context);
-              },
-            ),
-            DetailSheetOption(
-              icon: Icons.ios_share_rounded,
-              label: 'Share PDF',
-              color: const Color(0xFF4CAF50),
-              onTap: () {
-                Navigator.pop(ctx);
-                _handleSharePdf(context);
-              },
-            ),
-            // NEW: Export as Excel / CSV, invoice-only for now (see
-            // _handleExportXlsx / _handleExportCsv above).
-            DetailSheetOption(
-              icon: Icons.grid_on_rounded,
-              label: 'Export as Excel',
-              color: const Color(0xFF1D6F42),
-              onTap: () {
-                Navigator.pop(ctx);
-                _handleExportXlsx(context);
-              },
-            ),
-            DetailSheetOption(
-              icon: Icons.table_chart_rounded,
-              label: 'Export as CSV',
-              color: const Color(0xFF607D8B),
-              onTap: () {
-                Navigator.pop(ctx);
-                _handleExportCsv(context);
-              },
-            ),
-            DetailSheetOption(
-              icon: Icons.delete_rounded,
-              label: 'Delete',
-              color: const Color(0xFFF44336),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showDeleteDialog(context);
-              },
-            ),
-          ],
+              DetailSheetOption(
+                icon: Icons.ios_share_rounded,
+                label: 'Share PDF',
+                color: const Color(0xFF4CAF50),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleSharePdf(context);
+                },
+              ),
+              // Export as Excel / CSV, invoice-only for now.
+              DetailSheetOption(
+                icon: Icons.grid_on_rounded,
+                label: 'Export as Excel',
+                color: const Color(0xFF1D6F42),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleExportXlsx(context);
+                },
+              ),
+              DetailSheetOption(
+                icon: Icons.table_chart_rounded,
+                label: 'Export as CSV',
+                color: const Color(0xFF607D8B),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleExportCsv(context);
+                },
+              ),
+              DetailSheetOption(
+                icon: Icons.delete_rounded,
+                label: 'Delete',
+                color: const Color(0xFFF44336),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showDeleteDialog(context);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1186,7 +1190,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               if (formKey.currentState!.validate()) {
                 final newTitle = controller.text.trim();
 
-                // ASSUMED PROVIDER: renameSavedInvoice/Quote/Receipt(id, title)
                 switch (widget.type) {
                   case DocType.invoice:
                     context.read<InvoiceProvider>().renameInvoice(_id, newTitle);
@@ -1245,7 +1248,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
             onPressed: () {
               Navigator.pop(ctx);
 
-              // ASSUMED PROVIDER: deleteSavedInvoice/Quote/Receipt(id)
               switch (widget.type) {
                 case DocType.invoice:
                   context.read<InvoiceProvider>().deleteInvoice(_id);
@@ -1275,9 +1277,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
 }
 
 // -----------------------------------------------------------------------------
-// _SecondaryActionButton — flat-tint, crisp-border button for the bottom
-// bar. Built to avoid the hazy/blurry look DetailActionButton gets at low
-// backgroundColor opacity (its shadow styling assumes a solid fill).
+// _SecondaryActionButton — flat-tint, crisp-border button for the bottom bar.
 // -----------------------------------------------------------------------------
 class _SecondaryActionButton extends StatelessWidget {
   final String label;

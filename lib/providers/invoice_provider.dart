@@ -167,15 +167,59 @@ class InvoiceProvider extends ChangeNotifier {
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
-  // NEW: powers the tappable status chip in saved_document_detail_screen.dart.
+  // Powers the tappable status chip in saved_document_detail_screen.dart.
   // Updates the SAVED entry's status directly (not the active draft), same
   // pattern as ReceiptProvider.updateSavedReceiptStatus.
+  //
+  // FIX (this pass): now also stamps/clears InvoiceData.paidDate —
+  //   - Freshly moved TO paid (wasn't paid before)   -> stamp paidDate = now
+  //   - Moved AWAY from paid                          -> clear paidDate
+  //   - Re-set to paid while already paid (no-op flip)-> leave existing
+  //     paidDate untouched, so re-tapping the same status doesn't reset the
+  //     original paid timestamp.
 
   void updateSavedInvoiceStatus(String id, PaymentStatus status) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
     if (index == -1) return;
+
+    final current  = _savedInvoices[index];
+    final wasPaid  = current.data.paymentStatus == PaymentStatus.paid;
+    final isNowPaid = status == PaymentStatus.paid;
+
+    InvoiceData updatedData;
+    if (isNowPaid && !wasPaid) {
+      updatedData = current.data.copyWith(
+        paymentStatus: status,
+        paidDate: DateTime.now(),
+      );
+    } else if (!isNowPaid) {
+      updatedData = current.data.copyWith(
+        paymentStatus: status,
+        clearPaidDate: true,
+      );
+    } else {
+      updatedData = current.data.copyWith(paymentStatus: status);
+    }
+
+    _savedInvoices[index] = current.copyWith(
+      data: updatedData,
+      lastEditedAt: DateTime.now(),
+    );
+    _persist();
+    notifyListeners();
+  }
+
+  // ── Folder ─────────────────────────────────────────────────────────────────
+  // NEW: assigns or clears the organizational folder for a saved invoice.
+  // Pass null to remove it from whatever folder it's currently in. Updates
+  // the SAVED entry directly, same pattern as updateSavedInvoiceStatus.
+
+  void updateInvoiceFolder(String id, String? folderName) {
+    final index = _savedInvoices.indexWhere((i) => i.id == id);
+    if (index == -1) return;
     _savedInvoices[index] = _savedInvoices[index].copyWith(
-      data: _savedInvoices[index].data.copyWith(paymentStatus: status),
+      folderName: folderName,
+      clearFolderName: folderName == null,
       lastEditedAt: DateTime.now(),
     );
     _persist();

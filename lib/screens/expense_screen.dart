@@ -1,8 +1,21 @@
 // lib/screens/expense_screen.dart
+//
+// EXPORT WIRING (this pass): added ExpenseExportService (mirrors
+// invoice_export_service.dart's XLSX/CSV conventions). Two entry points:
+//  - AppBar icon -> bulk export (All / This month, XLSX or CSV, via share
+//    sheet since that's the simplest cross-platform path for handing a
+//    file to email/Drive/WhatsApp/etc for an accountant).
+//  - Edit-sheet header icon -> single-entry export (same two formats),
+//    built live off the current form field values so it works even before
+//    the entry is saved.
+// Both call Share.shareXFiles under the hood via ExpenseExportService, so
+// there's no separate "saved to Downloads" confirmation UI needed here —
+// the OS share sheet itself confirms where the file went.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../export/expense_export_service.dart';
 import '../models/expense_data.dart';
 import '../providers/category_provider.dart';
 import '../providers/expense_provider.dart';
@@ -36,7 +49,18 @@ class ExpenseScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses'), backgroundColor: kExpenseAccent, foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: const Text('Expenses'),
+        backgroundColor: kExpenseAccent,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: 'Export',
+            onPressed: expenses.isEmpty ? null : () => _openBulkExportSheet(context),
+          ),
+        ],
+      ),
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -98,6 +122,121 @@ class ExpenseScreen extends StatelessWidget {
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _ExpenseFormSheet(existing: existing, prefill: prefill),
+    );
+  }
+
+  // ── Bulk export ──────────────────────────────────────────────────────────
+
+  void _openBulkExportSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => _BulkExportSheet(
+        expenseProvider: context.read<ExpenseProvider>(),
+        categoryProvider: context.read<CategoryProvider>(),
+      ),
+    );
+  }
+}
+
+class _BulkExportSheet extends StatefulWidget {
+  final ExpenseProvider expenseProvider;
+  final CategoryProvider categoryProvider;
+
+  const _BulkExportSheet({required this.expenseProvider, required this.categoryProvider});
+
+  @override
+  State<_BulkExportSheet> createState() => _BulkExportSheetState();
+}
+
+class _BulkExportSheetState extends State<_BulkExportSheet> {
+  bool _busy = false;
+
+  Future<void> _export(List<ExpenseEntry> entries, {required bool xlsx}) async {
+    setState(() => _busy = true);
+    final service = ExpenseExportService();
+    String Function(String) categoryNameOf(CategoryProvider cats) =>
+        (id) => cats.byId(id).name;
+
+    try {
+      if (xlsx) {
+        await service.shareBulkXlsx(entries, categoryNameOf: categoryNameOf(widget.categoryProvider));
+      } else {
+        await service.shareBulkCsv(entries, categoryNameOf: categoryNameOf(widget.categoryProvider));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final thisMonth = widget.expenseProvider.forMonth(DateTime(now.year, now.month));
+    final all = widget.expenseProvider.expenses;
+
+    Widget tile({required String label, required String subtitle, required IconData icon, required VoidCallback onTap}) {
+      return ListTile(
+        leading: Icon(icon, color: kExpenseAccent),
+        title: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: colorScheme.onSurface)),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
+        onTap: _busy ? null : onTap,
+      );
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text('Export expenses',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
+            ),
+            const SizedBox(height: 8),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else ...[
+              tile(
+                label: 'This month — Excel (.xlsx)',
+                subtitle: '${thisMonth.length} entries',
+                icon: Icons.table_chart_rounded,
+                onTap: thisMonth.isEmpty ? () {} : () => _export(thisMonth, xlsx: true),
+              ),
+              tile(
+                label: 'This month — CSV',
+                subtitle: '${thisMonth.length} entries',
+                icon: Icons.description_rounded,
+                onTap: thisMonth.isEmpty ? () {} : () => _export(thisMonth, xlsx: false),
+              ),
+              const Divider(height: 1),
+              tile(
+                label: 'All expenses — Excel (.xlsx)',
+                subtitle: '${all.length} entries',
+                icon: Icons.table_chart_rounded,
+                onTap: () => _export(all, xlsx: true),
+              ),
+              tile(
+                label: 'All expenses — CSV',
+                subtitle: '${all.length} entries',
+                icon: Icons.description_rounded,
+                onTap: () => _export(all, xlsx: false),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -221,6 +360,67 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     );
   }
 
+  /// Builds a live ExpenseEntry from the current form fields — used so
+  /// export works even before the entry is saved. Falls back to the
+  /// existing entry's id/createdAt when editing, or synthesizes temporary
+  /// ones for a brand-new, not-yet-saved entry.
+  ExpenseEntry _currentEntryForExport() {
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+    final now = DateTime.now();
+    return ExpenseEntry(
+      id: widget.existing?.id ?? 'exp_draft_${now.microsecondsSinceEpoch}',
+      vendor: _vendorController.text.trim(),
+      amount: amount,
+      currency: _currencyController.text.trim(),
+      categoryId: _categoryId,
+      date: _date,
+      notes: _notesController.text.trim(),
+      createdAt: widget.existing?.createdAt ?? now,
+    );
+  }
+
+  Future<void> _exportSingle({required bool xlsx}) async {
+    final entry = _currentEntryForExport();
+    final categoryName = context.read<CategoryProvider>().byId(_categoryId).name;
+    final service = ExpenseExportService();
+    if (xlsx) {
+      await service.shareSingleXlsx(entry, categoryName: categoryName);
+    } else {
+      await service.shareSingleCsv(entry, categoryName: categoryName);
+    }
+  }
+
+  void _showExportMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.table_chart_rounded, color: kExpenseAccent),
+              title: const Text('Share as Excel (.xlsx)'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportSingle(xlsx: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_rounded, color: kExpenseAccent),
+              title: const Text('Share as CSV'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportSingle(xlsx: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final vendor = _vendorController.text.trim();
     final amount = double.tryParse(_amountController.text.trim());
@@ -265,14 +465,23 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
               children: [
                 Text(widget.existing != null ? 'Edit expense' : 'Add expense',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
-                if (widget.existing != null)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE53935)),
-                    onPressed: () async {
-                      await context.read<ExpenseProvider>().deleteExpense(widget.existing!.id);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.ios_share_rounded),
+                      tooltip: 'Export',
+                      onPressed: _showExportMenu,
+                    ),
+                    if (widget.existing != null)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE53935)),
+                        onPressed: () async {
+                          await context.read<ExpenseProvider>().deleteExpense(widget.existing!.id);
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                      ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 16),

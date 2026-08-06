@@ -1,11 +1,17 @@
 // saved_documents_containers.dart
 // lib/widgets/saved_documents_containers.dart
 //
-// UPDATED (this pass): _demoInvoices()/_demoQuotes()/_demoReceipts() and
-// their .isEmpty ? demo() : ... fallbacks have been removed — this widget
-// now only ever renders real saved invoices/quotes/receipts. An empty
-// category (or an empty combined list) falls through to the existing
-// _EmptyState instead of fake placeholder cards.
+// FIX (this pass): _UnifiedDoc now carries secondaryDateLabel/secondaryDateValue
+// — Due (or Paid, once marked paid) for invoices, Expires for quotes, Paid for
+// receipts — and _DocCard renders it alongside the existing last-edited date.
+// Previously this card only ever showed doc.date (lastEditedAt), same gap as
+// doc_cards.dart had.
+//
+// _demoInvoices()/_demoQuotes()/_demoReceipts() and their .isEmpty ? demo() :
+// ... fallbacks were removed in an earlier pass — this widget only ever
+// renders real saved invoices/quotes/receipts. An empty category (or an
+// empty combined list) falls through to the existing _EmptyState instead of
+// fake placeholder cards.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +42,8 @@ class _UnifiedDoc {
   final double amount;
   final String currency;
   final DateTime date;
+  final String secondaryDateLabel;
+  final String secondaryDateValue;
   final SavedInvoice? invoice;
   final SavedQuote? quote;
   final SavedReceipt? receipt;
@@ -50,6 +58,8 @@ class _UnifiedDoc {
     required this.amount,
     required this.currency,
     required this.date,
+    required this.secondaryDateLabel,
+    required this.secondaryDateValue,
     this.invoice,
     this.quote,
     this.receipt,
@@ -168,6 +178,7 @@ class _SavedDocumentsContainersState extends State<SavedDocumentsContainers> {
       builder: (context, invoiceProvider, quoteProvider, receiptProvider, _) {
         final invoiceDocs = invoiceProvider.savedInvoices.map((inv) {
           final info = _invoiceStatusInfo(inv.data.paymentStatus);
+          final isPaid = inv.data.paymentStatus == PaymentStatus.paid;
           return _UnifiedDoc(
             type: DocType.invoice,
             id: inv.id,
@@ -178,6 +189,10 @@ class _SavedDocumentsContainersState extends State<SavedDocumentsContainers> {
             amount: inv.data.grandTotal,
             currency: inv.data.currency,
             date: inv.lastEditedAt,
+            secondaryDateLabel: isPaid ? 'Paid' : 'Due',
+            secondaryDateValue: isPaid
+                ? (inv.data.paidDate != null ? _formatDate(inv.data.paidDate!) : '—')
+                : (inv.data.dueDate.isEmpty ? '—' : inv.data.dueDate),
             invoice: inv,
           );
         }).toList();
@@ -194,6 +209,8 @@ class _SavedDocumentsContainersState extends State<SavedDocumentsContainers> {
             amount: q.data.grandTotal,
             currency: q.data.currency,
             date: q.lastEditedAt,
+            secondaryDateLabel: 'Expires',
+            secondaryDateValue: q.data.expiryDate.isEmpty ? '—' : q.data.expiryDate,
             quote: q,
           );
         }).toList();
@@ -210,6 +227,8 @@ class _SavedDocumentsContainersState extends State<SavedDocumentsContainers> {
             amount: r.data.amountPaid,
             currency: r.data.currency,
             date: r.lastEditedAt,
+            secondaryDateLabel: 'Paid',
+            secondaryDateValue: r.data.paymentDate.isEmpty ? '—' : r.data.paymentDate,
             receipt: r,
           );
         }).toList();
@@ -457,8 +476,20 @@ class _DocCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Icon(Icons.access_time_rounded, size: 12, color: colorScheme.onSurface.withOpacity(0.3)),
                         const SizedBox(width: 3),
-                        Text(_formatDate(doc.date),
+                        Text('Edited ${_formatDate(doc.date)}',
                             style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.35))),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(Icons.event_rounded, size: 12, color: colorScheme.onSurface.withOpacity(0.3)),
+                        const SizedBox(width: 3),
+                        Text('${doc.secondaryDateLabel}: ${doc.secondaryDateValue}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurface.withOpacity(0.5),
+                                fontWeight: FontWeight.w500)),
                       ],
                     ),
                     const SizedBox(height: 8),

@@ -154,6 +154,23 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // -- Folder --------------------------------------------------------------
+  // NEW: assigns or clears the organizational folder for a saved receipt.
+  // Pass null to remove it from whatever folder it's currently in. Updates
+  // the SAVED entry directly, same pattern as updateSavedReceiptStatus.
+
+  Future<void> updateReceiptFolder(String id, String? folderName) async {
+    final index = _savedReceipts.indexWhere((r) => r.id == id);
+    if (index == -1) return;
+    _savedReceipts[index] = _savedReceipts[index].copyWith(
+      folderName: folderName,
+      clearFolderName: folderName == null,
+      lastEditedAt: DateTime.now(),
+    );
+    await _persist();
+    notifyListeners();
+  }
+
   // -- Delete -------------------------------------------------------------
 
   Future<void> deleteSavedReceipt(String id) async {

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 class TermsOfServiceScreen extends StatelessWidget {
   const TermsOfServiceScreen({Key? key}) : super(key: key);
 
-  static const String _lastUpdated = 'January 1, 2025';
-  static const String _appName = 'CV Builder';
+  static const String _lastUpdated = 'August 6, 2026';
+  static const String _appName = 'Invoice & Quote Generator Pro';
   static const String _companyName = 'CyberInc';
   static const String _contactEmail = 'cyberinc101@gmail.com';
 
@@ -100,7 +100,7 @@ class TermsOfServiceScreen extends StatelessWidget {
             _section(context, '2. Use of the App',
               Icons.phone_android_rounded,
               'You agree to use the App only for lawful purposes and in a manner that does not infringe the rights of others. You must not:\n\n'
-              '• Use the App for any unlawful or fraudulent purpose.\n'
+              '• Use the App for any unlawful or fraudulent purpose, including generating fraudulent invoices, quotes, or receipts.\n'
               '• Reproduce, duplicate, copy, or resell any part of the App in violation of these Terms.\n'
               '• Attempt to gain unauthorised access to any part or feature of the App.\n'
               '• Transmit any unsolicited or unauthorised advertising or promotional material.\n'
@@ -108,27 +108,27 @@ class TermsOfServiceScreen extends StatelessWidget {
             ),
             _section(context, '3. Intellectual Property',
               Icons.copyright_rounded,
-              'The App and its entire contents, features, and functionality — including but not limited to all information, software, text, displays, images, and design — are owned by $_companyName and are protected by applicable intellectual property laws.\n\n'
-              'You are granted a limited, non-exclusive, non-transferable, revocable licence to use the App for personal, non-commercial purposes only.',
+              'The App and its entire contents, features, and functionality — including but not limited to all information, software, text, displays, document templates, images, and design — are owned by $_companyName and are protected by applicable intellectual property laws.\n\n'
+              'You are granted a limited, non-exclusive, non-transferable, revocable licence to use the App for your personal or business invoicing purposes.',
             ),
             _section(context, '4. User Content',
               Icons.edit_document,
-              'You retain all rights to the content you create using the App, including your CV data and documents ("User Content"). By using the App, you grant us a limited licence to process your User Content solely for the purpose of operating and providing the App\'s services to you.\n\n'
-              'You are solely responsible for your User Content and warrant that it does not violate any third-party rights or applicable laws.',
+              'You retain all rights to the content you create using the App, including your business profile, client details, and the invoices, quotes, and receipts you generate ("User Content"). By using the App, you grant us a limited licence to process your User Content solely for the purpose of operating and providing the App\'s services to you — for example, rendering document previews and generating PDF exports.\n\n'
+              'You are solely responsible for your User Content, including the accuracy of financial figures and the accounts you bill, and warrant that it does not violate any third-party rights or applicable laws.',
             ),
             _section(context, '5. In-App Purchases & Subscriptions',
               Icons.payment_rounded,
-              'The App may offer premium features via in-app purchases or subscriptions. All purchases are processed through the Google Play Store or Apple App Store. Prices are subject to change with notice. Refunds are handled in accordance with the respective store\'s refund policies.\n\n'
+              'The App may offer premium features via in-app purchases or subscriptions, such as additional document templates or export options. All purchases are processed through the Google Play Store or Apple App Store. Prices are subject to change with notice. Refunds are handled in accordance with the respective store\'s refund policies.\n\n'
               'Subscriptions will automatically renew unless cancelled at least 24 hours before the end of the current period.',
             ),
             _section(context, '6. Disclaimer of Warranties',
               Icons.warning_amber_rounded,
               'THE APP IS PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS WITHOUT ANY WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.\n\n'
-              'We do not warrant that the App will be uninterrupted, error-free, or free of viruses or other harmful components.',
+              'We do not warrant that the App will be uninterrupted, error-free, or free of viruses or other harmful components, and we make no warranty regarding the accuracy of any tax, currency, or financial calculations performed by the App. You are responsible for verifying all figures before sending a document to a client or relying on it for accounting or tax purposes.',
             ),
             _section(context, '7. Limitation of Liability',
               Icons.gavel_rounded,
-              'TO THE FULLEST EXTENT PERMITTED BY LAW, $_companyName SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF OR INABILITY TO USE THE APP.\n\n'
+              'TO THE FULLEST EXTENT PERMITTED BY LAW, $_companyName SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF OR INABILITY TO USE THE APP, INCLUDING ANY LOSSES ARISING FROM INACCURATE OR LOST INVOICE, QUOTE, OR RECEIPT DATA.\n\n'
               'OUR TOTAL LIABILITY TO YOU FOR ANY CLAIMS ARISING FROM THESE TERMS OR YOUR USE OF THE APP SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.',
             ),
             _section(context, '8. Privacy',
