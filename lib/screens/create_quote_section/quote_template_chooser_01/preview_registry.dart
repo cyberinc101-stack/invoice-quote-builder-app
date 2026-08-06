@@ -20,6 +20,7 @@ import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart'
 import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialQuotePreview;
 import '../../../doc_templates/08_pastel_soft/pastel_soft_template.dart' show PastelSoftQuotePreview;
 import '../../../doc_templates/09_brutalist/brutalist_template.dart' show BrutalistQuotePreview;
+import '../../../doc_templates/10_emerald/emerald_template.dart' show EmeraldQuotePreview;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Template metadata model
@@ -123,9 +124,10 @@ const List<QuoteTemplateInfo> kQuoteTemplates = [
   QuoteTemplateInfo(
     id: 10,
     name: 'Emerald',
-    description: 'Coming soon',
+    description: 'Elegant deep-green accent, thin hairline rule, refined and quiet',
     tag: 'Elegant',
     accentColor: Color(0xFF10B981),
+    available: true,
   ),
 ];
 
@@ -184,6 +186,8 @@ Widget? buildQuotePreview(int templateId, QuoteData data) {
       return PastelSoftQuotePreview(data: data);
     case 9:
       return BrutalistQuotePreview(data: data);
+    case 10:
+      return EmeraldQuotePreview(data: data);
     default:
       return null; // no layout built yet for this id
   }

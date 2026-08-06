@@ -18,6 +18,7 @@ import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart'
 import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialInvoicePreview;
 import '../../../doc_templates/08_pastel_soft/pastel_soft_template.dart' show PastelSoftInvoicePreview;
 import '../../../doc_templates/09_brutalist/brutalist_template.dart' show BrutalistInvoicePreview;
+import '../../../doc_templates/10_emerald/emerald_template.dart' show EmeraldInvoicePreview;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Template metadata model
@@ -121,9 +122,10 @@ const List<InvoiceTemplateInfo> kInvoiceTemplates = [
   InvoiceTemplateInfo(
     id: 10,
     name: 'Emerald',
-    description: 'Coming soon',
+    description: 'Elegant deep-green accent, thin hairline rule, refined and quiet',
     tag: 'Elegant',
     accentColor: Color(0xFF10B981),
+    available: true,
   ),
 ];
 
@@ -178,6 +180,8 @@ Widget? buildInvoicePreview(int templateId, InvoiceData data) {
       return PastelSoftInvoicePreview(data: data);
     case 9:
       return BrutalistInvoicePreview(data: data);
+    case 10:
+      return EmeraldInvoicePreview(data: data);
     default:
       return null; // no layout built yet for this id
   }
