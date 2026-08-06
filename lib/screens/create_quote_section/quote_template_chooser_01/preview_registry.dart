@@ -15,6 +15,7 @@ import '../../../quote_layout_templates/01_executive_quote_layout/executive_quot
 import '../../../doc_templates/02_nordic/nordic_template.dart' show NordicQuotePreview;
 import '../../../doc_templates/03_vibrant/vibrant_template.dart' show VibrantQuotePreview;
 import '../../../doc_templates/04_tech_dark/tech_dark_template.dart' show TechDarkQuotePreview;
+import '../../../doc_templates/05_classic/classic_template.dart' show ClassicQuotePreview;
 import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart' show GradientModernQuotePreview;
 import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialQuotePreview;
 import '../../../doc_templates/08_pastel_soft/pastel_soft_template.dart' show PastelSoftQuotePreview;
@@ -77,6 +78,14 @@ const List<QuoteTemplateInfo> kQuoteTemplates = [
     description: 'Near-black panel, accent rule, monospace doc tag',
     tag: 'Bold',
     accentColor: Color(0xFF58A6FF),
+    available: true,
+  ),
+  QuoteTemplateInfo(
+    id: 5,
+    name: 'Classic',
+    description: 'Plain identity block, shaded line-item header, standard business format',
+    tag: 'Minimal',
+    accentColor: Color(0xFF334155),
     available: true,
   ),
   QuoteTemplateInfo(
@@ -165,6 +174,8 @@ Widget? buildQuotePreview(int templateId, QuoteData data) {
       return VibrantQuotePreview(data: data);
     case 4:
       return TechDarkQuotePreview(data: data);
+    case 5:
+      return ClassicQuotePreview(data: data);
     case 6:
       return GradientModernQuotePreview(data: data);
     case 7:

@@ -13,6 +13,7 @@ import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_lo
 import '../../../doc_templates/02_nordic/nordic_template.dart' show NordicInvoicePreview;
 import '../../../doc_templates/03_vibrant/vibrant_template.dart' show VibrantInvoicePreview;
 import '../../../doc_templates/04_tech_dark/tech_dark_template.dart' show TechDarkInvoicePreview;
+import '../../../doc_templates/05_classic/classic_template.dart' show ClassicInvoicePreview;
 import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart' show GradientModernInvoicePreview;
 import '../../../doc_templates/07_editorial/editorial_template.dart' show EditorialInvoicePreview;
 import '../../../doc_templates/08_pastel_soft/pastel_soft_template.dart' show PastelSoftInvoicePreview;
@@ -75,6 +76,14 @@ const List<InvoiceTemplateInfo> kInvoiceTemplates = [
     description: 'Near-black panel, accent rule, monospace doc tag',
     tag: 'Bold',
     accentColor: Color(0xFF58A6FF),
+    available: true,
+  ),
+  InvoiceTemplateInfo(
+    id: 5,
+    name: 'Classic',
+    description: 'Plain identity block, shaded line-item header, standard business format',
+    tag: 'Minimal',
+    accentColor: Color(0xFF334155),
     available: true,
   ),
   InvoiceTemplateInfo(
@@ -159,6 +168,8 @@ Widget? buildInvoicePreview(int templateId, InvoiceData data) {
       return VibrantInvoicePreview(data: data);
     case 4:
       return TechDarkInvoicePreview(data: data);
+    case 5:
+      return ClassicInvoicePreview(data: data);
     case 6:
       return GradientModernInvoicePreview(data: data);
     case 7:
