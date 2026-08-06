@@ -2,98 +2,86 @@
 // lib/screens/document_templates_screen.dart
 //
 // Grid of document template cards, reachable from the "Templates" button on
-// the home screen hero banner. Cards are dummy placeholders for now — swap
-// _kDummyTemplates for real template data (see
-// lib/widgets/swipable_invoice_templates_homescreen_widgets/template_data.dart
-// for the existing invoice template list) once quote/receipt templates exist
-// and tapping a card should open an actual preview instead of a snackbar.
+// the home screen hero banner. Now wired to real template data and real
+// scaled previews (InvoiceStepChooserScaledPreview / QuoteStepChooserScaledPreview)
+// instead of dummy icon placeholders.
+//
+// Receipts: no receipt template registry exists yet (no kReceiptTemplates,
+// no receipt preview builder) — the Receipts filter intentionally shows the
+// empty state below rather than fake data. Wire it in once receipt layouts
+// exist, following the same pattern as the invoice/quote branches.
 
 import 'package:flutter/material.dart';
+import 'invoice_create_section/editor_screen.dart';
+import 'invoice_create_section/invoice_step_template_chooser_registry.dart'
+    show InvoiceStepChooserScaledPreview;
+import 'invoice_create_section/invoice_template_previews/preview_registry.dart'
+    show InvoiceTemplateInfo, kInvoiceTemplates;
+import 'quote_editor_screen.dart';
+import 'create_quote_section/quote_step_template_chooser_registry.dart'
+    show QuoteStepChooserScaledPreview;
+import 'create_quote_section/quote_template_chooser_01/preview_registry.dart'
+    show QuoteTemplateInfo, kQuoteTemplates;
 
 enum _TemplateType { invoice, quote, receipt }
 
-class _TemplateData {
-  final String name;
-  final String style;
+// Unified wrapper so invoice + quote entries can share one grid/list,
+// while still carrying enough type info to render the right preview
+// widget and navigate to the right editor.
+class _GalleryEntry {
   final _TemplateType type;
-  final Color accent;
-  final IconData icon;
+  final int id;
+  final String name;
+  final String tag;
+  final Color accentColor;
+  final bool available;
+  final bool isPremium;
 
-  const _TemplateData({
-    required this.name,
-    required this.style,
+  const _GalleryEntry({
     required this.type,
-    required this.accent,
-    required this.icon,
+    required this.id,
+    required this.name,
+    required this.tag,
+    required this.accentColor,
+    required this.available,
+    required this.isPremium,
   });
+
+  factory _GalleryEntry.fromInvoice(InvoiceTemplateInfo info) => _GalleryEntry(
+        type: _TemplateType.invoice,
+        id: info.id,
+        name: info.name,
+        tag: info.tag,
+        accentColor: info.accentColor,
+        available: info.available,
+        isPremium: info.isPremium,
+      );
+
+  factory _GalleryEntry.fromQuote(QuoteTemplateInfo info) => _GalleryEntry(
+        type: _TemplateType.quote,
+        id: info.id,
+        name: info.name,
+        tag: info.tag,
+        accentColor: info.accentColor,
+        available: info.available,
+        isPremium: info.isPremium,
+      );
+
+  String get styleLabel {
+    switch (type) {
+      case _TemplateType.invoice:
+        return 'Invoice · $tag';
+      case _TemplateType.quote:
+        return 'Quote · $tag';
+      case _TemplateType.receipt:
+        return 'Receipt · $tag';
+    }
+  }
 }
 
-// DEV DUMMY: placeholder template catalogue. Remove/replace once real
-// template previews exist for quotes and receipts.
-const List<_TemplateData> _kDummyTemplates = [
-  _TemplateData(
-    name: 'Executive',
-    style: 'Invoice · Blue',
-    type: _TemplateType.invoice,
-    accent: Color(0xFF1565C0),
-    icon: Icons.receipt_long_rounded,
-  ),
-  _TemplateData(
-    name: 'Nordic',
-    style: 'Invoice · Teal',
-    type: _TemplateType.invoice,
-    accent: Color(0xFF00897B),
-    icon: Icons.receipt_long_rounded,
-  ),
-  _TemplateData(
-    name: 'Minimal',
-    style: 'Invoice · Black',
-    type: _TemplateType.invoice,
-    accent: Color(0xFF1A1A2E),
-    icon: Icons.receipt_long_rounded,
-  ),
-  _TemplateData(
-    name: 'Bold',
-    style: 'Invoice · Red',
-    type: _TemplateType.invoice,
-    accent: Color(0xFFD32F2F),
-    icon: Icons.receipt_long_rounded,
-  ),
-  _TemplateData(
-    name: 'Vibrant',
-    style: 'Quote · Purple',
-    type: _TemplateType.quote,
-    accent: Color(0xFF7B1FA2),
-    icon: Icons.request_quote_rounded,
-  ),
-  _TemplateData(
-    name: 'Editorial',
-    style: 'Quote · Orange',
-    type: _TemplateType.quote,
-    accent: Color(0xFFEF6C00),
-    icon: Icons.request_quote_rounded,
-  ),
-  _TemplateData(
-    name: 'Classic',
-    style: 'Quote · Indigo',
-    type: _TemplateType.quote,
-    accent: Color(0xFF3949AB),
-    icon: Icons.request_quote_rounded,
-  ),
-  _TemplateData(
-    name: 'Emerald',
-    style: 'Receipt · Green',
-    type: _TemplateType.receipt,
-    accent: Color(0xFF2E7D32),
-    icon: Icons.receipt_rounded,
-  ),
-  _TemplateData(
-    name: 'Slate',
-    style: 'Receipt · Grey',
-    type: _TemplateType.receipt,
-    accent: Color(0xFF37474F),
-    icon: Icons.receipt_rounded,
-  ),
+final List<_GalleryEntry> _kGalleryEntries = [
+  ...kInvoiceTemplates.map(_GalleryEntry.fromInvoice),
+  ...kQuoteTemplates.map(_GalleryEntry.fromQuote),
 ];
 
 class DocumentTemplatesScreen extends StatefulWidget {
@@ -106,11 +94,45 @@ class DocumentTemplatesScreen extends StatefulWidget {
 class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
   _TemplateType? _selectedType; // null == All
 
+  void _select(BuildContext context, _GalleryEntry entry) {
+    if (!entry.available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${entry.name} is coming soon.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    switch (entry.type) {
+      case _TemplateType.invoice:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EditorScreen(layoutTemplateId: entry.id),
+          ),
+        );
+        return;
+      case _TemplateType.quote:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QuoteEditorScreen(layoutTemplateId: entry.id),
+          ),
+        );
+        return;
+      case _TemplateType.receipt:
+        // No receipt template registry yet — nothing to route to.
+        return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _selectedType == null
-        ? _kDummyTemplates
-        : _kDummyTemplates.where((t) => t.type == _selectedType).toList();
+        ? _kGalleryEntries
+        : _kGalleryEntries.where((t) => t.type == _selectedType).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Document Templates')),
@@ -154,11 +176,17 @@ class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
           Expanded(
             child: filtered.isEmpty
                 ? Center(
-                    child: Text(
-                      'No templates in this category yet',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        _selectedType == _TemplateType.receipt
+                            ? 'Receipt templates are coming soon'
+                            : 'No templates in this category yet',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                        ),
                       ),
                     ),
                   )
@@ -171,7 +199,10 @@ class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
                       crossAxisSpacing: 14,
                       childAspectRatio: 0.78,
                     ),
-                    itemBuilder: (context, i) => _TemplateCard(data: filtered[i]),
+                    itemBuilder: (context, i) => _TemplateCard(
+                      entry: filtered[i],
+                      onTap: () => _select(context, filtered[i]),
+                    ),
                   ),
           ),
         ],
@@ -232,9 +263,10 @@ class _TypeChip extends StatelessWidget {
 // -----------------------------------------------------------------------------
 
 class _TemplateCard extends StatelessWidget {
-  final _TemplateData data;
+  final _GalleryEntry entry;
+  final VoidCallback onTap;
 
-  const _TemplateCard({required this.data});
+  const _TemplateCard({required this.entry, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -242,14 +274,7 @@ class _TemplateCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${data.name} template preview coming soon'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      },
+      onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
@@ -268,16 +293,71 @@ class _TemplateCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [data.accent, data.accent.withOpacity(0.7)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.white),
+                  Opacity(
+                    opacity: entry.available ? 1.0 : 0.45,
+                    child: entry.type == _TemplateType.invoice
+                        ? InvoiceStepChooserScaledPreview(templateId: entry.id)
+                        : QuoteStepChooserScaledPreview(templateId: entry.id),
                   ),
-                ),
-                alignment: Alignment.center,
-                child: Icon(data.icon, color: Colors.white, size: 34),
+                  if (entry.isPremium && entry.available)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star_rounded, color: Color(0xFFFFD54F), size: 11),
+                            SizedBox(width: 3),
+                            Text('PRO',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (!entry.available)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.15),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.65),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Coming Soon',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      height: 3,
+                      color: entry.accentColor.withOpacity(entry.available ? 1 : 0.4),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
@@ -286,21 +366,25 @@ class _TemplateCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    data.name,
+                    entry.name,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
+                      color: entry.available
+                          ? cs.onSurface
+                          : cs.onSurface.withOpacity(0.4),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    data.style,
+                    entry.styleLabel,
                     style: TextStyle(
                       fontSize: 11,
-                      color: cs.onSurface.withOpacity(0.45),
+                      color: entry.available
+                          ? entry.accentColor
+                          : cs.onSurface.withOpacity(0.3),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
