@@ -13,6 +13,7 @@ import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_lo
 import '../../../doc_templates/02_nordic/nordic_template.dart' show NordicInvoicePreview;
 import '../../../doc_templates/03_vibrant/vibrant_template.dart' show VibrantInvoicePreview;
 import '../../../doc_templates/04_tech_dark/tech_dark_template.dart' show TechDarkInvoicePreview;
+import '../../../doc_templates/06_gradient_modern/gradient_modern_template.dart' show GradientModernInvoicePreview;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Template metadata model
@@ -76,9 +77,10 @@ const List<InvoiceTemplateInfo> kInvoiceTemplates = [
   InvoiceTemplateInfo(
     id: 6,
     name: 'Gradient Modern',
-    description: 'Coming soon',
+    description: 'Soft diagonal gradient band, airy and modern',
     tag: 'Creative',
     accentColor: Color(0xFF7C3AED),
+    available: true,
   ),
   InvoiceTemplateInfo(
     id: 7,
@@ -151,6 +153,8 @@ Widget? buildInvoicePreview(int templateId, InvoiceData data) {
       return VibrantInvoicePreview(data: data);
     case 4:
       return TechDarkInvoicePreview(data: data);
+    case 6:
+      return GradientModernInvoicePreview(data: data);
     default:
       return null; // no layout built yet for this id
   }
