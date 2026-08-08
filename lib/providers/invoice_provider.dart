@@ -103,7 +103,7 @@ class InvoiceProvider extends ChangeNotifier {
     return inv;
   }
 
-  // NEW: saves a converted InvoiceData (e.g. built from a quote via
+  // Saves a converted InvoiceData (e.g. built from a quote via
   // convertQuoteDataToInvoiceData) directly as a new saved invoice, WITHOUT
   // touching the active editor draft — unlike saveCurrentInvoice(), which
   // always saves whatever's currently in _invoiceData. Used by the
@@ -171,7 +171,7 @@ class InvoiceProvider extends ChangeNotifier {
   // Updates the SAVED entry's status directly (not the active draft), same
   // pattern as ReceiptProvider.updateSavedReceiptStatus.
   //
-  // FIX (this pass): now also stamps/clears InvoiceData.paidDate —
+  // Also stamps/clears InvoiceData.paidDate —
   //   - Freshly moved TO paid (wasn't paid before)   -> stamp paidDate = now
   //   - Moved AWAY from paid                          -> clear paidDate
   //   - Re-set to paid while already paid (no-op flip)-> leave existing
@@ -210,7 +210,7 @@ class InvoiceProvider extends ChangeNotifier {
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────
-  // NEW: assigns or clears the organizational folder for a saved invoice.
+  // Assigns or clears the organizational folder for a saved invoice.
   // Pass null to remove it from whatever folder it's currently in. Updates
   // the SAVED entry directly, same pattern as updateSavedInvoiceStatus.
 
@@ -220,6 +220,22 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices[index] = _savedInvoices[index].copyWith(
       folderName: folderName,
       clearFolderName: folderName == null,
+      lastEditedAt: DateTime.now(),
+    );
+    _persist();
+    notifyListeners();
+  }
+
+  // ── Reports exclusion ─────────────────────────────────────────────────────
+  // Powers an "Exclude from Reports" action in saved_document_detail_screen.
+  // dart. Updates the SAVED entry directly, same pattern as
+  // updateInvoiceFolder — doesn't touch the active draft.
+
+  void updateInvoiceExcludeFromReports(String id, bool exclude) {
+    final index = _savedInvoices.indexWhere((i) => i.id == id);
+    if (index == -1) return;
+    _savedInvoices[index] = _savedInvoices[index].copyWith(
+      data: _savedInvoices[index].data.copyWith(excludeFromReports: exclude),
       lastEditedAt: DateTime.now(),
     );
     _persist();
@@ -332,7 +348,7 @@ class InvoiceProvider extends ChangeNotifier {
 
   int _calcCompletion() => _calcCompletionFor(_invoiceData);
 
-  // NEW: pulled out of _calcCompletion() so addConvertedInvoice() can score
+  // Pulled out of _calcCompletion() so addConvertedInvoice() can score
   // a converted InvoiceData that isn't the active draft.
   int _calcCompletionFor(InvoiceData data) {
     int score = 0;

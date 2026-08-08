@@ -41,6 +41,10 @@ class QuoteData {
   String      fontFamily;
   QuoteColor  colorScheme;
 
+  // Same escape hatch as InvoiceData.excludeFromReports. See that file's
+  // doc comment for the gating rule.
+  bool excludeFromReports;
+
   QuoteData({
     this.businessName     = '',
     this.businessEmail    = '',
@@ -62,6 +66,7 @@ class QuoteData {
     this.quoteStatus      = QuoteStatus.draft,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = QuoteColor.purple,
+    this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
 
   // ── Computed totals ────────────────────────────────────────────────────────
@@ -94,6 +99,7 @@ class QuoteData {
         'quoteStatus':      quoteStatus.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'excludeFromReports': excludeFromReports,
       };
 
   factory QuoteData.fromJson(Map<String, dynamic> j) => QuoteData(
@@ -125,6 +131,7 @@ class QuoteData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => QuoteColor.purple,
         ),
+        excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
@@ -150,6 +157,7 @@ class QuoteData {
     QuoteStatus?    quoteStatus,
     String?         fontFamily,
     QuoteColor?     colorScheme,
+    bool?           excludeFromReports,
   }) =>
       QuoteData(
         businessName:     businessName     ?? this.businessName,
@@ -172,6 +180,7 @@ class QuoteData {
         quoteStatus:      quoteStatus      ?? this.quoteStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 
   QuoteData deepCopy() => copyWith(
@@ -243,7 +252,7 @@ class SavedQuote {
         folderName: j['folderName'] as String?,
       );
 
-  // NEW: folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
+  // folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
   SavedQuote copyWith({
     String?    title,
     String?    templateName,

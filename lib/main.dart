@@ -1,4 +1,15 @@
 // lib/main.dart
+//
+// NOTIFICATION TAP-THROUGH (this pass): added rootNavigatorKey and wired
+// NotificationService.instance.onReminderTapped so tapping a reminder
+// notification actually opens RemindersScreen with that reminder
+// highlighted — previously nothing consumed a notification tap at all, so
+// it just brought the app to the foreground wherever it last was.
+// flushPendingLaunchTap() is called once, in a post-frame callback right
+// after runApp(), to catch the case where the app was fully terminated and
+// this very launch was caused by the notification tap (the Navigator
+// doesn't exist yet at the point NotificationService.init() runs, so that
+// specific tap has to be replayed once it does).
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +23,7 @@ import 'providers/category_provider.dart';
 import 'providers/expense_provider.dart';
 import 'alerts/alert_prefs.dart';
 import 'alerts/custom_reminders/reminder_provider.dart';
+import 'alerts/custom_reminders/reminder_screen.dart';
 import 'alerts/notifications/notification_service.dart';
 import 'screens/reports/reports_prefs.dart';
 import 'screens/splash_screen.dart';
@@ -65,6 +77,11 @@ const bool _kSkipToHomeDev = true;
 /// Bump to force all users through the flow again (production only).
 const int _kOnboardingVersion = 1;
 // ─────────────────────────────────────────────────────────────────────────
+
+/// Root navigator key — lets NotificationService push a route in response
+/// to a notification tap without needing a BuildContext of its own (the
+/// tap can arrive before any screen's context exists yet, e.g. cold start).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 const Map<String, Map<String, String>> kTranslationMap = {
   'en'    : enEnglish,
@@ -140,6 +157,18 @@ Future<void> main() async {
   // Safe to call every launch — the plugin/OS no-ops if already granted.
   await NotificationService.instance.requestPermissions();
 
+  // Route a tapped reminder notification to the Reminders screen with that
+  // reminder highlighted. Assigning this here (before runApp) is safe even
+  // though rootNavigatorKey.currentState is still null at this point —
+  // it's only read later, inside the closure, once a tap actually happens.
+  NotificationService.instance.onReminderTapped = (reminderId) {
+    rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => RemindersScreen(highlightReminderId: reminderId),
+      ),
+    );
+  };
+
   await Future.wait([
     invoiceProvider.loadPersistedInvoices(),
     quoteProvider.loadPersistedQuotes(),
@@ -168,6 +197,13 @@ Future<void> main() async {
       child: const InvoiceBuilderApp(),
     ),
   );
+
+  // Delivers a notification tap that happened before the Navigator existed
+  // (app launched cold, straight from tapping the notification). Must run
+  // after the first frame so rootNavigatorKey.currentState is attached.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    NotificationService.instance.flushPendingLaunchTap();
+  });
 }
 
 class InvoiceBuilderApp extends StatelessWidget {
@@ -235,6 +271,7 @@ class InvoiceBuilderApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeMode = context.watch<ThemeProvider>().themeMode;
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'Invoice & Quote Builder',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,

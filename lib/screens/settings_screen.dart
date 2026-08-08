@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
 import '../alerts/alert_prefs.dart';
+import '../alerts/alert_type_toggles.dart';
 import '../helpers/lang_helper.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
@@ -297,6 +298,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: alertPrefs.alertsEnabled,
                     onChanged: (value) => alertPrefs.setAlertsEnabled(value),
                     activeColor: const Color(0xFF2196F3),
+                  ),
+                ),
+
+                // NEW: per-type toggles, nested under the master switch.
+                // Visually dimmed and non-interactive whenever the master
+                // switch is off, since these settings have no visible
+                // effect until Alerts is turned back on — but the
+                // underlying values still persist, so re-enabling Alerts
+                // restores whatever mix the user had configured rather
+                // than resetting everything to "on".
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: alertPrefs.alertsEnabled ? 1.0 : 0.4,
+                  child: IgnorePointer(
+                    ignoring: !alertPrefs.alertsEnabled,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(height: 1),
+                          const SizedBox(height: 12),
+                          const AlertTypeTogglesList(showHeader: true, dense: true),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],

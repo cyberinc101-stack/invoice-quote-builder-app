@@ -14,6 +14,20 @@
 // for single-month mode and the trend strip's perf benefit; range mode
 // filters the raw lists directly since a range is a one-off scan, not
 // something computed 6-8 times per render like the month lookups are.
+//
+// ALSO NEW (this pass): tax set-aside estimate card, right under Net —
+// net for the active period × prefs.taxRatePercent, adjustable inline.
+//
+// ALSO NEW (this pass): completion + exclude-from-reports gating. A saved
+// document only counts toward Income, the invoice-status breakdown, the
+// accepted-quote pipeline total, and Top Clients when it is 100% complete
+// AND the user hasn't manually excluded it (InvoiceData/QuoteData/
+// ReceiptData.excludeFromReports). See _isReportable(). This does NOT gate
+// Expenses (expenses have no completion/exclude concept) or the 6-month
+// trend strip's month lookups beyond what _sumIncome already gates.
+//
+// ALSO NEW (this pass): Top Clients card — paid invoices + issued receipts
+// for the active period, gated the same way, summed per client, top 5.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -32,6 +46,11 @@ import 'reports_prefs.dart';
 import 'reports_widgets.dart';
 
 const Color kReportsAccent = Color(0xFF00897B);
+
+// Shared gating rule: a saved document counts toward reporting totals only
+// when it's fully filled out AND the user hasn't manually excluded it.
+bool _isReportable(int completionPercent, bool excludeFromReports) =>
+    completionPercent == 100 && !excludeFromReports;
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -121,6 +140,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }).toList();
   }
 
+  // Gated: paid invoices + issued receipts, but only the ones that are
+  // 100% complete and not excluded. This is the single choke point for
+  // "does this document count as income" — _incomeForMonth and the range
+  // branch both funnel through here, so trend/margin/current-period totals
+  // can never disagree about which documents are reportable.
   double _sumIncome({
     required List<SavedInvoice> invoices,
     required List<SavedReceipt> receipts,
@@ -129,12 +153,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     double total = 0;
     if (prefs.includeInvoices) {
       total += invoices
-          .where((i) => i.data.paymentStatus == PaymentStatus.paid)
+          .where((i) =>
+              i.data.paymentStatus == PaymentStatus.paid &&
+              _isReportable(i.completionPercent, i.data.excludeFromReports))
           .fold(0.0, (s, i) => s + i.data.grandTotal);
     }
     if (prefs.includeReceipts) {
       total += receipts
-          .where((r) => r.data.status == ReceiptStatus.issued)
+          .where((r) =>
+              r.data.status == ReceiptStatus.issued &&
+              _isReportable(r.completionPercent, r.data.excludeFromReports))
           .fold(0.0, (s, r) => s + r.data.amountPaid);
     }
     return total;
@@ -152,6 +180,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
       receipts: receiptsByMonth[key] ?? const <SavedReceipt>[],
       prefs: prefs,
     );
+  }
+
+  // NEW: client name -> total, gated the same way as _sumIncome (paid
+  // invoices + issued receipts, 100% complete, not excluded). Kept
+  // separate from _sumIncome rather than reusing its fold so each client
+  // name can be tracked individually instead of collapsed into one sum.
+  Map<String, double> _topClientsTotals({
+    required List<SavedInvoice> invoices,
+    required List<SavedReceipt> receipts,
+    required ReportsPrefs prefs,
+  }) {
+    final totals = <String, double>{};
+    if (prefs.includeInvoices) {
+      for (final i in invoices.where((i) =>
+          i.data.paymentStatus == PaymentStatus.paid &&
+          _isReportable(i.completionPercent, i.data.excludeFromReports))) {
+        final name = i.data.clientName.trim();
+        if (name.isEmpty) continue;
+        totals[name] = (totals[name] ?? 0) + i.data.grandTotal;
+      }
+    }
+    if (prefs.includeReceipts) {
+      for (final r in receipts.where((r) =>
+          r.data.status == ReceiptStatus.issued &&
+          _isReportable(r.completionPercent, r.data.excludeFromReports))) {
+        final name = r.data.clientName.trim();
+        if (name.isEmpty) continue;
+        totals[name] = (totals[name] ?? 0) + r.data.amountPaid;
+      }
+    }
+    return totals;
   }
 
   @override
@@ -196,8 +255,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       expensesThisMonth = expenseProvider.totalForMonth(_month);
     }
 
-    final acceptedQuotesThisPeriod =
-        periodQuotes.where((q) => q.data.quoteStatus == QuoteStatus.accepted).toList();
+    // Gated: only 100%-complete, non-excluded accepted quotes count toward
+    // the pipeline figure shown under Net.
+    final acceptedQuotesThisPeriod = periodQuotes
+        .where((q) =>
+            q.data.quoteStatus == QuoteStatus.accepted &&
+            _isReportable(q.completionPercent, q.data.excludeFromReports))
+        .toList();
     final quotePipeline = prefs.includeQuotes
         ? acceptedQuotesThisPeriod.fold(0.0, (s, q) => s + q.data.grandTotal)
         : 0.0;
@@ -210,6 +274,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final sortedCategoryEntries = byCategory.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxCategoryAmount = sortedCategoryEntries.isEmpty ? 1.0 : sortedCategoryEntries.first.value;
+
+    // NEW: Top Clients — gated the same way as income, top 5 by total.
+    final topClientsEntries = _topClientsTotals(
+      invoices: periodInvoices,
+      receipts: periodReceipts,
+      prefs: prefs,
+    ).entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topClientsTop5 = topClientsEntries.take(5).toList();
 
     // ── Net margin badge — only meaningful for single-month mode; a
     // "previous period" comparison doesn't have an obvious definition for
@@ -238,10 +311,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
     ];
 
-    // ── Invoice status breakdown ─────────────────────────────────────────
+    // ── Invoice status breakdown — gated the same way as income. ────────
     final statusTotals = <String, double>{};
     if (prefs.includeInvoices) {
-      for (final inv in periodInvoices) {
+      for (final inv in periodInvoices.where(
+          (i) => _isReportable(i.completionPercent, i.data.excludeFromReports))) {
         final label = inv.data.paymentStatus.name;
         statusTotals[label] = (statusTotals[label] ?? 0) + inv.data.grandTotal;
       }
@@ -391,6 +465,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 12),
 
+            // NEW: tax set-aside estimate, right under Net.
+            TaxSetAsideCard(
+              net: net,
+              taxRatePercent: prefs.taxRatePercent,
+              isDark: isDark,
+              accent: kReportsAccent,
+              onRateChanged: (v) => prefs.setTaxRatePercent(v),
+            ),
+            const SizedBox(height: 12),
+
             if (prefs.includeQuotes)
               Container(
                 padding: const EdgeInsets.all(14),
@@ -428,6 +512,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
             if (statusSegments.isNotEmpty) ...[
               StatusBreakdownBar(title: 'Invoice value by status', segments: statusSegments, isDark: isDark),
+              const SizedBox(height: 24),
+            ],
+
+            if (topClientsTop5.isNotEmpty) ...[
+              TopClientsCard(entries: topClientsTop5, isDark: isDark, accent: kReportsAccent),
               const SizedBox(height: 24),
             ],
 

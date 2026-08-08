@@ -43,6 +43,10 @@ class ReceiptData {
   String        fontFamily;
   ReceiptColor  colorScheme;
 
+  // Same escape hatch as InvoiceData.excludeFromReports. See that file's
+  // doc comment for the gating rule.
+  bool excludeFromReports;
+
   ReceiptData({
     this.businessName     = '',
     this.businessEmail    = '',
@@ -64,6 +68,7 @@ class ReceiptData {
     this.status           = ReceiptStatus.issued,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = ReceiptColor.green,
+    this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
 
   // ── Computed totals ────────────────────────────────────────────────────────
@@ -96,6 +101,7 @@ class ReceiptData {
         'status':           status.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'excludeFromReports': excludeFromReports,
       };
 
   factory ReceiptData.fromJson(Map<String, dynamic> j) => ReceiptData(
@@ -130,6 +136,7 @@ class ReceiptData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => ReceiptColor.green,
         ),
+        excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
@@ -155,6 +162,7 @@ class ReceiptData {
     ReceiptStatus?  status,
     String?         fontFamily,
     ReceiptColor?   colorScheme,
+    bool?           excludeFromReports,
   }) =>
       ReceiptData(
         businessName:     businessName     ?? this.businessName,
@@ -177,6 +185,7 @@ class ReceiptData {
         status:           status           ?? this.status,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 
   ReceiptData deepCopy() => copyWith(
@@ -248,7 +257,7 @@ class SavedReceipt {
         folderName: j['folderName'] as String?,
       );
 
-  // NEW: folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
+  // folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
   SavedReceipt copyWith({
     String?      title,
     String?      templateName,

@@ -1,19 +1,18 @@
 // month_picker_sheet.dart
 // lib/screens/reports/month_picker_sheet.dart
 //
-// Month/day picker for the Reports screen — now with a Single date / Date
-// range mode toggle.
+// Month/day picker for the Reports screen — Single date / Date range toggle.
 //
-// FIX (this pass): range mode previously wasn't supported at all — picking
-// a second date just overwrote the first because there was only ever one
-// _selectedDay tracked. Range mode now tracks _rangeStart/_rangeEnd as real
-// DateTimes (not just a day-of-month int), so navigating to a different
-// month to pick the end date doesn't lose the start selection. Both ends
-// stay highlighted, with days in between lightly tinted.
-//
-// Returns a DatePickerResult instead of a bare DateTime — either a single
-// month (unchanged behavior) or a start/end range. ReportsScreen decides
-// what to do with whichever shape comes back.
+// FIX (this pass): range-highlight logic rewritten to compare plain
+// (year, month, day) integers instead of DateTime objects. DateTime
+// equality/isBefore/isAfter comparisons are timezone/DST-sensitive and can
+// silently disagree across a setState rebuild even when the underlying
+// calendar date is identical — that was the root cause of the start date's
+// highlight dropping out as soon as the end date was picked. Packing each
+// date into a single comparable int (_dayKey = year*10000 + month*100 + day)
+// makes start/end/in-range checks pure integer comparisons with no
+// ambiguity, so both endpoints now stay highlighted reliably, with days
+// strictly between them getting a lighter tint.
 
 import 'package:flutter/material.dart';
 
@@ -38,6 +37,13 @@ class DatePickerResult {
 }
 
 enum _PickerMode { single, range }
+
+// Packs a calendar date into a single comparable int, e.g. 2026-08-08 ->
+// 20260808. Used everywhere range selection needs to compare "is this cell
+// the start / the end / strictly between" — plain int comparison, no
+// DateTime timezone/DST ambiguity.
+int _dayKey(int year, int month, int day) => year * 10000 + month * 100 + day;
+int _dayKeyOf(DateTime d) => _dayKey(d.year, d.month, d.day);
 
 Future<DatePickerResult?> showMonthPickerSheet(
   BuildContext context, {
@@ -90,8 +96,15 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   late int _selectedYear;  // focused year for the day grid — used in both modes
   late int _selectedDay;   // single mode only
 
-  DateTime? _rangeStart;
-  DateTime? _rangeEnd;
+  // Range mode state — stored as plain (year, month, day) int keys, NOT
+  // DateTime objects. This is the actual fix: comparing DateTime instances
+  // for equality/ordering across a setState rebuild is timezone/DST
+  // sensitive and was the source of the start-date highlight dropping out
+  // as soon as the end date got picked. Ints have no such ambiguity.
+  int? _rangeStartKey;
+  int? _rangeEndKey;
+  DateTime? _rangeStartDate; // kept alongside the key purely for display text
+  DateTime? _rangeEndDate;
 
   final ScrollController _yearStripController = ScrollController();
 
@@ -106,8 +119,11 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     _mode = (widget.initialRangeStart != null && widget.initialRangeEnd != null)
         ? _PickerMode.range
         : _PickerMode.single;
-    _rangeStart = widget.initialRangeStart;
-    _rangeEnd = widget.initialRangeEnd;
+
+    _rangeStartDate = widget.initialRangeStart;
+    _rangeEndDate = widget.initialRangeEnd;
+    _rangeStartKey = widget.initialRangeStart != null ? _dayKeyOf(widget.initialRangeStart!) : null;
+    _rangeEndKey = widget.initialRangeEnd != null ? _dayKeyOf(widget.initialRangeEnd!) : null;
 
     final focusBasis = widget.initialRangeStart ?? widget.initialMonth;
     _displayedYear = focusBasis.year;
@@ -130,8 +146,6 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   }
 
   static int _daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
-  static bool _isSameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 
   void _selectMonth(int month) {
     setState(() {
@@ -142,27 +156,35 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   }
 
   void _selectDay(int day) {
-    final tapped = DateTime(_selectedYear, _selectedMonth, day);
-
     if (_mode == _PickerMode.single) {
       setState(() => _selectedDay = day);
       return;
     }
 
+    final tappedDate = DateTime(_selectedYear, _selectedMonth, day);
+    final tappedKey = _dayKey(_selectedYear, _selectedMonth, day);
+
     setState(() {
-      if (_rangeStart == null || (_rangeStart != null && _rangeEnd != null)) {
+      final hasCompleteRange = _rangeStartKey != null && _rangeEndKey != null;
+
+      if (_rangeStartKey == null || hasCompleteRange) {
         // Nothing picked yet, or a complete range already exists and the
         // user tapped again — start a fresh selection.
-        _rangeStart = tapped;
-        _rangeEnd = null;
+        _rangeStartKey = tappedKey;
+        _rangeStartDate = tappedDate;
+        _rangeEndKey = null;
+        _rangeEndDate = null;
       } else {
         // Start is set, end isn't — this tap completes it. Swap if the
         // user tapped a date before the start.
-        if (tapped.isBefore(_rangeStart!)) {
-          _rangeEnd = _rangeStart;
-          _rangeStart = tapped;
+        if (tappedKey < _rangeStartKey!) {
+          _rangeEndKey = _rangeStartKey;
+          _rangeEndDate = _rangeStartDate;
+          _rangeStartKey = tappedKey;
+          _rangeStartDate = tappedDate;
         } else {
-          _rangeEnd = tapped;
+          _rangeEndKey = tappedKey;
+          _rangeEndDate = tappedDate;
         }
       }
     });
@@ -174,9 +196,9 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
 
   String _rangeStatusText() {
     String fmt(DateTime d) => '${_monthAbbr[d.month - 1]} ${d.day}, ${d.year}';
-    if (_rangeStart == null) return 'Tap a day to pick the start date';
-    if (_rangeEnd == null) return 'Start: ${fmt(_rangeStart!)} — now tap an end date';
-    return '${fmt(_rangeStart!)}  →  ${fmt(_rangeEnd!)}';
+    if (_rangeStartDate == null) return 'Tap a day to pick the start date';
+    if (_rangeEndDate == null) return 'Start: ${fmt(_rangeStartDate!)} — now tap an end date';
+    return '${fmt(_rangeStartDate!)}  →  ${fmt(_rangeEndDate!)}';
   }
 
   @override
@@ -188,7 +210,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     final daysInSelectedMonth = _daysInMonth(_selectedYear, _selectedMonth);
     final leadingBlanks = DateTime(_selectedYear, _selectedMonth, 1).weekday % 7;
 
-    final canConfirm = _mode == _PickerMode.single || (_rangeStart != null && _rangeEnd != null);
+    final canConfirm = _mode == _PickerMode.single || (_rangeStartKey != null && _rangeEndKey != null);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 20),
@@ -371,11 +393,13 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
                     ),
                   ),
-                  if (_rangeStart != null || _rangeEnd != null)
+                  if (_rangeStartKey != null || _rangeEndKey != null)
                     GestureDetector(
                       onTap: () => setState(() {
-                        _rangeStart = null;
-                        _rangeEnd = null;
+                        _rangeStartKey = null;
+                        _rangeEndKey = null;
+                        _rangeStartDate = null;
+                        _rangeEndDate = null;
                       }),
                       child: Text(
                         'Clear',
@@ -417,7 +441,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             itemBuilder: (context, index) {
               if (index < leadingBlanks) return const SizedBox.shrink();
               final day = index - leadingBlanks + 1;
-              final cellDate = DateTime(_selectedYear, _selectedMonth, day);
+              final cellKey = _dayKey(_selectedYear, _selectedMonth, day);
               final isToday = _displayedYear == now.year &&
                   _selectedMonth == now.month &&
                   _selectedYear == _displayedYear &&
@@ -428,16 +452,17 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               if (_mode == _PickerMode.single) {
                 isSelected = _selectedDay == day;
               } else {
-                final isStart = _rangeStart != null && _isSameDate(cellDate, _rangeStart!);
-                final isEnd = _rangeEnd != null && _isSameDate(cellDate, _rangeEnd!);
+                final isStart = _rangeStartKey != null && cellKey == _rangeStartKey;
+                final isEnd = _rangeEndKey != null && cellKey == _rangeEndKey;
                 isSelected = isStart || isEnd;
-                isInRange = _rangeStart != null &&
-                    _rangeEnd != null &&
-                    cellDate.isAfter(_rangeStart!) &&
-                    cellDate.isBefore(_rangeEnd!);
+                isInRange = _rangeStartKey != null &&
+                    _rangeEndKey != null &&
+                    cellKey > _rangeStartKey! &&
+                    cellKey < _rangeEndKey!;
               }
 
               return Material(
+                key: ValueKey('day-cell-$cellKey'),
                 color: isSelected
                     ? widget.accent
                     : (isInRange ? widget.accent.withOpacity(0.18) : Colors.transparent),
@@ -496,7 +521,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                           } else {
                             Navigator.pop(
                               context,
-                              DatePickerResult.range(_rangeStart!, _rangeEnd!),
+                              DatePickerResult.range(_rangeStartDate!, _rangeEndDate!),
                             );
                           }
                         }

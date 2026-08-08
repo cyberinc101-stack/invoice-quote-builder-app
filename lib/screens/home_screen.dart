@@ -1,24 +1,21 @@
 ﻿// home_screen.dart
 // lib/screens/home_screen.dart
 //
-// SLIMMED (this pass): _SavedDocumentsSection and every List/Grid/Compact/
-// Kanban card renderer that used to live in this file were extracted to
-// lib/widgets/saved_documents/saved_documents_section.dart (exported as
-// the public SavedDocumentsSection widget). This file now only holds the
-// AppBar, hero banner, and the small widgets specific to those two things
-// (_AlertBellButton, _CtaButton, _MiniDocIcon).
+// SLIMMED (earlier pass): _SavedDocumentsSection and every List/Grid/
+// Compact/Kanban card renderer that used to live in this file were
+// extracted to lib/widgets/saved_documents/saved_documents_section.dart
+// (exported as the public SavedDocumentsSection widget). This file now
+// only holds the AppBar, hero banner, and the small widgets specific to
+// those two things (_AlertBellButton, _CtaButton, _MiniDocIcon).
 //
-// ALSO FIXED: the Reports import was still pointing at the old
-// 'reports_screen.dart' location, which no longer exists now that
-// ReportsScreen lives in lib/screens/reports/reports_screen.dart. Updated
-// to 'reports/reports_screen.dart'.
-//
-// FIXED (this pass): the saved_documents_section import had gone stale
-// after the folder split — there was a leftover import of the old deleted
-// '../widgets/saved_documents_section.dart', plus a new import missing its
-// leading '../' (it read 'widgets/saved_documents/saved_documents_section.dart'
-// instead of '../widgets/saved_documents/saved_documents_section.dart').
-// Removed the dead import and corrected the relative path.
+// PER-TYPE ALERT GATING (this pass): the bell badge count now passes all
+// four AlertPrefs per-type flags into buildAlerts(), not just the master
+// alertsEnabled switch. Previously a user could turn off, say, "Drafts"
+// alerts on the Alerts screen's future toggle UI and still see the bell
+// badge count include draft nudges, since this call site only knew about
+// the master switch. Now the badge, the Alerts screen, and any other
+// future consumer of buildAlerts() all read from the exact same four
+// flags on AlertPrefs, so they can never disagree.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -49,7 +46,8 @@ class HomeScreen extends StatelessWidget {
     // live as invoices/quotes/receipts are saved, paid, or edited — same
     // predicates as the quick-filter chips, via filter_logic.dart, so this
     // number can never disagree with what "Needs Action"/"Overdue" show.
-    final alertsEnabled = context.watch<AlertPrefs>().alertsEnabled;
+    final alertPrefs = context.watch<AlertPrefs>();
+    final alertsEnabled = alertPrefs.alertsEnabled;
     final invoices = context.watch<InvoiceProvider>().savedInvoices;
     final quotes    = context.watch<QuoteProvider>().savedQuotes;
     final receipts  = context.watch<ReceiptProvider>().savedReceipts;
@@ -60,6 +58,10 @@ class HomeScreen extends StatelessWidget {
             quotes: quotes,
             receipts: receipts,
             dueReminders: dueReminders,
+            overdueInvoicesEnabled: alertPrefs.overdueInvoicesEnabled,
+            quotesExpiringEnabled: alertPrefs.quotesExpiringEnabled,
+            draftsEnabled: alertPrefs.draftsEnabled,
+            remindersEnabled: alertPrefs.remindersEnabled,
           ).length
         : 0;
 

@@ -1,4 +1,4 @@
-﻿name: invoice_quote_receipt_builder
+name: invoice_quote_receipt_builder
 description: Create, manage, and track professional invoices, quotes, and receipts
 publish_to: 'none'
 version: 1.0.0+1
@@ -30,6 +30,8 @@ dependencies:
   qr_flutter: ^4.1.0
   excel: ^4.0.6
   open_file: ^3.3.2
+  flutter_timezone: ^5.1.0
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:

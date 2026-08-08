@@ -80,10 +80,17 @@ class InvoiceData {
   String        fontFamily;
   InvoiceColor  colorScheme;
 
-  // NEW: system-stamped (not user-typed, unlike issueDate/dueDate) — set the
+  // System-stamped (not user-typed, unlike issueDate/dueDate) — set the
   // moment paymentStatus flips to PaymentStatus.paid, cleared if it's ever
   // changed away from paid. See InvoiceProvider.updateSavedInvoiceStatus.
   DateTime? paidDate;
+
+  // User-set escape hatch for the Reports screen — e.g. test invoices,
+  // duplicates, or anything that shouldn't count toward income/aging/Top
+  // Clients even if it's 100% complete and paid. Reports gating is:
+  // completionPercent == 100 AND !excludeFromReports. See
+  // reports_screen.dart's _isReportable().
+  bool excludeFromReports;
 
   InvoiceData({
     this.businessName     = '',
@@ -107,6 +114,7 @@ class InvoiceData {
     this.fontFamily       = 'Roboto',
     this.colorScheme      = InvoiceColor.blue,
     this.paidDate,
+    this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
 
   // ── Computed totals ────────────────────────────────────────────────────────
@@ -140,6 +148,7 @@ class InvoiceData {
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
         'paidDate':         paidDate?.toIso8601String(),
+        'excludeFromReports': excludeFromReports,
       };
 
   factory InvoiceData.fromJson(Map<String, dynamic> j) => InvoiceData(
@@ -174,6 +183,7 @@ class InvoiceData {
         paidDate: j['paidDate'] != null
             ? DateTime.tryParse(j['paidDate'] as String)
             : null,
+        excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
@@ -181,7 +191,8 @@ class InvoiceData {
   // clearPaidDate: pass true to explicitly wipe paidDate back to null — plain
   // `paidDate: null` alone can never clear an existing value through the
   // standard `?? this.paidDate` pattern (same reasoning as SavedInvoice's
-  // clearFolderName).
+  // clearFolderName). excludeFromReports is a plain bool, so it doesn't need
+  // a clear flag — `false` passes straight through the `?? this.x` pattern.
 
   InvoiceData copyWith({
     String?         businessName,
@@ -206,6 +217,7 @@ class InvoiceData {
     InvoiceColor?   colorScheme,
     DateTime?       paidDate,
     bool            clearPaidDate = false,
+    bool?           excludeFromReports,
   }) =>
       InvoiceData(
         businessName:     businessName     ?? this.businessName,
@@ -229,6 +241,7 @@ class InvoiceData {
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
         paidDate: clearPaidDate ? null : (paidDate ?? this.paidDate),
+        excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 
   InvoiceData deepCopy() => copyWith(
@@ -300,7 +313,7 @@ class SavedInvoice {
         folderName: j['folderName'] as String?,
       );
 
-  // NEW: folderName/clearFolderName — pass a folderName to set it, or pass
+  // folderName/clearFolderName — pass a folderName to set it, or pass
   // clearFolderName: true to explicitly wipe it back to null (needed since
   // `folderName: null ?? this.folderName` alone can never actually clear an
   // existing value).

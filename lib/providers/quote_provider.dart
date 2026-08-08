@@ -142,7 +142,7 @@ class QuoteProvider extends ChangeNotifier {
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
-  // NEW: powers the tappable status chip in saved_document_detail_screen.dart.
+  // Powers the tappable status chip in saved_document_detail_screen.dart.
   // Updates the SAVED entry's status directly (not the active draft), same
   // pattern as ReceiptProvider.updateSavedReceiptStatus.
 
@@ -158,7 +158,7 @@ class QuoteProvider extends ChangeNotifier {
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────
-  // NEW: assigns or clears the organizational folder for a saved quote.
+  // Assigns or clears the organizational folder for a saved quote.
   // Pass null to remove it from whatever folder it's currently in. Updates
   // the SAVED entry directly, same pattern as updateSavedQuoteStatus.
 
@@ -168,6 +168,20 @@ class QuoteProvider extends ChangeNotifier {
     _savedQuotes[index] = _savedQuotes[index].copyWith(
       folderName: folderName,
       clearFolderName: folderName == null,
+      lastEditedAt: DateTime.now(),
+    );
+    _persist();
+    notifyListeners();
+  }
+
+  // ── Reports exclusion ─────────────────────────────────────────────────────
+  // Same pattern as InvoiceProvider.updateInvoiceExcludeFromReports.
+
+  void updateQuoteExcludeFromReports(String id, bool exclude) {
+    final index = _savedQuotes.indexWhere((q) => q.id == id);
+    if (index == -1) return;
+    _savedQuotes[index] = _savedQuotes[index].copyWith(
+      data: _savedQuotes[index].data.copyWith(excludeFromReports: exclude),
       lastEditedAt: DateTime.now(),
     );
     _persist();

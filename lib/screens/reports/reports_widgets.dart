@@ -4,6 +4,12 @@
 // Presentational widgets used by reports_screen.dart. Kept dependency-free
 // (no provider reads in here) so the screen stays the single source of
 // truth for data and these just render whatever numbers they're given.
+//
+// NEW (this pass): TopClientsCard — renders the already-computed,
+// already-gated, already-sorted-and-capped client totals from
+// reports_screen.dart's _topClientsTotals(). No filtering/sorting logic
+// lives here, same as CategoryBarRow/StatusBreakdownBar taking finished
+// numbers rather than raw documents.
 
 import 'package:flutter/material.dart';
 import '../../models/document_category.dart';
@@ -111,6 +117,150 @@ class NetMarginBadge extends StatelessWidget {
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Tax set-aside estimate card ─────────────────────────────────────────────
+//
+// Deliberately simple: net income for the active period × an adjustable
+// rate (default 25%, clamped 0-60% in ReportsPrefs). This is a rough
+// planning number, not a tax calculation — copy says so explicitly so it
+// doesn't read as filed advice.
+
+class TaxSetAsideCard extends StatelessWidget {
+  final double net;
+  final double taxRatePercent;
+  final bool isDark;
+  final Color accent;
+  final ValueChanged<double> onRateChanged;
+
+  const TaxSetAsideCard({
+    super.key,
+    required this.net,
+    required this.taxRatePercent,
+    required this.isDark,
+    required this.accent,
+    required this.onRateChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasProfit = net > 0;
+    final estimate = hasProfit ? net * (taxRatePercent / 100) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.savings_rounded, size: 16, color: accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Tax set-aside estimate',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.6)),
+                ),
+              ),
+              _RateStepper(ratePercent: taxRatePercent, accent: accent, onChanged: onRateChanged),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasProfit)
+            Text(
+              'No set-aside needed — net is zero or negative this period.',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.5)),
+            )
+          else ...[
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: estimate),
+              duration: const Duration(milliseconds: 650),
+              curve: Curves.easeOutCubic,
+              builder: (context, animatedValue, _) => Text(
+                animatedValue.toStringAsFixed(2),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: accent),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'at ${taxRatePercent.toStringAsFixed(0)}% of net income — a rough guide, not tax advice.',
+              style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RateStepper extends StatelessWidget {
+  final double ratePercent;
+  final Color accent;
+  final ValueChanged<double> onChanged;
+
+  const _RateStepper({required this.ratePercent, required this.accent, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepperButton(
+            icon: Icons.remove_rounded,
+            accent: accent,
+            onTap: () => onChanged((ratePercent - 1).clamp(0.0, 60.0)),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '${ratePercent.toStringAsFixed(0)}%',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: accent),
+            ),
+          ),
+          _StepperButton(
+            icon: Icons.add_rounded,
+            accent: accent,
+            onTap: () => onChanged((ratePercent + 1).clamp(0.0, 60.0)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _StepperButton({required this.icon, required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 14, color: accent),
+        ),
       ),
     );
   }
@@ -283,6 +433,109 @@ class CategoryBarRow extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Top clients card ─────────────────────────────────────────────────────
+//
+// Renders pre-computed, pre-gated, pre-sorted client totals (see
+// reports_screen.dart's _topClientsTotals()). Each row shows the client's
+// initials, name, total, and a bar scaled against the top client's total.
+
+class TopClientsCard extends StatelessWidget {
+  final List<MapEntry<String, double>> entries; // client name -> total
+  final bool isDark;
+  final Color accent;
+
+  const TopClientsCard({
+    super.key,
+    required this.entries,
+    required this.isDark,
+    required this.accent,
+  });
+
+  String _initialsFor(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return '?';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (entries.isEmpty) return const SizedBox.shrink();
+    final maxAmount = entries.first.value <= 0 ? 1.0 : entries.first.value;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Top clients',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.6)),
+          ),
+          const SizedBox(height: 12),
+          for (final entry in entries)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: accent.withOpacity(0.14),
+                        child: Text(
+                          _initialsFor(entry.key),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: accent),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          entry.key,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        entry.value.toStringAsFixed(2),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: (entry.value / maxAmount).clamp(0.0, 1.0)),
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, animatedFraction, _) => LinearProgressIndicator(
+                        value: animatedFraction,
+                        minHeight: 5,
+                        backgroundColor: accent.withOpacity(0.10),
+                        valueColor: AlwaysStoppedAnimation(accent),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

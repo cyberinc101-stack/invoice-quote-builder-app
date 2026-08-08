@@ -88,7 +88,7 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // NEW: saves a converted ReceiptData (e.g. built from an invoice via
+  // Saves a converted ReceiptData (e.g. built from an invoice via
   // convertInvoiceDataToReceiptData) directly as a new saved receipt,
   // WITHOUT touching the active editor draft — unlike saveCurrentReceipt(),
   // which always saves/updates based on _currentReceiptData /
@@ -141,7 +141,7 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // -- Status ------------------------------------------------------------
-  // NEW: powers the tappable status chip in saved_document_detail_screen.dart.
+  // Powers the tappable status chip in saved_document_detail_screen.dart.
 
   Future<void> updateSavedReceiptStatus(String id, ReceiptStatus status) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
@@ -155,7 +155,7 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // -- Folder --------------------------------------------------------------
-  // NEW: assigns or clears the organizational folder for a saved receipt.
+  // Assigns or clears the organizational folder for a saved receipt.
   // Pass null to remove it from whatever folder it's currently in. Updates
   // the SAVED entry directly, same pattern as updateSavedReceiptStatus.
 
@@ -165,6 +165,20 @@ class ReceiptProvider extends ChangeNotifier {
     _savedReceipts[index] = _savedReceipts[index].copyWith(
       folderName: folderName,
       clearFolderName: folderName == null,
+      lastEditedAt: DateTime.now(),
+    );
+    await _persist();
+    notifyListeners();
+  }
+
+  // -- Reports exclusion ----------------------------------------------------
+  // Same pattern as InvoiceProvider.updateInvoiceExcludeFromReports.
+
+  Future<void> updateReceiptExcludeFromReports(String id, bool exclude) async {
+    final index = _savedReceipts.indexWhere((r) => r.id == id);
+    if (index == -1) return;
+    _savedReceipts[index] = _savedReceipts[index].copyWith(
+      data: _savedReceipts[index].data.copyWith(excludeFromReports: exclude),
       lastEditedAt: DateTime.now(),
     );
     await _persist();
