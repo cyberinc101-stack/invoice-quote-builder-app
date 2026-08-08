@@ -7,7 +7,26 @@
 // rename, move-to-folder, delete), and the top-level build()/_buildEntries()
 // that picks which card layout to render.
 //
-// FIX (this pass): _DocEntry now carries secondaryDateLabel/secondaryDateValue
+// NEW (this pass): SavedDocumentsSection now accepts an optional
+// `initialFolder` — seeded into _selectedFolder in initState() — so callers
+// (e.g. FoldersOverviewScreen) can push straight into this widget already
+// filtered to one folder. When _selectedFolder is set, a small
+// "Folder: X ✕" banner renders above the filter bar / selection toolbar,
+// with the ✕ clearing the filter via setState.
+//
+// FIX (this pass): _DocCompactGridCard's GridView delegate had
+// mainAxisExtent: 124, which clipped the last ~8px of its Column (the
+// Due/Paid/Expires row) — bumped to 134. Only the compact-grid layout uses
+// this delegate, so the other three card layouts are unaffected.
+//
+// NEW (earlier pass): one-time SnackBar hint telling users that long-pressing
+// a document enters selection mode, which is how they discover the
+// "Move to Folder" action. Shown once ever, gated behind a SharedPreferences
+// flag (_kFolderHintShownKey) so it doesn't nag on every visit. Fires from
+// initState() via a post-frame callback so ScaffoldMessenger.of(context) is
+// safe to call (the widget tree is fully laid out by then).
+//
+// FIX (earlier pass): _DocEntry now carries secondaryDateLabel/secondaryDateValue
 // — the type-relevant date (Due for invoices, or Paid once an invoice is
 // marked paid; Expires for quotes; Paid for receipts) — alongside the
 // existing `date` field (last edited, relative). Card widgets in
@@ -15,7 +34,7 @@
 // rendering InvoiceData.paidDate (a real DateTime) the same way the other
 // date fields (plain Strings the user typed) already read.
 //
-// FIX (this pass, cont'd): _openExportSheet's handleExport() used `context`
+// FIX (earlier pass, cont'd): _openExportSheet's handleExport() used `context`
 // after an `await` guarded only by `this.mounted` (the State's own
 // lifecycle), but the context actually used post-await is `sheetContext`
 // (the bottom sheet's own, narrower-lived context, captured before the
@@ -47,6 +66,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/quote_provider.dart';
 import '../../providers/receipt_provider.dart';
@@ -167,7 +187,12 @@ class _DocEntry {
 // -----------------------------------------------------------------------------
 
 class SavedDocumentsSection extends StatefulWidget {
-  const SavedDocumentsSection({super.key});
+  /// When set, seeds _selectedFolder in initState so this section opens
+  /// already filtered to one folder (used by FoldersOverviewScreen). Leave
+  /// null for the normal, unfiltered entry point (e.g. from home_screen.dart).
+  final String? initialFolder;
+
+  const SavedDocumentsSection({super.key, this.initialFolder});
 
   @override
   State<SavedDocumentsSection> createState() => _SavedDocumentsSectionState();
@@ -196,6 +221,48 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   // ── Export ───────────────────────────────────────────────────────────
   final BulkDocumentExportService _exportService = BulkDocumentExportService();
   bool _exporting = false;
+
+  // ── One-time "long-press to select" discovery hint ──────────────────
+  //
+  // Shown once ever (persisted via SharedPreferences) the first time this
+  // section is built, so first-time users learn that long-pressing a
+  // document enters selection mode — which is the only way to discover
+  // "Move to Folder" and "Export as CSV", since neither is exposed via a
+  // visible always-on button.
+  static const String _kFolderHintShownKey = 'seen_folder_longpress_hint_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFolder = widget.initialFolder;
+    _maybeShowFolderHint();
+  }
+
+  Future<void> _maybeShowFolderHint() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadyShown = prefs.getBool(_kFolderHintShownKey) ?? false;
+      if (alreadyShown) return;
+      if (!mounted) return;
+
+      // Post-frame so the Scaffold/ScaffoldMessenger above this widget is
+      // guaranteed to be laid out before we try to show a SnackBar on it.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tip: long-press a document to select it and move it to a folder'),
+            duration: Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      });
+
+      await prefs.setBool(_kFolderHintShownKey, true);
+    } catch (e) {
+      debugPrint('[SavedDocumentsSection] _maybeShowFolderHint error: $e');
+    }
+  }
 
   void _enterSelectionMode(String key) {
     setState(() {
@@ -1115,6 +1182,40 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // NEW: "Folder: X ✕" banner — shown whenever _selectedFolder is
+            // set, whether via the Folders quick-chip in DocumentFilterBar
+            // or via widget.initialFolder (FoldersOverviewScreen entry).
+            // Tapping ✕ just clears the filter; it doesn't navigate back.
+            if (_selectedFolder != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.folder_rounded, size: 16, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Folder: $_selectedFolder',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => setState(() => _selectedFolder = null),
+                        child: Icon(Icons.close_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.5)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (_selectionMode)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1349,7 +1450,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             crossAxisCount: 3,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            mainAxisExtent: 124,
+            // FIX: was 124 — clipped the Due/Paid/Expires row by ~8px.
+            mainAxisExtent: 134,
           ),
           children: entries
               .map((e) => _DocCompactGridCard(

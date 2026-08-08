@@ -3,10 +3,30 @@
 //
 // REDESIGN v5 + FOLDERS: v5's structure (single scrollable quick-access
 // row, everything else behind one "Filters" bottom sheet) is unchanged.
-// This pass adds a Folder dropdown into that Filters sheet — NOT the
-// quick-access row, so the always-visible row stays exactly as compact as
-// before. New constructor params: selectedFolder, onFolderChanged,
-// availableFolders. "Clear all" now also resets the folder filter.
+// The Filters sheet has a Folder dropdown (added in an earlier pass) —
+// NOT the quick-access row, so the always-visible row stayed exactly as
+// compact as before. New constructor params from that pass: selectedFolder,
+// onFolderChanged, availableFolders. "Clear all" also resets the folder
+// filter.
+//
+// FIX (this pass): the Status section (Payment/Quote/Receipt) only used to
+// render when selectedType matched that exact pill, so with "All" selected
+// — the default — no status dropdown ever showed, even when documents
+// existed. Now each status dropdown shows whenever its type is selected OR
+// "All" is selected and that type has documents.
+//
+// NEW (earlier pass): a quick-access "Folders" chip in the always-visible
+// scrollable row itself, positioned immediately to the left of the Drafts
+// chip. Filtering by folder was previously only reachable via the full
+// Filters sheet, which buries a feature that gets used constantly once a
+// user starts organizing documents. Tapping the new chip opens a
+// lightweight bottom sheet (_FolderChip._openFolderPicker) listing "All
+// Folders" plus every folder name; picking one applies immediately (no
+// separate "Apply" step — this is meant to be a fast single-tap filter,
+// unlike the fuller Filters sheet's folder dropdown, which stays as-is for
+// people who open Filters directly). The chip shows "Folders" when nothing
+// is selected, or the folder name itself (highlighted like the other
+// active pills) once one is picked.
 
 import 'package:flutter/material.dart';
 import '../models/invoice_data.dart' show PaymentStatus;
@@ -56,7 +76,7 @@ class DocumentFilterBar extends StatefulWidget {
   final double? maxAmount;
   final void Function(double? min, double? max) onAmountRangeChanged;
 
-  // NEW: folder filter.
+  // Folder filter.
   final String? selectedFolder;
   final ValueChanged<String?> onFolderChanged;
   final List<String> availableFolders;
@@ -168,6 +188,21 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final cs = Theme.of(context).colorScheme;
+
+            // FIX: previously each Status dropdown only rendered when
+            // selectedType matched that EXACT pill (Invoices/Quotes/
+            // Receipts). With "All" selected — the default — none of the
+            // three matched, so the whole Status section silently vanished
+            // even when documents existed. Now each dropdown shows
+            // whenever its type is the selected pill OR "All" is selected
+            // and that type actually has documents.
+            final showInvoiceStatus = widget.selectedType == DocTypeFilter.invoices ||
+                (widget.selectedType == DocTypeFilter.all && widget.invoiceCount > 0);
+            final showQuoteStatus = widget.selectedType == DocTypeFilter.quotes ||
+                (widget.selectedType == DocTypeFilter.all && widget.quoteCount > 0);
+            final showReceiptStatus = widget.selectedType == DocTypeFilter.receipts ||
+                (widget.selectedType == DocTypeFilter.all && widget.receiptCount > 0);
+
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -235,9 +270,15 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                     const SizedBox(height: 20),
 
                     // ── Status (contextual to selected type) ─────────────
-                    if (widget.selectedType == DocTypeFilter.invoices)
+                    // Labeled per-type (not just "Status") because with
+                    // "All" selected, more than one of these can render at
+                    // once — plain "Status" three times in a row would be
+                    // ambiguous about which dropdown controls what.
+                    if (showInvoiceStatus)
                       _SheetSection(
-                        label: 'Status',
+                        label: widget.selectedType == DocTypeFilter.all
+                            ? 'Invoice Status'
+                            : 'Status',
                         child: _SheetDropdown<PaymentStatus?>(
                           value: widget.selectedPaymentStatus,
                           hint: 'Any status',
@@ -252,9 +293,11 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                           },
                         ),
                       ),
-                    if (widget.selectedType == DocTypeFilter.quotes)
+                    if (showQuoteStatus)
                       _SheetSection(
-                        label: 'Status',
+                        label: widget.selectedType == DocTypeFilter.all
+                            ? 'Quote Status'
+                            : 'Status',
                         child: _SheetDropdown<QuoteStatus?>(
                           value: widget.selectedQuoteStatus,
                           hint: 'Any status',
@@ -269,9 +312,11 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                           },
                         ),
                       ),
-                    if (widget.selectedType == DocTypeFilter.receipts)
+                    if (showReceiptStatus)
                       _SheetSection(
-                        label: 'Status',
+                        label: widget.selectedType == DocTypeFilter.all
+                            ? 'Receipt Status'
+                            : 'Status',
                         child: _SheetDropdown<ReceiptStatus?>(
                           value: widget.selectedReceiptStatus,
                           hint: 'Any status',
@@ -287,7 +332,7 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         ),
                       ),
 
-                    // ── Folder — NEW ──────────────────────────────────────
+                    // ── Folder ─────────────────────────────────────────
                     _SheetSection(
                       label: 'Folder',
                       child: _SheetDropdown<String?>(
@@ -583,6 +628,19 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                           : QuickFilter.overdue61plus),
                 ),
                 const SizedBox(width: 8),
+
+                // NEW: quick-access Folders chip, positioned immediately to
+                // the left of the Drafts chip below. Opens a lightweight
+                // picker sheet and applies the folder filter on a single
+                // tap — the Filters sheet's own Folder dropdown (above)
+                // still exists for people who open Filters directly.
+                _FolderChip(
+                  selectedFolder: widget.selectedFolder,
+                  availableFolders: widget.availableFolders,
+                  onFolderChanged: widget.onFolderChanged,
+                ),
+                const SizedBox(width: 8),
+
                 _QuickPill(
                   label: quickFilterLabel(QuickFilter.drafts),
                   count: widget.draftsCount,
@@ -735,6 +793,214 @@ class _QuickPill extends StatelessWidget {
             fontWeight: FontWeight.w600,
             color: selected ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.68),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Folders quick-access chip — NEW ─────────────────────────────────────
+//
+// Unlike _QuickPill, this never hides itself (folders may not exist yet,
+// but the chip is how a user discovers the feature in the first place).
+// Shows "Folders" when nothing's selected, or the selected folder's name
+// (highlighted like an active pill) once one is picked. Tapping opens
+// _openFolderPicker, a lightweight bottom sheet — separate from, and
+// faster than, the Folder dropdown already living in the full Filters
+// sheet.
+
+class _FolderChip extends StatelessWidget {
+  final String? selectedFolder;
+  final List<String> availableFolders;
+  final ValueChanged<String?> onFolderChanged;
+
+  const _FolderChip({
+    required this.selectedFolder,
+    required this.availableFolders,
+    required this.onFolderChanged,
+  });
+
+  void _openFolderPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final cs = Theme.of(context).colorScheme;
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: cs.onSurface.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: cs.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.folder_outlined, size: 18, color: cs.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Filter by Folder',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                if (availableFolders.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    child: Text(
+                      "No folders yet. Long-press a document, then use its ⋮ menu's "
+                      '"Move to Folder" to create one.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withValues(alpha: 0.55),
+                        height: 1.4,
+                      ),
+                    ),
+                  )
+                else ...[
+                  _FolderOptionTile(
+                    label: 'All Folders',
+                    selected: selectedFolder == null,
+                    onTap: () {
+                      onFolderChanged(null);
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
+                  ...availableFolders.map(
+                    (f) => _FolderOptionTile(
+                      label: f,
+                      selected: selectedFolder == f,
+                      onTap: () {
+                        onFolderChanged(f);
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final active = selectedFolder != null;
+    final label = selectedFolder ?? 'Folders';
+
+    return GestureDetector(
+      onTap: () => _openFolderPicker(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        constraints: const BoxConstraints(maxWidth: 140),
+        decoration: BoxDecoration(
+          color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: active ? cs.primary : cs.outline.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.folder_outlined,
+              size: 13,
+              color: active ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: active ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.68),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Row used inside the folder picker sheet ─────────────────────────────
+
+class _FolderOptionTile extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FolderOptionTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.check_circle_rounded : Icons.folder_outlined,
+              size: 18,
+              color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

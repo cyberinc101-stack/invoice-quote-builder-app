@@ -29,7 +29,7 @@ dependencies:
   mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
   excel: ^4.0.6
-  open_file: ^3.3.2
+  open_file: ^4.0.0
   flutter_timezone: ^5.1.0
   uuid: ^4.6.0
 
