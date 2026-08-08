@@ -106,7 +106,7 @@ class TrendStrip extends StatelessWidget {
                   child: Center(
                     child: Text(
                       _monthAbbr[p.month.month - 1],
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.4)),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                     ),
                   ),
                 ),
@@ -136,7 +136,7 @@ class _TrendBar extends StatelessWidget {
         width: 8,
         height: (value * maxHeight).clamp(2.0, maxHeight),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.85),
+          color: color.withValues(alpha: 0.85),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
         ),
       ),
@@ -158,7 +158,7 @@ class _LegendDot extends StatelessWidget {
       children: [
         Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 5),
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.55))),
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.55))),
       ],
     );
   }
@@ -223,7 +223,7 @@ class StatusBreakdownBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.6))),
+          Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -253,7 +253,7 @@ class StatusBreakdownBar extends StatelessWidget {
                     const SizedBox(width: 5),
                     Text(
                       '${seg.label[0].toUpperCase()}${seg.label.substring(1)} · ${seg.amount.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.65)),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.65)),
                     ),
                   ],
                 ),

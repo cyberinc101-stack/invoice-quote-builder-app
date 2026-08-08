@@ -126,7 +126,7 @@ class _ScanScreenState extends State<ScanScreen> {
             child: Container(
               width: 240, height: 240,
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white.withOpacity(0.85), width: 2.5),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2.5),
                 borderRadius: BorderRadius.circular(20),
               ),
             ),

@@ -1,6 +1,6 @@
-﻿// lib/screens/create_quote_section/quote_client_library.dart
+// lib/screens/create_quote_section/quote_client_library.dart
 //
-// Saved-client "library" feature for the quote flow â€” same UX as
+// Saved-client "library" feature for the quote flow — same UX as
 // invoice_create_section/step_customers.dart (tap a saved card to reuse a
 // client's details instead of retyping them), but kept self-contained per
 // the existing convention in quote_edit_widgets.dart: its own model, its
@@ -8,11 +8,11 @@
 //
 // Usage: drop QuoteClientLibrarySection into the Client & Details step,
 // above the manual fields. Tapping a card calls onClientSelected(client)
-// so the caller can copy the data into its own TextEditingControllers â€”
+// so the caller can copy the data into its own TextEditingControllers —
 // this widget does not own those controllers.
 //
 // UPDATED (this pass): added QuoteClientLibraryController, mirroring
-// QuoteBusinessProfileLibraryController â€” lets QuoteEditorScreen trigger a
+// QuoteBusinessProfileLibraryController — lets QuoteEditorScreen trigger a
 // save/update of the client library from outside (e.g. when the user taps
 // "Next") using whatever is currently typed into the manual fields.
 //
@@ -21,7 +21,7 @@
 // matching QuoteLogoPicker's new reposition feature in quote_edit_widgets.dart.
 //
 // UPDATED (this pass, 3): button label changed from "Save New Client" to
-// "Add New Client" to match the invoice app's "Add New Customer" wording â€”
+// "Add New Client" to match the invoice app's "Add New Customer" wording —
 // QuoteEditorScreen no longer shows inline client fields on the page, so
 // this button (which opens the add/edit bottom sheet) is now the only way
 // to enter client info, same as the invoice flow's customer step.
@@ -126,7 +126,7 @@ Future<List<QuoteClient>> _loadQuoteClients() async {
 }
 
 // =============================================================================
-// Controller â€” lets the parent screen trigger a save/update of the library
+// Controller — lets the parent screen trigger a save/update of the library
 // from outside (e.g. when the user taps "Next"), mirroring
 // QuoteBusinessProfileLibraryController.
 // =============================================================================
@@ -144,7 +144,7 @@ class QuoteClientLibraryController {
   /// - Else if an identical entry already exists, just selects it (avoids
   ///   duplicates if Next is pressed twice without changes).
   /// - Else creates a new saved client (respecting the max-count cap).
-  /// No-ops if [name] is blank â€” nothing meaningful to save.
+  /// No-ops if [name] is blank — nothing meaningful to save.
   Future<void> autoSave({
     required String name,
     String email = '',
@@ -373,14 +373,14 @@ class _QuoteClientLibrarySectionState extends State<QuoteClientLibrarySection> {
                   fontWeight: FontWeight.w600,
                   color: atMax
                       ? const Color(0xFFEF5350)
-                      : colorScheme.onSurface.withOpacity(0.45),
+                      : colorScheme.onSurface.withValues(alpha: 0.45),
                 ),
               ),
           ],
         ),
         Text(
           'Tap a saved client to use them for this quote.',
-          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
         ),
         const SizedBox(height: 10),
 
@@ -399,10 +399,10 @@ class _QuoteClientLibrarySectionState extends State<QuoteClientLibrarySection> {
             decoration: BoxDecoration(
               color: atMax
                   ? (isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5))
-                  : accent.withOpacity(isDark ? 0.14 : 0.08),
+                  : accent.withValues(alpha: isDark ? 0.14 : 0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: atMax ? colorScheme.outline.withOpacity(0.3) : accent.withOpacity(0.4),
+                color: atMax ? colorScheme.outline.withValues(alpha: 0.3) : accent.withValues(alpha: 0.4),
                 width: 1.5,
               ),
             ),
@@ -411,13 +411,13 @@ class _QuoteClientLibrarySectionState extends State<QuoteClientLibrarySection> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.person_add_rounded,
-                    color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent, size: 20),
+                    color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent, size: 20),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     atMax ? 'Maximum Clients Reached' : 'Add New Client',
                     style: TextStyle(
-                      color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent,
+                      color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -505,21 +505,21 @@ class _QuoteClientCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? (isDark ? accent.withOpacity(0.1) : Colors.white)
+            ? (isDark ? accent.withValues(alpha: 0.1) : Colors.white)
             : (isDark
-                ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                 : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? accent.withOpacity(isDark ? 0.6 : 0.5)
-              : colorScheme.outline.withOpacity(0.3),
+              ? accent.withValues(alpha: isDark ? 0.6 : 0.5)
+              : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: accent.withOpacity(isDark ? 0.12 : 0.08),
+                  color: accent.withValues(alpha: isDark ? 0.12 : 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 )
@@ -543,7 +543,7 @@ class _QuoteClientCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isSelected ? accent : Colors.transparent,
                   border: Border.all(
-                    color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                    color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -560,10 +560,10 @@ class _QuoteClientCard extends StatelessWidget {
                   color: hasLogo
                       ? Colors.black
                       : (isSelected
-                          ? accent.withOpacity(isDark ? 0.18 : 0.1)
-                          : colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+                          ? accent.withValues(alpha: isDark ? 0.18 : 0.1)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)),
                   border: Border.all(
-                    color: isSelected ? accent.withOpacity(0.4) : colorScheme.outline.withOpacity(0.3),
+                    color: isSelected ? accent.withValues(alpha: 0.4) : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -576,7 +576,7 @@ class _QuoteClientCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                            color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                           ),
                         ),
                       ),
@@ -593,7 +593,7 @@ class _QuoteClientCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: isSelected
                             ? colorScheme.onSurface
-                            : colorScheme.onSurface.withOpacity(0.4),
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (client.email.isNotEmpty) ...[
@@ -602,7 +602,7 @@ class _QuoteClientCard extends StatelessWidget {
                         client.email,
                         style: TextStyle(
                           fontSize: 12,
-                          color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                          color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -610,7 +610,7 @@ class _QuoteClientCard extends StatelessWidget {
                     if (client.phone.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(client.phone,
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45))),
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45))),
                     ],
                   ],
                 ),
@@ -623,7 +623,7 @@ class _QuoteClientCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: accent.withOpacity(isDark ? 0.14 : 0.1),
+                        color: accent.withValues(alpha: isDark ? 0.14 : 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.edit_rounded, color: accent, size: 14),
@@ -637,7 +637,7 @@ class _QuoteClientCard extends StatelessWidget {
                       height: 28,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -654,7 +654,7 @@ class _QuoteClientCard extends StatelessWidget {
   }
 }
 
-/// Renders a saved client logo honoring its saved reposition/zoom crop â€”
+/// Renders a saved client logo honoring its saved reposition/zoom crop —
 /// mirrors _CardLogo in quote_business_profile_library.dart.
 class _CardLogo extends StatelessWidget {
   final QuoteClient client;

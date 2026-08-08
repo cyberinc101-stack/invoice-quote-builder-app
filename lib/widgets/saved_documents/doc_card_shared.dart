@@ -42,7 +42,7 @@ class _SectionHeader extends StatelessWidget {
           '$count document${count == 1 ? '' : 's'}',
           style: TextStyle(
             fontSize: 13,
-            color: cs.onSurface.withOpacity(0.4),
+            color: cs.onSurface.withValues(alpha: 0.4),
           ),
         ),
       ],
@@ -90,10 +90,10 @@ class _ThreeDotIcon extends StatelessWidget {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: cs.onSurface.withOpacity(0.06),
+          color: cs.onSurface.withValues(alpha: 0.06),
           shape: BoxShape.circle,
         ),
-        child: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurface.withOpacity(0.65)),
+        child: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.65)),
       ),
     );
   }

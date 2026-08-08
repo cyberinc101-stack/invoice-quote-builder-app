@@ -117,17 +117,17 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.alarm_add_rounded, size: 48, color: cs.onSurface.withOpacity(0.3)),
+            Icon(Icons.alarm_add_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.3)),
             const SizedBox(height: 12),
             Text(
               'No reminders yet',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.6)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
             ),
             const SizedBox(height: 4),
             Text(
               'Set a reminder for a client follow-up, a call, or anything not tied to an invoice due date.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
             ),
           ],
         ),
@@ -210,7 +210,7 @@ class _ReminderCard extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFFD32F2F).withOpacity(0.15),
+          color: const Color(0xFFD32F2F).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
@@ -229,11 +229,11 @@ class _ReminderCard extends StatelessWidget {
             color: isDark ? const Color(0xFF1E2235) : Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: highlighted ? color : cs.outline.withOpacity(0.2),
+              color: highlighted ? color : cs.outline.withValues(alpha: 0.2),
               width: highlighted ? 2 : 1,
             ),
             boxShadow: highlighted
-                ? [BoxShadow(color: color.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 3))]
+                ? [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 3))]
                 : null,
           ),
           child: Row(
@@ -241,7 +241,7 @@ class _ReminderCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
                 child: Icon(
                   reminder.isDue ? Icons.notifications_active_rounded : Icons.schedule_rounded,
                   color: color,
@@ -265,7 +265,7 @@ class _ReminderCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: cs.primary.withOpacity(0.12),
+                              color: cs.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
@@ -285,7 +285,7 @@ class _ReminderCard extends StatelessWidget {
                     ),
                     if (reminder.note.isNotEmpty)
                       Text(reminder.note,
-                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+                          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5)),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                     if (linkedLabel != null) ...[
                       const SizedBox(height: 2),
@@ -313,7 +313,7 @@ class _ReminderCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withOpacity(0.25)),
+              Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.25)),
             ],
           ),
         ),
@@ -410,7 +410,7 @@ class _LinkPickerSheetState extends State<_LinkPickerSheet> {
                       child: Center(
                         child: Text(
                           'No saved invoices or quotes yet',
-                          style: TextStyle(color: cs.onSurface.withOpacity(0.4)),
+                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
                         ),
                       ),
                     )
@@ -418,7 +418,7 @@ class _LinkPickerSheetState extends State<_LinkPickerSheet> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Center(
-                        child: Text('No matches', style: TextStyle(color: cs.onSurface.withOpacity(0.4))),
+                        child: Text('No matches', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
                       ),
                     )
                   else
@@ -667,7 +667,7 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
           labelStyle: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : cs.onSurface.withOpacity(0.7),
+            color: selected ? Colors.white : cs.onSurface.withValues(alpha: 0.7),
           ),
         );
       }).toList(),
@@ -779,9 +779,9 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF57C00).withOpacity(0.1),
+                  color: const Color(0xFFF57C00).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFF57C00).withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFFF57C00).withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -791,7 +791,7 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
                     Expanded(
                       child: Text(
                         "Notifications are turned off for this app in system settings, so push won't fire — this reminder will still show up in-app.",
-                        style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(0.7)),
+                        style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: 0.7)),
                       ),
                     ),
                   ],

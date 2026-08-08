@@ -15,6 +15,15 @@
 // rendering InvoiceData.paidDate (a real DateTime) the same way the other
 // date fields (plain Strings the user typed) already read.
 //
+// FIX (this pass, cont'd): _openExportSheet's handleExport() used `context`
+// after an `await` guarded only by `this.mounted` (the State's own
+// lifecycle), but the context actually used post-await is `sheetContext`
+// (the bottom sheet's own, narrower-lived context, captured before the
+// async gap). The State being mounted doesn't guarantee the sheet is still
+// on screen — it can be dismissed independently. Both the success path and
+// the catch block now also check `sheetContext.mounted` before touching
+// anything tied to the sheet.
+//
 // Split out of the original single-file saved_documents_section.dart into
 // this folder using Dart `part`/`part of` directives, so all the
 // underscore-prefixed private classes (_DocCard, _DocEntry, etc.) keep
@@ -461,7 +470,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                         height: 4,
                         margin: const EdgeInsets.only(bottom: 16),
                         decoration: BoxDecoration(
-                          color: cs.onSurface.withOpacity(0.15),
+                          color: cs.onSurface.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -472,7 +481,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: cs.primary.withOpacity(0.12),
+                            color: cs.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(Icons.folder_outlined, size: 18, color: cs.primary),
@@ -498,7 +507,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(0.55),
+                          color: cs.onSurface.withValues(alpha: 0.55),
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -512,9 +521,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: cs.onSurface.withOpacity(0.045),
+                                color: cs.onSurface.withValues(alpha: 0.045),
                                 borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: cs.outline.withOpacity(0.2)),
+                                border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -543,16 +552,16 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(0.55),
+                        color: cs.onSurface.withValues(alpha: 0.55),
                         letterSpacing: 0.2,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: cs.onSurface.withOpacity(0.045),
+                        color: cs.onSurface.withValues(alpha: 0.045),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cs.outline.withOpacity(0.18)),
+                        border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
                       ),
                       child: TextField(
                         controller: newFolderController,
@@ -576,7 +585,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                             onPressed: () => applyFolder(null),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 13),
-                              side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                              side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             child: const Text('Remove from Folder'),
@@ -769,7 +778,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                     receipts: selectedReceipts,
                   );
                 }
-                if (!mounted) return;
+                if (!mounted || !sheetContext.mounted) return;
                 Navigator.pop(sheetContext);
                 setState(() {
                   _selectionMode = false;
@@ -790,6 +799,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                 );
               } catch (e) {
+                if (!sheetContext.mounted) return;
                 setSheetState(() => _exporting = false);
                 if (!mounted) return;
                 ScaffoldMessenger.of(this.context).showSnackBar(
@@ -819,7 +829,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                         height: 4,
                         margin: const EdgeInsets.only(bottom: 16),
                         decoration: BoxDecoration(
-                          color: cs.onSurface.withOpacity(0.15),
+                          color: cs.onSurface.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -831,7 +841,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: cs.primary.withOpacity(0.12),
+                            color: cs.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(Icons.ios_share_rounded, size: 18, color: cs.primary),
@@ -853,7 +863,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                 '$totalCount document${totalCount == 1 ? '' : 's'} selected',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: cs.onSurface.withOpacity(0.5),
+                                  color: cs.onSurface.withValues(alpha: 0.5),
                                 ),
                               ),
                             ],
@@ -868,16 +878,16 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(0.55),
+                        color: cs.onSurface.withValues(alpha: 0.55),
                         letterSpacing: 0.2,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: cs.onSurface.withOpacity(0.045),
+                        color: cs.onSurface.withValues(alpha: 0.045),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cs.outline.withOpacity(0.18)),
+                        border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
                       ),
                       child: TextField(
                         controller: nameController,
@@ -888,7 +898,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                           suffixText: '.csv',
-                          suffixStyle: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4)),
+                          suffixStyle: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
                         ),
                       ),
                     ),
@@ -909,7 +919,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                               label: const Text('Save to Device'),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 13),
-                                side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                                side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
@@ -1111,9 +1121,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.08),
+                    color: cs.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cs.primary.withOpacity(0.3)),
+                    border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
@@ -1142,7 +1152,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                         onPressed: _selectedKeys.isEmpty
                             ? null
                             : () => _openFolderSheet(availableFolders: allFolderNames),
-                        icon: Icon(Icons.folder_outlined, size: 19, color: cs.onSurface.withOpacity(0.75)),
+                        icon: Icon(Icons.folder_outlined, size: 19, color: cs.onSurface.withValues(alpha: 0.75)),
                       ),
                       IconButton(
                         tooltip: 'Export as CSV',
@@ -1230,7 +1240,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                     'No documents match this filter',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
                     ),
                   ),
                 ),

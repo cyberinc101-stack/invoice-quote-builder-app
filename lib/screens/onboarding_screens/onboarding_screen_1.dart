@@ -42,7 +42,7 @@ class OnboardingPage1Welcome extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(colors: [
-                      const Color(0xFF2979FF).withOpacity(0.18),
+                      const Color(0xFF2979FF).withValues(alpha: 0.18),
                       Colors.transparent,
                     ]),
                   ),
@@ -53,7 +53,7 @@ class OnboardingPage1Welcome extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(colors: [
-                      const Color(0xFF7C4DFF).withOpacity(0.12),
+                      const Color(0xFF7C4DFF).withValues(alpha: 0.12),
                       Colors.transparent,
                     ]),
                   ),
@@ -118,9 +118,9 @@ class OnboardingPage1Welcome extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
+                      color: Colors.white.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white.withOpacity(0.15)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.auto_awesome_rounded,
@@ -174,7 +174,7 @@ class OnboardingPage1Welcome extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.55,
-                      color: colorScheme.onSurface.withOpacity(0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -214,7 +214,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.03)
+      ..color = Colors.white.withValues(alpha: 0.03)
       ..strokeWidth = 0.5;
     const spacing = 28.0;
     for (double x = 0; x < size.width; x += spacing) {
@@ -249,11 +249,11 @@ class _CvCard extends StatelessWidget {
         gradient: gradient,
         borderRadius: BorderRadius.circular(14),
         border: showBadge
-            ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.5)
+            ? Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5)
             : null,
         boxShadow: [
           BoxShadow(
-            color: (glowColor ?? Colors.black).withOpacity(showBadge ? 0.5 : 0.25),
+            color: (glowColor ?? Colors.black).withValues(alpha: showBadge ? 0.5 : 0.25),
             blurRadius: showBadge ? 32 : 16,
             offset: const Offset(0, 8),
           ),
@@ -264,7 +264,7 @@ class _CvCard extends StatelessWidget {
         Row(children: [
           CircleAvatar(
             radius: showBadge ? 13 : 9,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
           ),
           const SizedBox(width: 7),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -272,7 +272,7 @@ class _CvCard extends StatelessWidget {
               height: showBadge ? 5 : 3.5,
               width: showBadge ? 58 : 38,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.65),
+                color: Colors.white.withValues(alpha: 0.65),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -281,7 +281,7 @@ class _CvCard extends StatelessWidget {
               height: showBadge ? 3.5 : 2.5,
               width: showBadge ? 40 : 26,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -294,7 +294,7 @@ class _CvCard extends StatelessWidget {
             height: showBadge ? 3.5 : 2.5,
             width: [0.75, 0.55, 0.68, 0.48, 0.62][i] * width * 0.85,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity([0.25, 0.18, 0.22, 0.15, 0.20][i]),
+              color: Colors.white.withValues(alpha: [0.25, 0.18, 0.22, 0.15, 0.20][i]),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -333,9 +333,9 @@ class _TagPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
     ),
     child: Text(label,
         style: TextStyle(
@@ -365,9 +365,9 @@ class _FeatureChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF4F6FF),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF4F6FF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(isDark ? 0.2 : 0.12)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.2 : 0.12)),
       ),
       child: Column(children: [
         Icon(icon, size: 18, color: color),
@@ -377,7 +377,7 @@ class _FeatureChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 9.5,
               fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface.withOpacity(0.55),
+              color: colorScheme.onSurface.withValues(alpha: 0.55),
             )),
       ]),
     );

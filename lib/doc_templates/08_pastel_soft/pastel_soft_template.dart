@@ -22,7 +22,7 @@ import '../shared/shared_doc_widgets.dart';
 // Header design
 // -----------------------------------------------------------------------
 
-Color _pastelTint(Color accent) => Color.alphaBlend(accent.withOpacity(0.10), Colors.white);
+Color _pastelTint(Color accent) => Color.alphaBlend(accent.withValues(alpha: 0.10), Colors.white);
 
 Widget _pastelSoftFullHeader(DocTemplateAdapter a) {
   final tint = _pastelTint(a.accent);
@@ -77,7 +77,7 @@ Widget _pastelSoftFullHeader(DocTemplateAdapter a) {
         ),
       ),
       const SizedBox(height: 6),
-      Container(height: 1.5, color: a.accent.withOpacity(0.35)),
+      Container(height: 1.5, color: a.accent.withValues(alpha: 0.35)),
       const SizedBox(height: 20),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -87,7 +87,7 @@ Widget _pastelSoftFullHeader(DocTemplateAdapter a) {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: a.statusColor.withOpacity(0.12),
+              color: a.statusColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(a.statusLabel.toUpperCase(), style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
@@ -117,7 +117,7 @@ Widget _pastelSoftContinuationHeader(DocTemplateAdapter a) {
         ],
       ),
       const SizedBox(height: 6),
-      Container(height: 1.5, color: a.accent.withOpacity(0.35)),
+      Container(height: 1.5, color: a.accent.withValues(alpha: 0.35)),
       const SizedBox(height: 16),
       buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],

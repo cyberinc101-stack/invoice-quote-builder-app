@@ -32,14 +32,14 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 56, color: colorScheme.onSurface.withOpacity(0.2)),
+            Icon(icon, size: 56, color: colorScheme.onSurface.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             Text(
               message,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface.withOpacity(0.45),
+                color: colorScheme.onSurface.withValues(alpha: 0.45),
               ),
               textAlign: TextAlign.center,
             ),
@@ -49,7 +49,7 @@ class EmptyState extends StatelessWidget {
                 sub!,
                 style: TextStyle(
                   fontSize: 13,
-                  color: colorScheme.onSurface.withOpacity(0.3),
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -114,7 +114,7 @@ class StepNavBar extends StatelessWidget {
                 ),
                 child: Icon(
                   Icons.arrow_back_rounded,
-                  color: colorScheme.onSurface.withOpacity(0.55),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55),
                   size: 22,
                 ),
               ),
@@ -135,7 +135,7 @@ class StepNavBar extends StatelessWidget {
                             ]
                           : [
                               colorScheme.primary,
-                              colorScheme.primary.withOpacity(0.8),
+                              colorScheme.primary.withValues(alpha: 0.8),
                             ],
                     ),
                     borderRadius: BorderRadius.circular(14),
@@ -143,7 +143,7 @@ class StepNavBar extends StatelessWidget {
                         ? []
                         : [
                             BoxShadow(
-                              color: colorScheme.primary.withOpacity(0.3),
+                              color: colorScheme.primary.withValues(alpha: 0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             )

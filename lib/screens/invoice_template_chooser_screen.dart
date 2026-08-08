@@ -1,8 +1,8 @@
-﻿// invoice_template_chooser_screen.dart
+// invoice_template_chooser_screen.dart
 // lib/screens/invoice_template_chooser_screen.dart
 //
 // Shown when "Create Invoice" is pressed, BEFORE the editor stepper.
-// Card/grid layout (not the CV app's swipeable carousel â€” Jesse asked for
+// Card/grid layout (not the CV app's swipeable carousel — Jesse asked for
 // grid/rows here specifically). Tapping an available card jumps straight
 // into EditorScreen with that layout template pre-selected; tapping a
 // "Coming Soon" stub just shows a snackbar.
@@ -126,9 +126,9 @@ class InvoiceTemplateChooserScreen extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Grid card
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TemplateCard extends StatelessWidget {
   final InvoiceTemplateInfo info;
@@ -150,7 +150,7 @@ class _TemplateCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: info.accentColor.withOpacity(info.available ? 0.22 : 0.08),
+                    color: info.accentColor.withValues(alpha: info.available ? 0.22 : 0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 5),
                   ),
@@ -172,7 +172,7 @@ class _TemplateCard extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
+                            color: Colors.black.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Row(
@@ -189,12 +189,12 @@ class _TemplateCard extends StatelessWidget {
                     if (!info.available)
                       Positioned.fill(
                         child: Container(
-                          color: Colors.black.withOpacity(0.15),
+                          color: Colors.black.withValues(alpha: 0.15),
                           alignment: Alignment.center,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.65),
+                              color: Colors.black.withValues(alpha: 0.65),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
@@ -209,7 +209,7 @@ class _TemplateCard extends StatelessWidget {
                       left: 0, right: 0, bottom: 0,
                       child: Container(
                         height: 3,
-                        color: info.accentColor.withOpacity(info.available ? 1 : 0.4),
+                        color: info.accentColor.withValues(alpha: info.available ? 1 : 0.4),
                       ),
                     ),
                   ],
@@ -225,7 +225,7 @@ class _TemplateCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
               color: info.available
                   ? colorScheme.onSurface
-                  : colorScheme.onSurface.withOpacity(0.4),
+                  : colorScheme.onSurface.withValues(alpha: 0.4),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -238,7 +238,7 @@ class _TemplateCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: info.available
                   ? info.accentColor
-                  : colorScheme.onSurface.withOpacity(0.3),
+                  : colorScheme.onSurface.withValues(alpha: 0.3),
             ),
           ),
         ],

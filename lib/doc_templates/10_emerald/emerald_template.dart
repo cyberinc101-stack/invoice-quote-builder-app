@@ -70,7 +70,7 @@ Widget _emeraldFullHeader(DocTemplateAdapter a) {
       // Thin double hairline, echoing fine stationery rather than a form.
       Container(height: 0.75, color: a.accent),
       const SizedBox(height: 2),
-      Container(height: 0.75, color: a.accent.withOpacity(0.35)),
+      Container(height: 0.75, color: a.accent.withValues(alpha: 0.35)),
       const SizedBox(height: 26),
       _EmeraldMetaRow(a: a),
       const SizedBox(height: 26),
@@ -151,7 +151,7 @@ class _EmeraldMetaRow extends StatelessWidget {
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(border: Border.all(color: a.statusColor.withOpacity(0.5), width: 1)),
+                decoration: BoxDecoration(border: Border.all(color: a.statusColor.withValues(alpha: 0.5), width: 1)),
                 child: Text(a.statusLabel.toUpperCase(), style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
                     letterSpacing: 1.0, color: a.statusColor, fontFamily: a.fontFamily)),
               ),

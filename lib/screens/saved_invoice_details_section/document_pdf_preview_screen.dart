@@ -152,7 +152,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
@@ -174,7 +174,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(6),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 30, offset: const Offset(0, 12)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 30, offset: const Offset(0, 12)),
                 ],
               ),
               padding: const EdgeInsets.all(28),
@@ -265,7 +265,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1A2E)),
               ),
               const SizedBox(height: 4),
-              Text(documentTitle, style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.45))),
+              Text(documentTitle, style: TextStyle(fontSize: 12, color: Colors.black.withValues(alpha: 0.45))),
             ],
           ),
         ),
@@ -291,7 +291,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
             children: [
               Text(
                 _clientBlockLabel.toUpperCase(),
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withOpacity(0.4), letterSpacing: 0.6),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withValues(alpha: 0.4), letterSpacing: 0.6),
               ),
               const SizedBox(height: 6),
               Text(
@@ -323,7 +323,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withOpacity(0.4), letterSpacing: 0.6),
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withValues(alpha: 0.4), letterSpacing: 0.6),
         ),
         const SizedBox(height: 2),
         Text(
@@ -352,13 +352,13 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
         if (items.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Text('No line items', style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.4))),
+            child: Text('No line items', style: TextStyle(fontSize: 12, color: Colors.black.withValues(alpha: 0.4))),
           )
         else
           for (final item in items)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black.withOpacity(0.06)))),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black.withValues(alpha: 0.06)))),
               child: Row(
                 children: [
                   Expanded(flex: 5, child: Text(item.description, style: _tdStyle())),
@@ -381,7 +381,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
   String _fmtNum(double n) => n == n.roundToDouble() ? n.toInt().toString() : n.toString();
 
   TextStyle _thStyle() =>
-      TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withOpacity(0.45), letterSpacing: 0.4);
+      TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withValues(alpha: 0.45), letterSpacing: 0.4);
 
   TextStyle _tdStyle({bool bold = false}) =>
       TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: const Color(0xFF1A1A2E));
@@ -392,7 +392,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
       child: Container(
         width: 220,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-        decoration: BoxDecoration(color: _accent.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: _accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -414,7 +414,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: const Color(0xFFF8F9FC), borderRadius: BorderRadius.circular(8)),
-      child: Text(notes, style: TextStyle(fontSize: 11.5, color: Colors.black.withOpacity(0.55), height: 1.4)),
+      child: Text(notes, style: TextStyle(fontSize: 11.5, color: Colors.black.withValues(alpha: 0.55), height: 1.4)),
     );
   }
 
@@ -423,7 +423,7 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8),
       child: Text(
         'Layout mockup only — not your final PDF template.',
-        style: TextStyle(fontSize: 10, color: Colors.black.withOpacity(0.3), fontStyle: FontStyle.italic),
+        style: TextStyle(fontSize: 10, color: Colors.black.withValues(alpha: 0.3), fontStyle: FontStyle.italic),
       ),
     );
   }
@@ -455,9 +455,9 @@ class _PreviewActionButton extends StatelessWidget {
       child: Container(
         height: 50,
         decoration: BoxDecoration(
-          color: filled ? accent : Colors.white.withOpacity(0.08),
+          color: filled ? accent : Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
-          border: filled ? null : Border.all(color: Colors.white.withOpacity(0.18)),
+          border: filled ? null : Border.all(color: Colors.white.withValues(alpha: 0.18)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,

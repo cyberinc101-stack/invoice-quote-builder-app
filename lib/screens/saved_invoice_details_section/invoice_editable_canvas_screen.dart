@@ -403,7 +403,7 @@ class _InvoiceEditableCanvasScreenState
                 icon: Icon(Icons.add_rounded, color: accent),
                 label: Text('Add line item', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: accent.withOpacity(0.4)),
+                  side: BorderSide(color: accent.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
@@ -443,7 +443,7 @@ class _AccentColorRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: isActive ? Border.all(color: Colors.white, width: 2.5) : null,
                   boxShadow: isActive
-                      ? [BoxShadow(color: color.withOpacity(0.45), blurRadius: 8, offset: const Offset(0, 3))]
+                      ? [BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 8, offset: const Offset(0, 3))]
                       : [],
                 ),
                 child: isActive ? const Icon(Icons.check_rounded, color: Colors.white, size: 16) : null,

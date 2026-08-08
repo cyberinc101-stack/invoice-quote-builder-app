@@ -49,7 +49,7 @@ class ReportsStatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(isDark ? 0.15 : 0.08),
+            color: color.withValues(alpha: isDark ? 0.15 : 0.08),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -104,7 +104,7 @@ class NetMarginBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -167,7 +167,7 @@ class TaxSetAsideCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Tax set-aside estimate',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.6)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withValues(alpha: 0.6)),
                 ),
               ),
               _RateStepper(ratePercent: taxRatePercent, accent: accent, onChanged: onRateChanged),
@@ -177,7 +177,7 @@ class TaxSetAsideCard extends StatelessWidget {
           if (!hasProfit)
             Text(
               'No set-aside needed — net is zero or negative this period.',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.5)),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.5)),
             )
           else ...[
             TweenAnimationBuilder<double>(
@@ -192,7 +192,7 @@ class TaxSetAsideCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               'at ${taxRatePercent.toStringAsFixed(0)}% of net income — a rough guide, not tax advice.',
-              style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+              style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
             ),
           ],
         ],
@@ -213,7 +213,7 @@ class _RateStepper extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.1),
+        color: accent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -345,7 +345,7 @@ class _ToggleChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: selected ? accent.withOpacity(0.14) : colorScheme.onSurface.withOpacity(0.04),
+      color: selected ? accent.withValues(alpha: 0.14) : colorScheme.onSurface.withValues(alpha: 0.04),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -356,20 +356,20 @@ class _ToggleChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? accent : colorScheme.onSurface.withOpacity(0.12),
+              color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.12),
               width: selected ? 1.4 : 1,
             ),
           ),
           child: Column(
             children: [
-              Icon(icon, size: 16, color: selected ? accent : colorScheme.onSurface.withOpacity(0.4)),
+              Icon(icon, size: 16, color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.4)),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: selected ? accent : colorScheme.onSurface.withOpacity(0.4),
+                  color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.4),
                 ),
               ),
             ],
@@ -428,7 +428,7 @@ class CategoryBarRow extends StatelessWidget {
               builder: (context, animatedFraction, _) => LinearProgressIndicator(
                 value: animatedFraction,
                 minHeight: 6,
-                backgroundColor: category.color.withOpacity(0.12),
+                backgroundColor: category.color.withValues(alpha: 0.12),
                 valueColor: AlwaysStoppedAnimation(category.color),
               ),
             ),
@@ -485,7 +485,7 @@ class TopClientsCard extends StatelessWidget {
         children: [
           Text(
             'Top clients',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.6)),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withValues(alpha: 0.6)),
           ),
           const SizedBox(height: 12),
           for (final entry in entries)
@@ -498,7 +498,7 @@ class TopClientsCard extends StatelessWidget {
                     children: [
                       CircleAvatar(
                         radius: 12,
-                        backgroundColor: accent.withOpacity(0.14),
+                        backgroundColor: accent.withValues(alpha: 0.14),
                         child: Text(
                           _initialsFor(entry.key),
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: accent),
@@ -528,7 +528,7 @@ class TopClientsCard extends StatelessWidget {
                       builder: (context, animatedFraction, _) => LinearProgressIndicator(
                         value: animatedFraction,
                         minHeight: 5,
-                        backgroundColor: accent.withOpacity(0.10),
+                        backgroundColor: accent.withValues(alpha: 0.10),
                         valueColor: AlwaysStoppedAnimation(accent),
                       ),
                     ),
@@ -561,17 +561,17 @@ class ReportsEmptyState extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(Icons.insights_rounded, size: 34, color: colorScheme.onSurface.withOpacity(0.22)),
+          Icon(Icons.insights_rounded, size: 34, color: colorScheme.onSurface.withValues(alpha: 0.22)),
           const SizedBox(height: 12),
           Text(
             'Nothing here yet',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withOpacity(0.7)),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withValues(alpha: 0.7)),
           ),
           const SizedBox(height: 4),
           Text(
             'This month has no invoices, quotes, receipts or expenses recorded.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.45)),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.45)),
           ),
         ],
       ),

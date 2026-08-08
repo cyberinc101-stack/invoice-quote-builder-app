@@ -171,7 +171,7 @@ class _SplashScreenState extends State<SplashScreen>
                   center: const Alignment(0, -0.15),
                   radius: 0.75,
                   colors: [
-                    const Color(0xFF1565C0).withOpacity(_pulse.value * 0.7),
+                    const Color(0xFF1565C0).withValues(alpha: _pulse.value * 0.7),
                     Colors.transparent,
                   ],
                 ),
@@ -226,7 +226,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: const Color(0xFF2196F3)
-                                        .withOpacity(_pulse.value * 0.4),
+                                        .withValues(alpha: _pulse.value * 0.4),
                                     width: 1,
                                   ),
                                 ),
@@ -240,10 +240,10 @@ class _SplashScreenState extends State<SplashScreen>
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: const Color(0xFF1565C0)
-                                      .withOpacity(_pulse.value * 0.15),
+                                      .withValues(alpha: _pulse.value * 0.15),
                                   border: Border.all(
                                     color: const Color(0xFF2196F3)
-                                        .withOpacity(_pulse.value * 0.25),
+                                        .withValues(alpha: _pulse.value * 0.25),
                                     width: 1,
                                   ),
                                 ),
@@ -266,14 +266,14 @@ class _SplashScreenState extends State<SplashScreen>
                                 boxShadow: [
                                   BoxShadow(
                                     color: const Color(0xFF1565C0)
-                                        .withOpacity(0.7),
+                                        .withValues(alpha: 0.7),
                                     blurRadius: 40,
                                     spreadRadius: 2,
                                     offset: const Offset(0, 8),
                                   ),
                                   BoxShadow(
                                     color: const Color(0xFF42A5F5)
-                                        .withOpacity(0.3),
+                                        .withValues(alpha: 0.3),
                                     blurRadius: 20,
                                     offset: const Offset(0, -2),
                                   ),
@@ -293,7 +293,7 @@ class _SplashScreenState extends State<SplashScreen>
                                             gradient: LinearGradient(
                                               colors: [
                                                 Colors.transparent,
-                                                Colors.white.withOpacity(0.18),
+                                                Colors.white.withValues(alpha: 0.18),
                                                 Colors.transparent,
                                               ],
                                               stops: const [0.0, 0.5, 1.0],
@@ -366,7 +366,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         borderRadius: BorderRadius.circular(2),
                         boxShadow: [BoxShadow(
-                          color: const Color(0xFF2196F3).withOpacity(0.6),
+                          color: const Color(0xFF2196F3).withValues(alpha: 0.6),
                           blurRadius: 8,
                         )],
                       ),
@@ -444,14 +444,14 @@ class _SplashScreenState extends State<SplashScreen>
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              const Color(0xFF2196F3).withOpacity(0.5),
+                              const Color(0xFF2196F3).withValues(alpha: 0.5),
                             ),
                           ),
                         ),
                         const SizedBox(height: 10),
                         Text('Loading...',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.25),
+                            color: Colors.white.withValues(alpha: 0.25),
                             fontSize: 11,
                             letterSpacing: 0.5,
                           ),
@@ -477,7 +477,7 @@ class _DotGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.025)
+      ..color = Colors.white.withValues(alpha: 0.025)
       ..strokeWidth = 1;
     const double spacing = 28;
     for (double x = 0; x < size.width; x += spacing) {
@@ -508,11 +508,11 @@ class _FeatureIcon extends StatelessWidget {
         Container(
           width: 56, height: 56,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withOpacity(0.22), width: 1),
+            border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
             boxShadow: [BoxShadow(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               blurRadius: 12,
               offset: const Offset(0, 4),
             )],
@@ -522,7 +522,7 @@ class _FeatureIcon extends StatelessWidget {
         const SizedBox(height: 6),
         Text(label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.4),
+            color: Colors.white.withValues(alpha: 0.4),
             fontSize: 10,
             fontWeight: FontWeight.w500,
             letterSpacing: 0.3,
@@ -548,8 +548,8 @@ class _GlowOrb extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: RadialGradient(
           colors: [
-            color.withOpacity(opacity),
-            color.withOpacity(opacity * 0.3),
+            color.withValues(alpha: opacity),
+            color.withValues(alpha: opacity * 0.3),
             Colors.transparent,
           ],
           stops: const [0.0, 0.5, 1.0],

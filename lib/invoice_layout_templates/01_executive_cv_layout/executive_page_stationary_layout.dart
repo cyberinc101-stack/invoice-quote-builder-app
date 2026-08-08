@@ -1,4 +1,4 @@
-﻿// executive_page_stationary_layout.dart
+// executive_page_stationary_layout.dart
 // lib/invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
 //
 // REWRITE: previously a single monolithic InvoiceExecutiveContent widget
@@ -8,7 +8,7 @@
 // onto additional A4 pages instead of shrinking text. Every builder here
 // also accepts an optional InvoiceEditBundle: when null, fields render as
 // plain Text (DocField in read-only mode); when provided, fields render
-// as borderless TextFields bound to the bundle's controllers â€” same
+// as borderless TextFields bound to the bundle's controllers — same
 // widget tree for Preview and Edit, per doc_field.dart's whole reason for
 // existing.
 
@@ -18,14 +18,14 @@ import '../../../models/invoice_data.dart';
 import '../../../widgets/shared_logo_picker.dart' show SharedLogoPicker, LogoShape;
 import '../pagination/doc_field.dart';
 
-// â”€â”€ Page geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Page geometry ─────────────────────────────────────────────────────────────
 const double kPageW    = 595.0;
 const double kPageH    = 842.0;
 const double kPagePadH = 48.0;
 const double kPagePadV = 48.0;
 const double kContentW = kPageW - kPagePadH * 2;
 
-// â”€â”€ Palette â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Palette ───────────────────────────────────────────────────────────────────
 const Color kInk       = Color(0xFF16181D);
 const Color kGrey      = Color(0xFF6B7280);
 const Color kGreyLight = Color(0xFF9CA3AF);
@@ -61,7 +61,7 @@ String _statusLabel(PaymentStatus s) => switch (s) {
 
 const Map<String, String> _kCurrencySymbols = {
   'USD': '\$', 'NZD': '\$', 'AUD': '\$', 'CAD': '\$',
-  'GBP': 'Â£', 'EUR': 'â‚¬', 'JPY': 'Â¥',
+  'GBP': '£', 'EUR': '€', 'JPY': '¥',
 };
 
 String fmtMoney(String currency, double v) {
@@ -73,10 +73,10 @@ String fmtMoney(String currency, double v) {
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// InvoiceEditBundle â€” every controller + callback the editable canvas needs.
+// ─────────────────────────────────────────────────────────────────────────────
+// InvoiceEditBundle — every controller + callback the editable canvas needs.
 // Passing this as null anywhere below means "render read-only."
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 class InvoiceEditBundle {
   final TextEditingController businessNameCtrl;
@@ -149,10 +149,10 @@ class InvoiceEditBundle {
   });
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Full header (page 1 only): identity + INVOICE title/number, Bill-To/meta
 // row, and the column header row above line items.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 Widget buildFullHeader({
   required InvoiceData data,
@@ -191,7 +191,7 @@ Widget buildContinuationHeader({
         children: [
           Text(data.businessName.isEmpty ? 'Your Business' : data.businessName,
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kGrey, fontFamily: ff)),
-          Text('INVOICE #${data.invoiceNumber.isEmpty ? 'â€”' : data.invoiceNumber} (continued)',
+          Text('INVOICE #${data.invoiceNumber.isEmpty ? '—' : data.invoiceNumber} (continued)',
               style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: ff)),
         ],
       ),
@@ -269,7 +269,7 @@ class _HeaderIdentity extends StatelessWidget {
                   style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff),
                 ),
               ] else if (data.businessEmail.isNotEmpty || data.businessPhone.isNotEmpty)
-                Text([data.businessEmail, data.businessPhone].where((s) => s.isNotEmpty).join('   Â·   '),
+                Text([data.businessEmail, data.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
                     style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff)),
             ],
           ),
@@ -290,7 +290,7 @@ class _HeaderIdentity extends StatelessWidget {
                   editable: editable,
                   controller: edit?.invoiceNumberCtrl,
                   onChanged: edit?.onInvoiceNumberChanged,
-                  hint: 'â€”',
+                  hint: '—',
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 10.5, color: accent, fontWeight: FontWeight.w600, fontFamily: ff),
                 ),
@@ -395,7 +395,7 @@ class _BillToMetaRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _statusColor(data.paymentStatus).withOpacity(0.12),
+                  color: _statusColor(data.paymentStatus).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(_statusLabel(data.paymentStatus),
@@ -415,11 +415,11 @@ class _BillToMetaRow extends StatelessWidget {
       children: [
         Text(label, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(value.isEmpty ? 'â€”' : value,
+          Text(value.isEmpty ? '—' : value,
               style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: kInk, fontFamily: ff)),
           if (onTap != null) ...[
             const SizedBox(width: 3),
-            Icon(Icons.edit_calendar_rounded, size: 11, color: accent.withOpacity(0.6)),
+            Icon(Icons.edit_calendar_rounded, size: 11, color: accent.withValues(alpha: 0.6)),
           ],
         ]),
       ],
@@ -448,9 +448,9 @@ class _LineItemsHeaderRow extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// One line-item row â€” this is what gets fed into A4Paginator's `items` list.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// One line-item row — this is what gets fed into A4Paginator's `items` list.
+// ─────────────────────────────────────────────────────────────────────────────
 
 Widget buildLineItemRow({
   required LineItem item,
@@ -523,10 +523,10 @@ Widget buildLineItemRow({
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Footer (last page only): totals block, tax/discount rows (editable inline
 // when a bundle is given), notes panel, thank-you line.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 Widget buildFooterSection({
   required InvoiceData data,
@@ -542,7 +542,7 @@ Widget buildFooterSection({
       Text(label, style: TextStyle(fontSize: bold ? 11 : 10,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
           color: bold ? kInk : kGrey, fontFamily: ff)),
-      Text('${negative ? 'âˆ’' : ''}${fmtMoney(data.currency, v)}',
+      Text('${negative ? '−' : ''}${fmtMoney(data.currency, v)}',
           style: TextStyle(fontSize: bold ? 13 : 10.5,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
               color: bold ? accent : kInk, fontFamily: ff)),
@@ -567,7 +567,7 @@ Widget buildFooterSection({
           ),
           Text('%)', style: TextStyle(fontSize: 10, color: kGrey, fontFamily: ff)),
         ]),
-        Text('${negative ? 'âˆ’' : ''}${fmtMoney(data.currency, amount)}',
+        Text('${negative ? '−' : ''}${fmtMoney(data.currency, amount)}',
             style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: kInk, fontFamily: ff)),
       ]),
     );
@@ -622,7 +622,7 @@ Widget buildFooterSection({
       const SizedBox(height: 10),
       Text(
         data.businessEmail.isNotEmpty
-            ? 'Thank you for your business â€” ${data.businessEmail}'
+            ? 'Thank you for your business — ${data.businessEmail}'
             : 'Thank you for your business',
         style: TextStyle(fontSize: 8.5, color: kGreyLight, fontFamily: ff),
       ),

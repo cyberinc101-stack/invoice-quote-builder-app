@@ -175,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         height: 40,
         decoration: BoxDecoration(
           color: (iconColor ?? Theme.of(context).colorScheme.primary)
-              .withOpacity(0.12),
+              .withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, size: 20,
@@ -243,7 +243,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: Theme.of(context)
                           .colorScheme
                           .primary
-                          .withOpacity(0.12),
+                          .withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
@@ -279,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Switch(
                     value: themeProvider.isDark,
                     onChanged: (_) => themeProvider.toggle(),
-                    activeColor: const Color(0xFF2196F3),
+                    activeThumbColor: const Color(0xFF2196F3),
                   ),
                 ),
                 const Divider(height: 1, indent: 72),
@@ -297,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Switch(
                     value: alertPrefs.alertsEnabled,
                     onChanged: (value) => alertPrefs.setAlertsEnabled(value),
-                    activeColor: const Color(0xFF2196F3),
+                    activeThumbColor: const Color(0xFF2196F3),
                   ),
                 ),
 

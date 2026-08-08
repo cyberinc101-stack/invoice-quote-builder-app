@@ -26,7 +26,7 @@ class InvoicePreviewBottomBar extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -83,12 +83,12 @@ class _FilledBtn extends StatelessWidget {
         height: 50,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [accent, accent.withOpacity(0.80)],
+            colors: [accent, accent.withValues(alpha: 0.80)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: accent.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -125,9 +125,9 @@ class _OutlineBtn extends StatelessWidget {
       child: Container(
         height: 50,
         decoration: BoxDecoration(
-          color: accent.withOpacity(0.06),
+          color: accent.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: accent.withOpacity(0.35), width: 1.5),
+          border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.5),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

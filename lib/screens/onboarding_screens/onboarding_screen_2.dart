@@ -49,7 +49,7 @@ class _OnboardingPage2TemplatesState
             curve: Curves.easeInOut,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [active.top, active.btm.withOpacity(0.85)],
+                colors: [active.top, active.btm.withValues(alpha: 0.85)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -65,7 +65,7 @@ class _OnboardingPage2TemplatesState
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        active.btm.withOpacity(0.25),
+                        active.btm.withValues(alpha: 0.25),
                         Colors.transparent,
                       ]),
                     ),
@@ -99,11 +99,11 @@ class _OnboardingPage2TemplatesState
                                 ),
                                 borderRadius: BorderRadius.circular(14),
                                 border: isAct
-                                    ? Border.all(color: Colors.white.withOpacity(0.35), width: 2)
-                                    : Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                                    ? Border.all(color: Colors.white.withValues(alpha: 0.35), width: 2)
+                                    : Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: tpl.btm.withOpacity(isAct ? 0.6 : 0.2),
+                                    color: tpl.btm.withValues(alpha: isAct ? 0.6 : 0.2),
                                     blurRadius: isAct ? 28 : 8,
                                     offset: const Offset(0, 8),
                                   ),
@@ -115,7 +115,7 @@ class _OnboardingPage2TemplatesState
                                 children: [
                                   CircleAvatar(
                                     radius: isAct ? 10 : 7,
-                                    backgroundColor: Colors.white.withOpacity(0.22),
+                                    backgroundColor: Colors.white.withValues(alpha: 0.22),
                                   ),
                                   const SizedBox(height: 7),
                                   ...List.generate(3, (li) => Padding(
@@ -126,7 +126,7 @@ class _OnboardingPage2TemplatesState
                                           ? [52.0, 38.0, 44.0][li]
                                           : [34.0, 24.0, 30.0][li],
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.4),
+                                        color: Colors.white.withValues(alpha: 0.4),
                                         borderRadius: BorderRadius.circular(2),
                                       ),
                                     ),
@@ -137,10 +137,10 @@ class _OnboardingPage2TemplatesState
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 7, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.15),
+                                        color: Colors.white.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                            color: Colors.white.withOpacity(0.25)),
+                                            color: Colors.white.withValues(alpha: 0.25)),
                                       ),
                                       child: Text(
                                         _t[tpl.tagKey] ?? tpl.tagKey,
@@ -185,7 +185,7 @@ class _OnboardingPage2TemplatesState
                           _t['ob2_tap_hint'] ?? 'Tap any template to preview',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.45),
+                            color: Colors.white.withValues(alpha: 0.45),
                             fontSize: 11,
                           ),
                         ),
@@ -226,7 +226,7 @@ class _OnboardingPage2TemplatesState
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.55,
-                      color: colorScheme.onSurface.withOpacity(0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -268,9 +268,9 @@ class _TagPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
     ),
     child: Text(label,
         style: TextStyle(
@@ -289,9 +289,9 @@ class _StyleTag extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(isDark ? 0.15 : 0.08),
+      color: color.withValues(alpha: isDark ? 0.15 : 0.08),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
     ),
     child: Text(label,
         style: TextStyle(

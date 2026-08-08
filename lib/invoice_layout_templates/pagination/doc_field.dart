@@ -42,7 +42,7 @@ class DocField extends StatelessWidget {
       return Text(
         display,
         style: isEmpty
-            ? style.copyWith(color: style.color?.withOpacity(0.35))
+            ? style.copyWith(color: style.color?.withValues(alpha: 0.35))
             : style,
         textAlign: textAlign,
         softWrap: true,
@@ -64,7 +64,7 @@ class DocField extends StatelessWidget {
         isDense: true,
         isCollapsed: true,
         hintText: hint,
-        hintStyle: style.copyWith(color: style.color?.withOpacity(0.35) ?? Colors.grey),
+        hintStyle: style.copyWith(color: style.color?.withValues(alpha: 0.35) ?? Colors.grey),
         border: InputBorder.none,
         contentPadding: EdgeInsets.zero,
       ),

@@ -95,9 +95,9 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
                     onTap: () => Navigator.pop(context, c),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: c.color.withOpacity(isSelected ? 0.22 : 0.08),
+                        color: c.color.withValues(alpha: isSelected ? 0.22 : 0.08),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: c.color.withOpacity(isSelected ? 0.7 : 0.2), width: isSelected ? 1.6 : 1),
+                        border: Border.all(color: c.color.withValues(alpha: isSelected ? 0.7 : 0.2), width: isSelected ? 1.6 : 1),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                       child: Column(
@@ -197,7 +197,7 @@ class _AddCategoryFormState extends State<_AddCategoryForm> {
               child: Container(
                 width: 36, height: 36,
                 decoration: BoxDecoration(
-                  color: Color(_colorValue).withOpacity(selected ? 0.25 : 0.08),
+                  color: Color(_colorValue).withValues(alpha: selected ? 0.25 : 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: selected ? Border.all(color: Color(_colorValue), width: 1.4) : null,
                 ),

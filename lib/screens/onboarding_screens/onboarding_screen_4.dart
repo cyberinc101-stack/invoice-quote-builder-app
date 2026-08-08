@@ -54,7 +54,7 @@ class OnboardingPage4GetStarted extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        _accent.withOpacity(0.12), Colors.transparent,
+                        _accent.withValues(alpha: 0.12), Colors.transparent,
                       ]),
                     ),
                   ),
@@ -64,7 +64,7 @@ class OnboardingPage4GetStarted extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        const Color(0xFF2979FF).withOpacity(0.10), Colors.transparent,
+                        const Color(0xFF2979FF).withValues(alpha: 0.10), Colors.transparent,
                       ]),
                     ),
                   ),
@@ -75,12 +75,12 @@ class OnboardingPage4GetStarted extends StatelessWidget {
                     width: 80, height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _accent.withOpacity(0.12),
+                      color: _accent.withValues(alpha: 0.12),
                       border: Border.all(
-                          color: _accent.withOpacity(0.45), width: 2),
+                          color: _accent.withValues(alpha: 0.45), width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: _accent.withOpacity(0.2),
+                          color: _accent.withValues(alpha: 0.2),
                           blurRadius: 30, spreadRadius: 4,
                         ),
                       ],
@@ -101,7 +101,7 @@ class OnboardingPage4GetStarted extends StatelessWidget {
                   Text(
                     _t['ob4_visual_subline'] ?? 'Everything you need to land the job.',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 13,
                     ),
                   ),
@@ -185,9 +185,9 @@ class _HighlightCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF8F9FC),
+        color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8F9FC),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: h.color.withOpacity(isDark ? 0.2 : 0.1)),
+        border: Border.all(color: h.color.withValues(alpha: isDark ? 0.2 : 0.1)),
       ),
       child: Row(
         children: [
@@ -195,7 +195,7 @@ class _HighlightCard extends StatelessWidget {
             width: 32, height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: h.color.withOpacity(0.12),
+              color: h.color.withValues(alpha: 0.12),
             ),
             child: Icon(h.icon, color: h.color, size: 15),
           ),
@@ -216,7 +216,7 @@ class _HighlightCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 9.5,
                     height: 1.3,
-                    color: colorScheme.onSurface.withOpacity(0.45),
+                    color: colorScheme.onSurface.withValues(alpha: 0.45),
                   ),
                   maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
@@ -243,16 +243,16 @@ class _StatBubble extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
     decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.08),
+      color: Colors.white.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.white.withOpacity(0.13)),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
     ),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Text(value, style: const TextStyle(
           color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
       const SizedBox(height: 2),
       Text(label, style: TextStyle(
-          color: Colors.white.withOpacity(0.45),
+          color: Colors.white.withValues(alpha: 0.45),
           fontSize: 9, fontWeight: FontWeight.w500)),
     ]),
   );
@@ -267,9 +267,9 @@ class _TagPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
     ),
     child: Text(label,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,

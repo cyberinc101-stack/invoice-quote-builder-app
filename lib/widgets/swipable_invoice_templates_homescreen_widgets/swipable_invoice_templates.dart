@@ -1,4 +1,4 @@
-﻿// lib/widgets/swipable_invoice_templates_homescreen_widgets/swipable_invoice_templates.dart
+// lib/widgets/swipable_invoice_templates_homescreen_widgets/swipable_invoice_templates.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -189,7 +189,7 @@ class _TemplateCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: template.accentColor.withOpacity(isActive ? 0.35 : 0.10),
+              color: template.accentColor.withValues(alpha: isActive ? 0.35 : 0.10),
               blurRadius: isActive ? 22 : 6,
               offset: const Offset(0, 7),
             ),
@@ -207,7 +207,7 @@ class _TemplateCard extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(isActive ? 0.70 : 0.58),
+                      Colors.black.withValues(alpha: isActive ? 0.70 : 0.58),
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -233,7 +233,7 @@ class _TemplateCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(translatedDesc,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.80),
+                          color: Colors.white.withValues(alpha: 0.80),
                           fontSize: 11,
                           shadows: const [Shadow(color: Colors.black38, blurRadius: 6)],
                         )),

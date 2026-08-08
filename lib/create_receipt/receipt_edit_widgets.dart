@@ -97,9 +97,9 @@ class ReceiptField extends StatelessWidget {
           : null,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+        labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         prefixIcon: icon != null
-            ? Icon(icon, size: 20, color: colorScheme.onSurface.withOpacity(0.45))
+            ? Icon(icon, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.45))
             : null,
         suffixIcon: suffix,
         filled: true,
@@ -150,7 +150,7 @@ class ReceiptDateField extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface.withOpacity(0.6))),
+                color: colorScheme.onSurface.withValues(alpha: 0.6))),
         const SizedBox(height: 4),
         GestureDetector(
           onTap: onTap,
@@ -166,7 +166,7 @@ class ReceiptDateField extends StatelessWidget {
             child: Row(
               children: [
                 Icon(Icons.calendar_month_rounded,
-                    size: 18, color: colorScheme.onSurface.withOpacity(0.45)),
+                    size: 18, color: colorScheme.onSurface.withValues(alpha: 0.45)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(value,
@@ -232,7 +232,7 @@ class ReceiptPaymentMethodPicker extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color:
-                    isSelected ? Colors.white : colorScheme.onSurface.withOpacity(0.6),
+                    isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -275,7 +275,7 @@ class ReceiptItemCard extends StatelessWidget {
   InputDecoration _smallDeco(ColorScheme cs, bool isDark, String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.6), fontSize: 12),
+      labelStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 12),
       filled: true,
       fillColor: isDark ? cs.surfaceContainerHighest : const Color(0xFFF9F9F9),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -300,10 +300,10 @@ class ReceiptItemCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 10),
       decoration: BoxDecoration(
         color: isDark
-            ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
             : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -316,7 +316,7 @@ class ReceiptItemCard extends StatelessWidget {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.12),
+                    color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
@@ -340,7 +340,7 @@ class ReceiptItemCard extends StatelessWidget {
                       height: 28,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -358,7 +358,7 @@ class ReceiptItemCard extends StatelessWidget {
               onChanged: (_) => onChanged(),
               decoration: InputDecoration(
                 labelText: 'Description',
-                labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
                 filled: true,
                 fillColor:
                     isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
@@ -410,16 +410,16 @@ class ReceiptItemCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(isDark ? 0.12 : 0.07),
+                      color: accent.withValues(alpha: isDark ? 0.12 : 0.07),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: accent.withOpacity(0.3)),
+                      border: Border.all(color: accent.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Total',
                             style: TextStyle(
-                                fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5))),
+                                fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                         const SizedBox(height: 2),
                         Text('$currencySymbol ${total.toStringAsFixed(2)}',
                             style: TextStyle(
@@ -463,7 +463,7 @@ class ReceiptTotalsCard extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.7))),
+        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
         Text(value,
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
       ],
@@ -480,7 +480,7 @@ class ReceiptTotalsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF0D2A0F) : const Color(0xFFE8F5E9),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.3)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -493,7 +493,7 @@ class ReceiptTotalsCard extends StatelessWidget {
               '-$currencySymbol ${discountAmount.toStringAsFixed(2)}', colorScheme),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Divider(color: accent.withOpacity(0.3), height: 1),
+            child: Divider(color: accent.withValues(alpha: 0.3), height: 1),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -558,7 +558,7 @@ class ReceiptStepNavBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(Icons.arrow_back_rounded,
-                  color: colorScheme.onSurface.withOpacity(0.55), size: 22),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55), size: 22),
             ),
           ),
           const SizedBox(width: 10),
@@ -571,14 +571,14 @@ class ReceiptStepNavBar extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: isLoading
                         ? [Colors.grey.shade400, Colors.grey.shade500]
-                        : [accent.withOpacity(0.85), accent],
+                        : [accent.withValues(alpha: 0.85), accent],
                   ),
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: isLoading
                       ? []
                       : [
                           BoxShadow(
-                              color: accent.withOpacity(0.35),
+                              color: accent.withValues(alpha: 0.35),
                               blurRadius: 10,
                               offset: const Offset(0, 4)),
                         ],

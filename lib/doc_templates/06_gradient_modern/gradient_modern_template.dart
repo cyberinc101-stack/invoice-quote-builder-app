@@ -29,8 +29,8 @@ BoxDecoration _gradientPanelDecoration(Color accent, {double radius = 10}) {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        accent.withOpacity(0.16),
-        accent.withOpacity(0.04),
+        accent.withValues(alpha: 0.16),
+        accent.withValues(alpha: 0.04),
       ],
     ),
   );
@@ -80,7 +80,7 @@ Widget _gradientModernFullHeader(DocTemplateAdapter a) {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: a.accent.withOpacity(0.35), width: 1),
+                    border: Border.all(color: a.accent.withValues(alpha: 0.35), width: 1),
                   ),
                   child: Text('#${a.docNumber.isEmpty ? '-' : a.docNumber}',
                       style: TextStyle(fontSize: 9.5, color: a.accent,
@@ -175,9 +175,9 @@ class _GradientModernMetaRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: a.statusColor.withOpacity(0.12),
+                  color: a.statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: a.statusColor.withOpacity(0.4), width: 1),
+                  border: Border.all(color: a.statusColor.withValues(alpha: 0.4), width: 1),
                 ),
                 child: Text(a.statusLabel, style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
                     letterSpacing: 1.0, color: a.statusColor, fontFamily: a.fontFamily)),

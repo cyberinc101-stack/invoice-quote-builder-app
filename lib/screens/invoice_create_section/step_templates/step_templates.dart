@@ -253,7 +253,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     color:
-                                        colorScheme.onSurface.withOpacity(0.45),
+                                        colorScheme.onSurface.withValues(alpha: 0.45),
                                   ),
                                 ),
                               ],
@@ -281,7 +281,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                                   fontWeight: FontWeight.w600,
                                   color: atMax
                                       ? const Color(0xFFEF5350)
-                                      : colorScheme.onSurface.withOpacity(0.45),
+                                      : colorScheme.onSurface.withValues(alpha: 0.45),
                                 ),
                               ),
                             ),
@@ -300,7 +300,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isDark
-                                ? _accent.withOpacity(0.4)
+                                ? _accent.withValues(alpha: 0.4)
                                 : const Color(0xFF90CAF9),
                           ),
                         ),
@@ -351,9 +351,9 @@ class _StepTemplatesState extends State<StepTemplates> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: atMax
-                                  ? colorScheme.outline.withOpacity(0.3)
+                                  ? colorScheme.outline.withValues(alpha: 0.3)
                                   : (isDark
-                                      ? _accent.withOpacity(0.5)
+                                      ? _accent.withValues(alpha: 0.5)
                                       : const Color(0xFF90CAF9)),
                               width: 1.5,
                             ),
@@ -365,7 +365,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                               Icon(
                                 Icons.add_rounded,
                                 color: atMax
-                                    ? colorScheme.onSurface.withOpacity(0.3)
+                                    ? colorScheme.onSurface.withValues(alpha: 0.3)
                                     : _accent,
                                 size: 22,
                               ),
@@ -377,7 +377,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                                       : 'Add New Template',
                                   style: TextStyle(
                                     color: atMax
-                                        ? colorScheme.onSurface.withOpacity(0.3)
+                                        ? colorScheme.onSurface.withValues(alpha: 0.3)
                                         : _accent,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 15,
@@ -426,7 +426,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
-                                color: _accent.withOpacity(0.12),
+                                color: _accent.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -436,7 +436,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                                   fontWeight: FontWeight.w600,
                                   color: _selectedIndex != null
                                       ? _accent
-                                      : colorScheme.onSurface.withOpacity(0.45),
+                                      : colorScheme.onSurface.withValues(alpha: 0.45),
                                 ),
                               ),
                             ),
@@ -483,7 +483,7 @@ class _StepTemplatesState extends State<StepTemplates> {
                           'Tap a card to select it for this invoice.',
                           style: TextStyle(
                             fontSize: 11,
-                            color: colorScheme.onSurface.withOpacity(0.45),
+                            color: colorScheme.onSurface.withValues(alpha: 0.45),
                           ),
                         ),
                       ],
@@ -588,19 +588,19 @@ class _TemplateCard extends StatelessWidget {
         color: isSelected
             ? (isDark ? const Color(0xFF0D1B2E) : Colors.white)
             : (isDark
-                ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                 : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? _accent.withOpacity(isDark ? 0.6 : 0.5)
-              : colorScheme.outline.withOpacity(0.3),
+              ? _accent.withValues(alpha: isDark ? 0.6 : 0.5)
+              : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: _accent.withOpacity(isDark ? 0.12 : 0.08),
+                  color: _accent.withValues(alpha: isDark ? 0.12 : 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 )
@@ -627,7 +627,7 @@ class _TemplateCard extends StatelessWidget {
                   border: Border.all(
                     color: isSelected
                         ? _accent
-                        : colorScheme.onSurface.withOpacity(0.3),
+                        : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -646,13 +646,13 @@ class _TemplateCard extends StatelessWidget {
                   borderRadius: shape.radiusFor(46),
                   color: isSelected
                       ? (isDark
-                          ? _accent.withOpacity(0.15)
+                          ? _accent.withValues(alpha: 0.15)
                           : const Color(0xFFE3F2FD))
-                      : colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   border: Border.all(
                     color: isSelected
-                        ? _accent.withOpacity(0.4)
-                        : colorScheme.outline.withOpacity(0.3),
+                        ? _accent.withValues(alpha: 0.4)
+                        : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -672,7 +672,7 @@ class _TemplateCard extends StatelessWidget {
                         Icons.description_rounded,
                         color: isSelected
                             ? _accent
-                            : colorScheme.onSurface.withOpacity(0.3),
+                            : colorScheme.onSurface.withValues(alpha: 0.3),
                         size: 22,
                       ),
               ),
@@ -690,7 +690,7 @@ class _TemplateCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: isSelected
                             ? colorScheme.onSurface
-                            : colorScheme.onSurface.withOpacity(0.4),
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (template.businessInfo.name.isNotEmpty) ...[
@@ -701,7 +701,7 @@ class _TemplateCard extends StatelessWidget {
                           fontSize: 13,
                           color: isSelected
                               ? _accent
-                              : colorScheme.onSurface.withOpacity(0.3),
+                              : colorScheme.onSurface.withValues(alpha: 0.3),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -712,7 +712,7 @@ class _TemplateCard extends StatelessWidget {
                         template.businessInfo.email,
                         style: TextStyle(
                           fontSize: 11,
-                          color: colorScheme.onSurface.withOpacity(0.45),
+                          color: colorScheme.onSurface.withValues(alpha: 0.45),
                         ),
                       ),
                     ],
@@ -723,9 +723,9 @@ class _TemplateCard extends StatelessWidget {
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? _accent.withOpacity(isDark ? 0.2 : 0.1)
+                            ? _accent.withValues(alpha: isDark ? 0.2 : 0.1)
                             : colorScheme.surfaceContainerHighest
-                                .withOpacity(0.5),
+                                .withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -735,7 +735,7 @@ class _TemplateCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           color: isSelected
                               ? _accent
-                              : colorScheme.onSurface.withOpacity(0.3),
+                              : colorScheme.onSurface.withValues(alpha: 0.3),
                         ),
                       ),
                     ),
@@ -745,7 +745,7 @@ class _TemplateCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: _accent.withOpacity(isDark ? 0.18 : 0.1),
+                          color: _accent.withValues(alpha: isDark ? 0.18 : 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
@@ -772,7 +772,7 @@ class _TemplateCard extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? _accent.withOpacity(0.12)
+                            ? _accent.withValues(alpha: 0.12)
                             : const Color(0xFFE3F2FD),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -788,7 +788,7 @@ class _TemplateCard extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.orange.withOpacity(0.12)
+                            ? Colors.orange.withValues(alpha: 0.12)
                             : const Color(0xFFFFF3E0),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -804,7 +804,7 @@ class _TemplateCard extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1033,7 +1033,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
             fontWeight: FontWeight.w500,
             color: current > max
                 ? const Color(0xFFF44336)
-                : colorScheme.onSurface.withOpacity(0.35),
+                : colorScheme.onSurface.withValues(alpha: 0.35),
           ),
         ),
       ),
@@ -1047,10 +1047,10 @@ class _TemplateSheetState extends State<_TemplateSheet> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(10),
         color: isDark
-            ? colorScheme.surfaceContainerHighest.withOpacity(0.3)
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
             : Colors.white,
       ),
       child: SwitchListTile(
@@ -1059,7 +1059,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
         title: Row(
           children: [
-            Icon(icon, size: 18, color: colorScheme.onSurface.withOpacity(0.55)),
+            Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
             const SizedBox(width: 10),
             Text(label,
                 style: TextStyle(
@@ -1067,7 +1067,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
           ],
         ),
         value: enabled,
-        activeColor: _accent,
+        activeThumbColor: _accent,
         onChanged: (v) => setState(() => _enabledFields[key] = v),
       ),
     );
@@ -1141,7 +1141,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                                       : const Color(0xFFE3F2FD),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                      color: _accent.withOpacity(0.3)),
+                                      color: _accent.withValues(alpha: 0.3)),
                                 ),
                                 child: const Text(
                                   'Editing',
@@ -1172,15 +1172,15 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
                         // Currency dropdown
                         DropdownButtonFormField<String>(
-                          value: _currency,
+                          initialValue: _currency,
                           decoration: InputDecoration(
                             labelText: 'Currency',
                             labelStyle: TextStyle(
-                                color: colorScheme.onSurface.withOpacity(0.6)),
+                                color: colorScheme.onSurface.withValues(alpha: 0.6)),
                             prefixIcon: Icon(Icons.attach_money_rounded,
                                 size: 20,
                                 color:
-                                    colorScheme.onSurface.withOpacity(0.45)),
+                                    colorScheme.onSurface.withValues(alpha: 0.45)),
                             filled: true,
                             fillColor: isDark
                                 ? colorScheme.surfaceContainerHighest
@@ -1378,7 +1378,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           style: TextStyle(
                             fontSize: 12,
                             color:
-                                colorScheme.onSurface.withOpacity(0.45),
+                                colorScheme.onSurface.withValues(alpha: 0.45),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -1496,13 +1496,13 @@ class _SheetField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         labelStyle:
-            TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+            TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,
         hintStyle: TextStyle(
-            color: colorScheme.onSurface.withOpacity(0.35), fontSize: 13),
+            color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
         prefixIcon: icon != null
             ? Icon(icon, size: 20,
-                color: colorScheme.onSurface.withOpacity(0.45))
+                color: colorScheme.onSurface.withValues(alpha: 0.45))
             : null,
         suffixIcon: atLimit
             ? Tooltip(

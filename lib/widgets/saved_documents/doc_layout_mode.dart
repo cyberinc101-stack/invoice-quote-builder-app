@@ -83,16 +83,16 @@ class _LayoutToggleButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          color: cs.onSurface.withOpacity(0.06),
+          color: cs.onSurface.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: cs.outline.withOpacity(0.25)),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(selected.icon, size: 15, color: cs.onSurface.withOpacity(0.7)),
+            Icon(selected.icon, size: 15, color: cs.onSurface.withValues(alpha: 0.7)),
             const SizedBox(width: 3),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: cs.onSurface.withOpacity(0.5)),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: cs.onSurface.withValues(alpha: 0.5)),
           ],
         ),
       ),

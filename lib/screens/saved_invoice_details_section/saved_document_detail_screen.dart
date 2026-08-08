@@ -501,9 +501,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           onTap: () => Navigator.pop(context),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.12)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
             child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
           ),
@@ -517,9 +517,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
               ),
               child: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
             ),
@@ -588,7 +588,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _accent.withOpacity(0.12),
+                    color: _accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -606,7 +606,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               color: isDark ? const Color(0xFF1E2235) : Colors.white,
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
-                BoxShadow(color: _accent.withOpacity(isDark ? 0.15 : 0.1), blurRadius: 20, offset: const Offset(0, 6)),
+                BoxShadow(color: _accent.withValues(alpha: isDark ? 0.15 : 0.1), blurRadius: 20, offset: const Offset(0, 6)),
               ],
             ),
             child: Column(
@@ -617,20 +617,20 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
                 const SizedBox(height: 4),
                 Text('To: ${state.clientName.isEmpty ? '—' : state.clientName}',
-                    style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.55))),
+                    style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.55))),
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Icon(Icons.calendar_today_rounded, size: 13, color: colorScheme.onSurface.withOpacity(0.35)),
+                    Icon(Icons.calendar_today_rounded, size: 13, color: colorScheme.onSurface.withValues(alpha: 0.35)),
                     const SizedBox(width: 5),
                     Text(state.primaryDate.isEmpty ? '—' : state.primaryDate,
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                     if (state.secondaryDateLabel != null) ...[
                       const SizedBox(width: 14),
-                      Icon(Icons.event_rounded, size: 13, color: colorScheme.onSurface.withOpacity(0.35)),
+                      Icon(Icons.event_rounded, size: 13, color: colorScheme.onSurface.withValues(alpha: 0.35)),
                       const SizedBox(width: 5),
                       Text('${state.secondaryDateLabel}: ${state.secondaryDate ?? '—'}',
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                     ],
                   ],
                 ),
@@ -659,14 +659,14 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               color: isDark ? const Color(0xFF1E2235) : Colors.white,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+                BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
               ],
             ),
             child: state.items.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Text('No line items',
-                        style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4))),
+                        style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4))),
                   )
                 : Column(
                     children: [
@@ -679,7 +679,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                           currency: state.currency,
                         ),
                         if (i != state.items.length - 1)
-                          Divider(height: 1, color: isDark ? Colors.white.withOpacity(0.07) : const Color(0xFFF0F0F0)),
+                          Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFFF0F0F0)),
                       ],
                     ],
                   ),
@@ -708,7 +708,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               color: isDark ? const Color(0xFF1E2235) : Colors.white,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+                BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
               ],
             ),
             child: Column(
@@ -741,7 +741,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     alignment: Alignment.centerLeft,
                     child: Text(
                       state.notes,
-                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55)),
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55)),
                     ),
                   ),
                 ],
@@ -1169,10 +1169,10 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
             decoration: InputDecoration(
               hintText: 'Enter a name',
-              hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.35)),
+              hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35)),
               filled: true,
               fillColor: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF8F9FC),
-              counterStyle: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.35)),
+              counterStyle: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.35)),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outline)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outline)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _accent, width: 2)),
@@ -1183,7 +1183,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.45))),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1237,12 +1237,12 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
         content: Text(
           'This will permanently delete "$_currentTitle". This action cannot be undone.',
-          style: TextStyle(fontSize: 14, color: colorScheme.onSurface.withOpacity(0.6)),
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurface.withValues(alpha: 0.6)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.45))),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1301,9 +1301,9 @@ class _SecondaryActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Ink(
           decoration: BoxDecoration(
-            color: accent.withOpacity(0.1),
+            color: accent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withOpacity(0.35), width: 1.2),
+            border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.2),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1353,7 +1353,7 @@ class _HeaderBackground extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [accentColor, accentColor.withOpacity(0.72)],
+          colors: [accentColor, accentColor.withValues(alpha: 0.72)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1365,19 +1365,19 @@ class _HeaderBackground extends StatelessWidget {
             top: -50, right: -50,
             child: Container(
               width: 160, height: 160,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.06)),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)),
             ),
           ),
           Positioned(
             bottom: -20, left: -20,
             child: Container(
               width: 90, height: 90,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.05)),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
             ),
           ),
           Positioned(
             right: -10, bottom: -10,
-            child: Icon(typeIcon, size: 110, color: Colors.white.withOpacity(0.06)),
+            child: Icon(typeIcon, size: 110, color: Colors.white.withValues(alpha: 0.06)),
           ),
           Padding(
             padding: const EdgeInsets.only(top: topInset),
@@ -1390,9 +1390,9 @@ class _HeaderBackground extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.18),
+                      color: statusColor.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor.withOpacity(0.45), width: 1),
+                      border: Border.all(color: statusColor.withValues(alpha: 0.45), width: 1),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1418,20 +1418,20 @@ class _HeaderBackground extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), borderRadius: BorderRadius.circular(6)),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(typeIcon, size: 10, color: Colors.white.withOpacity(0.85)),
+                            Icon(typeIcon, size: 10, color: Colors.white.withValues(alpha: 0.85)),
                             const SizedBox(width: 4),
-                            Text(typeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.9))),
+                            Text(typeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
                           ],
                         ),
                       ),
                       const SizedBox(width: 10),
-                      Icon(Icons.calendar_today_rounded, size: 10, color: Colors.white.withOpacity(0.55)),
+                      Icon(Icons.calendar_today_rounded, size: 10, color: Colors.white.withValues(alpha: 0.55)),
                       const SizedBox(width: 4),
-                      Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.65), fontWeight: FontWeight.w500)),
+                      Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.65), fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ],

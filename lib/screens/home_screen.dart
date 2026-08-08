@@ -1,4 +1,4 @@
-﻿// home_screen.dart
+// home_screen.dart
 // lib/screens/home_screen.dart
 //
 // SLIMMED (earlier pass): _SavedDocumentsSection and every List/Grid/
@@ -163,9 +163,9 @@ class HomeScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.15)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                   ),
                   child: const Text(
                     'Professional documents in minutes',
@@ -483,7 +483,7 @@ class _MiniDocIcon extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.4),
+              color: color.withValues(alpha: 0.4),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -497,7 +497,7 @@ class _MiniDocIcon extends StatelessWidget {
               width: 16,
               height: 16,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Center(
@@ -519,7 +519,7 @@ class _MiniDocIcon extends StatelessWidget {
                 height: 3,
                 width: i == 0 ? 32 : (i == 1 ? 24 : (i == 2 ? 28 : 18)),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.35),
+                  color: Colors.white.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

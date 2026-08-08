@@ -265,7 +265,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               IconButton(
                 icon: const Icon(Icons.chevron_left_rounded),
                 onPressed: () => setState(() => _displayedYear--),
-                color: colorScheme.onSurface.withOpacity(0.6),
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
               SizedBox(
                 width: 80,
@@ -278,7 +278,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               IconButton(
                 icon: const Icon(Icons.chevron_right_rounded),
                 onPressed: () => setState(() => _displayedYear++),
-                color: colorScheme.onSurface.withOpacity(0.6),
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ],
           ),
@@ -296,7 +296,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   padding: const EdgeInsets.only(right: 8),
                   child: Material(
                     color: isDisplayed
-                        ? widget.accent.withOpacity(0.14)
+                        ? widget.accent.withValues(alpha: 0.14)
                         : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
                     borderRadius: BorderRadius.circular(10),
                     child: InkWell(
@@ -317,7 +317,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: isDisplayed ? widget.accent : colorScheme.onSurface.withOpacity(0.6),
+                            color: isDisplayed ? widget.accent : colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ),
@@ -357,7 +357,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       border: isCurrent && !isSelected
-                          ? Border.all(color: widget.accent.withOpacity(0.5), width: 1.2)
+                          ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -366,7 +366,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : colorScheme.onSurface.withOpacity(0.75),
+                        color: isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
                       ),
                     ),
                   ),
@@ -380,7 +380,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: widget.accent.withOpacity(0.08),
+                color: widget.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -422,7 +422,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   child: Text(
                     w,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.4)),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                   ),
                 ),
             ],
@@ -465,7 +465,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 key: ValueKey('day-cell-$cellKey'),
                 color: isSelected
                     ? widget.accent
-                    : (isInRange ? widget.accent.withOpacity(0.18) : Colors.transparent),
+                    : (isInRange ? widget.accent.withValues(alpha: 0.18) : Colors.transparent),
                 shape: isInRange && !isSelected
                     ? const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(4)))
                     : const CircleBorder(),
@@ -476,7 +476,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                     decoration: BoxDecoration(
                       shape: isInRange && !isSelected ? BoxShape.rectangle : BoxShape.circle,
                       border: isToday && !isSelected
-                          ? Border.all(color: widget.accent.withOpacity(0.5), width: 1.2)
+                          ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -485,7 +485,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : colorScheme.onSurface.withOpacity(0.75),
+                        color: isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
                       ),
                     ),
                   ),
@@ -505,7 +505,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     side: BorderSide(color: colorScheme.outline),
                   ),
-                  child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w700)),
+                  child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -529,7 +529,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: widget.accent,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: widget.accent.withOpacity(0.3),
+                    disabledBackgroundColor: widget.accent.withValues(alpha: 0.3),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
@@ -571,7 +571,7 @@ class _ModeTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : colorScheme.onSurface.withOpacity(0.6),
+            color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ),

@@ -189,7 +189,7 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         height: 4,
                         margin: const EdgeInsets.only(bottom: 16),
                         decoration: BoxDecoration(
-                          color: cs.onSurface.withOpacity(0.15),
+                          color: cs.onSurface.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -380,7 +380,7 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: Text('–',
                                 style: TextStyle(
-                                    fontSize: 14, color: cs.onSurface.withOpacity(0.35))),
+                                    fontSize: 14, color: cs.onSurface.withValues(alpha: 0.35))),
                           ),
                           Expanded(
                             child: _SheetAmountField(
@@ -447,9 +447,9 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                   decoration: InputDecoration(
                     isDense: true,
                     hintText: 'Search by title, client, or number',
-                    hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4)),
+                    hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
                     prefixIcon:
-                        Icon(Icons.search_rounded, size: 20, color: cs.onSurface.withOpacity(0.5)),
+                        Icon(Icons.search_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.5)),
                     suffixIcon: _searchController.text.isEmpty
                         ? null
                         : IconButton(
@@ -461,19 +461,19 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                             },
                           ),
                     filled: true,
-                    fillColor: cs.onSurface.withOpacity(0.045),
+                    fillColor: cs.onSurface.withValues(alpha: 0.045),
                     contentPadding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: cs.outline.withOpacity(0.18)),
+                      borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.18)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: cs.primary.withOpacity(0.55)),
+                      borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.55)),
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: cs.outline.withOpacity(0.18)),
+                      borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.18)),
                     ),
                   ),
                   style: const TextStyle(fontSize: 13),
@@ -529,7 +529,7 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                   child: Container(
                     width: 1,
                     height: 18,
-                    color: cs.outline.withOpacity(0.2),
+                    color: cs.outline.withValues(alpha: 0.2),
                   ),
                 ),
 
@@ -618,10 +618,10 @@ class _FiltersButton extends StatelessWidget {
         height: 42,
         width: 42,
         decoration: BoxDecoration(
-          color: active ? cs.primary.withOpacity(0.12) : cs.onSurface.withOpacity(0.045),
+          color: active ? cs.primary.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.045),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? cs.primary.withOpacity(0.45) : cs.outline.withOpacity(0.18),
+            color: active ? cs.primary.withValues(alpha: 0.45) : cs.outline.withValues(alpha: 0.18),
           ),
         ),
         child: Stack(
@@ -631,7 +631,7 @@ class _FiltersButton extends StatelessWidget {
               child: Icon(
                 Icons.tune_rounded,
                 size: 20,
-                color: active ? cs.primary : cs.onSurface.withOpacity(0.6),
+                color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
               ),
             ),
             if (active)
@@ -678,10 +678,10 @@ class _Pill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? cs.primary : cs.onSurface.withOpacity(0.045),
+          color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.045),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.18),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.18),
           ),
         ),
         child: Text(
@@ -689,7 +689,7 @@ class _Pill extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: selected ? cs.onPrimary : cs.onSurface.withOpacity(0.68),
+            color: selected ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.68),
           ),
         ),
       ),
@@ -722,10 +722,10 @@ class _QuickPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? cs.primary : cs.onSurface.withOpacity(0.045),
+          color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.045),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.18),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.18),
           ),
         ),
         child: Text(
@@ -733,7 +733,7 @@ class _QuickPill extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: selected ? cs.onPrimary : cs.onSurface.withOpacity(0.68),
+            color: selected ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.68),
           ),
         ),
       ),
@@ -762,7 +762,7 @@ class _SheetSection extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: cs.onSurface.withOpacity(0.55),
+              color: cs.onSurface.withValues(alpha: 0.55),
               letterSpacing: 0.2,
             ),
           ),
@@ -798,9 +798,9 @@ class _SheetDropdown<T> extends StatelessWidget {
       height: 46,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: cs.onSurface.withOpacity(0.045),
+        color: cs.onSurface.withValues(alpha: 0.045),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outline.withOpacity(0.18)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
@@ -808,9 +808,9 @@ class _SheetDropdown<T> extends StatelessWidget {
           isExpanded: true,
           isDense: true,
           hint: hint != null
-              ? Text(hint!, style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.6)))
+              ? Text(hint!, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)))
               : null,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: cs.onSurface.withOpacity(0.5)),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.5)),
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
           items: icon == null
               ? items
@@ -820,7 +820,7 @@ class _SheetDropdown<T> extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(icon, size: 14, color: cs.onSurface.withOpacity(0.5)),
+                            Icon(icon, size: 14, color: cs.onSurface.withValues(alpha: 0.5)),
                             const SizedBox(width: 6),
                             Flexible(child: item.child),
                           ],
@@ -854,9 +854,9 @@ class _SheetAmountField extends StatelessWidget {
       height: 46,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: cs.onSurface.withOpacity(0.045),
+        color: cs.onSurface.withValues(alpha: 0.045),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outline.withOpacity(0.18)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
       ),
       alignment: Alignment.center,
       child: TextField(
@@ -867,11 +867,11 @@ class _SheetAmountField extends StatelessWidget {
           isCollapsed: true,
           prefixIcon: Padding(
             padding: const EdgeInsets.only(right: 6),
-            child: Icon(Icons.attach_money_rounded, size: 16, color: cs.onSurface.withOpacity(0.45)),
+            child: Icon(Icons.attach_money_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
           hintText: hint,
-          hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.35)),
+          hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.35)),
           border: InputBorder.none,
         ),
         onSubmitted: (_) => onSubmit(),

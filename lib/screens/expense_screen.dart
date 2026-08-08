@@ -113,7 +113,7 @@ class ExpenseScreen extends StatelessWidget {
       body: expenses.isEmpty
           ? Center(
               child: Text('No expenses yet — tap "Add expense" to start.',
-                  style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5))),
+                  style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5))),
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -125,9 +125,9 @@ class ExpenseScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(_monthLabel(grouped[key]!.first.date),
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withOpacity(0.55))),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withValues(alpha: 0.55))),
                         Text(_monthTotalLabel(grouped[key]!),
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withOpacity(0.75))),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: colorScheme.onSurface.withValues(alpha: 0.75))),
                       ],
                     ),
                   ),
@@ -230,7 +230,7 @@ class _BulkExportSheetState extends State<_BulkExportSheet> {
       return ListTile(
         leading: Icon(icon, color: kExpenseAccent),
         title: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: colorScheme.onSurface)),
-        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.5))),
         onTap: _busy ? null : onTap,
       );
     }
@@ -313,7 +313,7 @@ class _ExpenseTile extends StatelessWidget {
               children: [
                 Container(
                   width: 40, height: 40,
-                  decoration: BoxDecoration(color: category.color.withOpacity(0.14), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: category.color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
                   child: Icon(category.icon, size: 18, color: category.color),
                 ),
                 const SizedBox(width: 12),
@@ -324,7 +324,7 @@ class _ExpenseTile extends StatelessWidget {
                       Text(expense.vendor.isEmpty ? '(No vendor)' : expense.vendor,
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: colorScheme.onSurface)),
                       const SizedBox(height: 2),
-                      Text(category.name, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.5))),
+                      Text(category.name, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                     ],
                   ),
                 ),
@@ -656,7 +656,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                     Icon(category.icon, size: 18, color: category.color),
                     const SizedBox(width: 10),
                     Expanded(child: Text(category.name, style: TextStyle(color: colorScheme.onSurface))),
-                    Icon(Icons.keyboard_arrow_down_rounded, color: colorScheme.onSurface.withOpacity(0.5)),
+                    Icon(Icons.keyboard_arrow_down_rounded, color: colorScheme.onSurface.withValues(alpha: 0.5)),
                   ],
                 ),
               ),
@@ -669,7 +669,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                 decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_today_rounded, size: 16, color: colorScheme.onSurface.withOpacity(0.5)),
+                    Icon(Icons.calendar_today_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.5)),
                     const SizedBox(width: 10),
                     Text('${_date.day}/${_date.month}/${_date.year}', style: TextStyle(color: colorScheme.onSurface)),
                   ],

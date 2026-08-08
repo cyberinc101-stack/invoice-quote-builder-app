@@ -137,7 +137,7 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        _accent.withOpacity(0.1), Colors.transparent,
+                        _accent.withValues(alpha: 0.1), Colors.transparent,
                       ]),
                     ),
                   ),
@@ -157,10 +157,10 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                           decoration: BoxDecoration(
                             color: const Color(0xFF151E2E),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withOpacity(0.07)),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF2979FF).withOpacity(0.12),
+                                color: const Color(0xFF2979FF).withValues(alpha: 0.12),
                                 blurRadius: 32, spreadRadius: 2,
                               ),
                             ],
@@ -173,20 +173,20 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                               Row(children: [
                                 CircleAvatar(
                                   radius: 12,
-                                  backgroundColor: const Color(0xFF2979FF).withOpacity(0.25),
+                                  backgroundColor: const Color(0xFF2979FF).withValues(alpha: 0.25),
                                 ),
                                 const SizedBox(width: 8),
                                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Container(height: 5, width: 70,
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color: Colors.white.withValues(alpha: 0.7),
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Container(height: 3, width: 48,
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.3),
+                                      color: Colors.white.withValues(alpha: 0.3),
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),
@@ -205,9 +205,9 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 5),
                                       decoration: BoxDecoration(
-                                        color: c.withOpacity(0.1),
+                                        color: c.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: c.withOpacity(0.25)),
+                                        border: Border.all(color: c.withValues(alpha: 0.25)),
                                       ),
                                       child: Row(children: [
                                         Icon(_sectionIcon(key), size: 9, color: c),
@@ -217,13 +217,13 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                                           style: TextStyle(
                                             fontSize: 8.5,
                                             fontWeight: FontWeight.w600,
-                                            color: Colors.white.withOpacity(0.75),
+                                            color: Colors.white.withValues(alpha: 0.75),
                                           ),
                                         ),
                                         const Spacer(),
                                         Container(width: 20, height: 2.5,
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.12),
+                                            color: Colors.white.withValues(alpha: 0.12),
                                             borderRadius: BorderRadius.circular(2),
                                           ),
                                         ),
@@ -251,7 +251,7 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                                     gradient: LinearGradient(
                                       colors: [
                                         Colors.transparent,
-                                        Colors.white.withOpacity(0.08),
+                                        Colors.white.withValues(alpha: 0.08),
                                         Colors.transparent,
                                       ],
                                     ),
@@ -320,7 +320,7 @@ class _OnboardingPage3BuildState extends State<OnboardingPage3Build>
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.55,
-                      color: colorScheme.onSurface.withOpacity(0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -367,11 +367,11 @@ class _StepTile extends StatelessWidget {
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: highlight
-            ? step.color.withOpacity(isDark ? 0.14 : 0.07)
-            : (isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF8F9FC)),
+            ? step.color.withValues(alpha: isDark ? 0.14 : 0.07)
+            : (isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8F9FC)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: step.color.withOpacity(highlight ? 0.35 : 0.1),
+          color: step.color.withValues(alpha: highlight ? 0.35 : 0.1),
         ),
       ),
       child: Row(
@@ -381,7 +381,7 @@ class _StepTile extends StatelessWidget {
             width: 26, height: 26,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: step.color.withOpacity(0.12),
+              color: step.color.withValues(alpha: 0.12),
             ),
             child: Icon(step.icon, size: 13, color: step.color),
           ),
@@ -401,7 +401,7 @@ class _StepTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 9.5,
                     height: 1.35,
-                    color: colorScheme.onSurface.withOpacity(0.45),
+                    color: colorScheme.onSurface.withValues(alpha: 0.45),
                   ),
                   maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
@@ -422,9 +422,9 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.12),
+      color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.35)),
+      border: Border.all(color: color.withValues(alpha: 0.35)),
     ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, color: color, size: 11),
@@ -444,9 +444,9 @@ class _TagPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
     ),
     child: Text(label,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,

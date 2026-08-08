@@ -32,7 +32,7 @@ class QrCodeDisplay extends StatelessWidget {
         color: isDark ? const Color(0xFF1E2235) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: accentColor.withOpacity(isDark ? 0.18 : 0.1), blurRadius: 20, offset: const Offset(0, 6)),
+          BoxShadow(color: accentColor.withValues(alpha: isDark ? 0.18 : 0.1), blurRadius: 20, offset: const Offset(0, 6)),
         ],
       ),
       child: Column(
@@ -46,7 +46,7 @@ class QrCodeDisplay extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accentColor.withOpacity(0.25), width: 1.2),
+              border: Border.all(color: accentColor.withValues(alpha: 0.25), width: 1.2),
             ),
             child: QrImageView(
               data: data,

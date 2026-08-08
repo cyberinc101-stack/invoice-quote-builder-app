@@ -282,13 +282,13 @@ class _AlertFilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: typeDisabled
-              ? cs.onSurface.withOpacity(0.03)
-              : (selected ? color : cs.onSurface.withOpacity(0.045)),
+              ? cs.onSurface.withValues(alpha: 0.03)
+              : (selected ? color : cs.onSurface.withValues(alpha: 0.045)),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: typeDisabled
-                ? cs.outline.withOpacity(0.12)
-                : (selected ? color : cs.outline.withOpacity(0.18)),
+                ? cs.outline.withValues(alpha: 0.12)
+                : (selected ? color : cs.outline.withValues(alpha: 0.18)),
           ),
         ),
         child: Row(
@@ -298,10 +298,10 @@ class _AlertFilterChip extends StatelessWidget {
               typeDisabled ? Icons.notifications_off_outlined : _alertFilterIcon(filter),
               size: 13,
               color: typeDisabled
-                  ? cs.onSurface.withOpacity(0.25)
+                  ? cs.onSurface.withValues(alpha: 0.25)
                   : (selected
                       ? Colors.white
-                      : (isEmptyAndUnselected ? cs.onSurface.withOpacity(0.3) : color)),
+                      : (isEmptyAndUnselected ? cs.onSurface.withValues(alpha: 0.3) : color)),
             ),
             const SizedBox(width: 5),
             Text(
@@ -310,10 +310,10 @@ class _AlertFilterChip extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: typeDisabled
-                    ? cs.onSurface.withOpacity(0.25)
+                    ? cs.onSurface.withValues(alpha: 0.25)
                     : (selected
                         ? Colors.white
-                        : (isEmptyAndUnselected ? cs.onSurface.withOpacity(0.35) : cs.onSurface.withOpacity(0.68))),
+                        : (isEmptyAndUnselected ? cs.onSurface.withValues(alpha: 0.35) : cs.onSurface.withValues(alpha: 0.68))),
               ),
             ),
           ],
@@ -337,17 +337,17 @@ class _DisabledState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.notifications_off_rounded, size: 48, color: cs.onSurface.withOpacity(0.3)),
+            Icon(Icons.notifications_off_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.3)),
             const SizedBox(height: 12),
             Text(
               'Alerts are turned off',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.6)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
             ),
             const SizedBox(height: 4),
             Text(
               "You won't see overdue, expiring, or draft nudges until you turn this back on.",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
             ),
             const SizedBox(height: 16),
             FilledButton(
@@ -409,18 +409,18 @@ class _EmptyState extends StatelessWidget {
                   ? Icons.notifications_off_outlined
                   : (filter == AlertFilter.all ? Icons.notifications_off_outlined : _alertFilterIcon(filter)),
               size: 48,
-              color: cs.onSurface.withOpacity(0.3),
+              color: cs.onSurface.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 12),
             Text(
               copy.title,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.6)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
             ),
             const SizedBox(height: 4),
             Text(
               copy.subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
             ),
             if (isTypeDisabled) ...[
               const SizedBox(height: 16),
@@ -483,7 +483,7 @@ class _AlertCardWrapper extends StatelessWidget {
         padding: const EdgeInsets.only(right: 20),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFD32F2F).withOpacity(0.15),
+          color: const Color(0xFFD32F2F).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
@@ -575,10 +575,10 @@ class _AlertCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outline.withOpacity(0.2)),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -591,7 +591,7 @@ class _AlertCard extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: _color.withOpacity(0.12),
+                color: _color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(_icon, color: _color, size: 20),
@@ -632,11 +632,11 @@ class _AlertCard extends StatelessWidget {
                               .snoozeReminder(alert.reminder!.id, const Duration(days: 1)),
                         ),
                         const Spacer(),
-                        Icon(Icons.swipe_left_alt_rounded, size: 11, color: cs.onSurface.withOpacity(0.3)),
+                        Icon(Icons.swipe_left_alt_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.3)),
                         const SizedBox(width: 3),
                         Text(
                           alert.reminder!.isRecurring ? 'Swipe to advance' : 'Swipe to dismiss',
-                          style: TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(0.3)),
+                          style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.3)),
                         ),
                       ],
                     ),
@@ -644,7 +644,7 @@ class _AlertCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (!isReminder) Icon(Icons.chevron_right_rounded, color: cs.onSurface.withOpacity(0.3)),
+            if (!isReminder) Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
           ],
         ),
       ),
@@ -668,17 +668,17 @@ class _SnoozeButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: cs.onSurface.withOpacity(0.06),
+          color: cs.onSurface.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.snooze_rounded, size: 13, color: cs.onSurface.withOpacity(0.6)),
+            Icon(Icons.snooze_rounded, size: 13, color: cs.onSurface.withValues(alpha: 0.6)),
             const SizedBox(width: 4),
             Text(
               label,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.6)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.6)),
             ),
           ],
         ),

@@ -51,9 +51,9 @@ class _DocKanbanColumn extends StatelessWidget {
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: (isDark ? Colors.white : Colors.black).withOpacity(0.03),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withOpacity(0.15)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,7 +76,7 @@ class _DocKanbanColumn extends StatelessWidget {
               ),
               Text(
                 '${entries.length}',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.4)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.4)),
               ),
             ],
           ),
@@ -112,7 +112,7 @@ class _DocKanbanCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outline.withOpacity(0.2)),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,7 +148,7 @@ class _DocKanbanCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               entry.date,
-              style: TextStyle(fontSize: 10.5, color: cs.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: 0.4)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -157,7 +157,7 @@ class _DocKanbanCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
                 value: entry.percent / 100,
-                backgroundColor: cs.outline.withOpacity(0.15),
+                backgroundColor: cs.outline.withValues(alpha: 0.15),
                 valueColor: AlwaysStoppedAnimation<Color>(entry.accentColor),
                 minHeight: 3,
               ),

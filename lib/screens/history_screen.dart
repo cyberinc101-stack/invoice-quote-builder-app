@@ -82,21 +82,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 color: isDefault
                     ? colorScheme.surface
                     : (isDark
-                        ? colorScheme.primary.withOpacity(0.15)
-                        : const Color(0xFF1A1A2E).withOpacity(0.07)),
+                        ? colorScheme.primary.withValues(alpha: 0.15)
+                        : const Color(0xFF1A1A2E).withValues(alpha: 0.07)),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: isDefault
                       ? (isDark
-                          ? colorScheme.outline.withOpacity(0.3)
+                          ? colorScheme.outline.withValues(alpha: 0.3)
                           : const Color(0xFFE8E8E8))
                       : (isDark
-                          ? colorScheme.primary.withOpacity(0.5)
-                          : const Color(0xFF1A1A2E).withOpacity(0.25)),
+                          ? colorScheme.primary.withValues(alpha: 0.5)
+                          : const Color(0xFF1A1A2E).withValues(alpha: 0.25)),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+                    color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.04),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   )
@@ -256,7 +256,7 @@ class _SortTile extends StatelessWidget {
         height: 38,
         decoration: BoxDecoration(
           color: isSelected
-              ? activeColor.withOpacity(0.12)
+              ? activeColor.withValues(alpha: 0.12)
               : (isDark
                   ? colorScheme.surfaceContainerHighest
                   : const Color(0xFFF5F5F5)),
@@ -281,7 +281,7 @@ class _SortTile extends StatelessWidget {
           : Icon(
               Icons.arrow_forward_ios_rounded,
               size: 14,
-              color: colorScheme.onSurface.withOpacity(0.3),
+              color: colorScheme.onSurface.withValues(alpha: 0.3),
             ),
     );
   }

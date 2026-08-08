@@ -145,7 +145,7 @@ class _NordicMetaRow extends StatelessWidget {
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(border: Border.all(color: a.statusColor.withOpacity(0.5), width: 1)),
+                decoration: BoxDecoration(border: Border.all(color: a.statusColor.withValues(alpha: 0.5), width: 1)),
                 child: Text(a.statusLabel, style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
                     letterSpacing: 1.0, color: a.statusColor, fontFamily: a.fontFamily)),
               ),

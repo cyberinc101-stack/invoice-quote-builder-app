@@ -48,12 +48,12 @@ class _DocCard extends StatelessWidget {
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.2),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.2),
             width: selected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -68,7 +68,7 @@ class _DocCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.12),
+                    color: entry.accentColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(Icons.description_rounded, color: entry.accentColor, size: 24),
@@ -103,24 +103,24 @@ class _DocCard extends StatelessWidget {
                         Text('· Edited ${entry.date}',
                             style: TextStyle(
                                 fontSize: 12,
-                                color: cs.onSurface.withOpacity(0.4))),
+                                color: cs.onSurface.withValues(alpha: 0.4))),
                       ]),
                       const SizedBox(height: 3),
                       Row(children: [
-                        Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withOpacity(0.35)),
+                        Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.35)),
                         const SizedBox(width: 4),
                         Text('${entry.secondaryDateLabel}: ${entry.secondaryDateValue}',
                             style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                color: cs.onSurface.withOpacity(0.55))),
+                                color: cs.onSurface.withValues(alpha: 0.55))),
                       ]),
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
                           value: entry.percent / 100,
-                          backgroundColor: cs.outline.withOpacity(0.15),
+                          backgroundColor: cs.outline.withValues(alpha: 0.15),
                           valueColor: AlwaysStoppedAnimation<Color>(entry.accentColor),
                           minHeight: 4,
                         ),
@@ -136,7 +136,7 @@ class _DocCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: entry.accentColor.withOpacity(0.1),
+                        color: entry.accentColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -202,12 +202,12 @@ class _DocGridCard extends StatelessWidget {
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.2),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.2),
             width: selected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -224,7 +224,7 @@ class _DocGridCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.12),
+                    color: entry.accentColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(Icons.description_rounded, color: entry.accentColor, size: 18),
@@ -253,14 +253,14 @@ class _DocGridCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${entry.secondaryDateLabel}: ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.55)),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Edited ${entry.date}',
-                  style: TextStyle(fontSize: 9.5, color: cs.onSurface.withOpacity(0.35)),
+                  style: TextStyle(fontSize: 9.5, color: cs.onSurface.withValues(alpha: 0.35)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -268,7 +268,7 @@ class _DocGridCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.1),
+                    color: entry.accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -330,12 +330,12 @@ class _DocCompactGridCard extends StatelessWidget {
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.2),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.2),
             width: selected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -352,7 +352,7 @@ class _DocCompactGridCard extends StatelessWidget {
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.12),
+                    color: entry.accentColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(9),
                   ),
                   child: Icon(Icons.description_rounded, color: entry.accentColor, size: 15),
@@ -374,7 +374,7 @@ class _DocCompactGridCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${entry.secondaryDateLabel}: ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 9, color: cs.onSurface.withOpacity(0.5), fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -382,7 +382,7 @@ class _DocCompactGridCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.1),
+                    color: entry.accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -448,7 +448,7 @@ class _DocCompactRow extends StatelessWidget {
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? cs.primary : cs.outline.withOpacity(0.15),
+            color: selected ? cs.primary : cs.outline.withValues(alpha: 0.15),
             width: selected ? 2 : 1,
           ),
         ),
@@ -461,7 +461,7 @@ class _DocCompactRow extends StatelessWidget {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.12),
+                    color: entry.accentColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(Icons.description_rounded, color: entry.accentColor, size: 15),
@@ -485,7 +485,7 @@ class _DocCompactRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${entry.secondaryDateLabel} ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.5)),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -493,7 +493,7 @@ class _DocCompactRow extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: entry.accentColor.withOpacity(0.1),
+                    color: entry.accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(

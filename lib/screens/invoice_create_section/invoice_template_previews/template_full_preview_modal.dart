@@ -25,7 +25,7 @@ void showTemplateFullPreview(
     context: context,
     barrierDismissible: true,
     barrierLabel: t['preview_modal_barrier_label'] ?? 'Close preview',
-    barrierColor: Colors.black.withOpacity(0.75),
+    barrierColor: Colors.black.withValues(alpha: 0.75),
     transitionDuration: const Duration(milliseconds: 280),
     transitionBuilder: (_, anim, __, child) {
       final curve = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
@@ -71,9 +71,9 @@ class _FullPreviewModal extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: info.accentColor.withOpacity(0.15),
+                    color: info.accentColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: info.accentColor.withOpacity(0.4)),
+                    border: Border.all(color: info.accentColor.withValues(alpha: 0.4)),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (info.isPremium) ...[
@@ -105,9 +105,9 @@ class _FullPreviewModal extends StatelessWidget {
                   child: Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     child: const Icon(Icons.close_rounded,
                         color: Colors.white, size: 18),
@@ -125,7 +125,7 @@ class _FullPreviewModal extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.black.withValues(alpha: 0.4),
                         blurRadius: 32,
                         offset: const Offset(0, 12),
                       ),

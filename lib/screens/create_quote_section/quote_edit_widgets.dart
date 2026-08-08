@@ -160,7 +160,7 @@ class QuoteStepNavBar extends StatelessWidget {
                   color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface.withOpacity(0.55), size: 22),
+                child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface.withValues(alpha: 0.55), size: 22),
               ),
             ),
           const SizedBox(width: 12),
@@ -174,12 +174,12 @@ class QuoteStepNavBar extends StatelessWidget {
                     gradient: LinearGradient(
                       colors: isLoading
                           ? [colorScheme.surfaceContainerHighest, colorScheme.surfaceContainerHighest]
-                          : [accent, accent.withOpacity(0.8)],
+                          : [accent, accent.withValues(alpha: 0.8)],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: isLoading
                         ? []
-                        : [BoxShadow(color: accent.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+                        : [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Center(
                     child: isLoading
@@ -253,10 +253,10 @@ class QuoteField extends StatelessWidget {
       validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+        labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,
-        hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.35), fontSize: 13),
-        prefixIcon: icon != null ? Icon(icon, size: 20, color: colorScheme.onSurface.withOpacity(0.45)) : null,
+        hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
+        prefixIcon: icon != null ? Icon(icon, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.45)) : null,
         suffixIcon: suffix ??
             (atLimit
                 ? const Tooltip(
@@ -302,7 +302,7 @@ class QuoteDateField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.6))),
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.6))),
         const SizedBox(height: 4),
         GestureDetector(
           onTap: onTap,
@@ -315,7 +315,7 @@ class QuoteDateField extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.calendar_month_rounded, size: 18, color: colorScheme.onSurface.withOpacity(0.45)),
+                Icon(Icons.calendar_month_rounded, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.45)),
                 const SizedBox(width: 8),
                 Expanded(child: Text(value.isEmpty ? '—' : value, style: TextStyle(fontSize: 14, color: colorScheme.onSurface))),
               ],
@@ -520,7 +520,7 @@ class _QuoteLogoPickerState extends State<QuoteLogoPicker> {
             decoration: BoxDecoration(
               color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withOpacity(0.4), width: 1.5),
+              border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.5),
             ),
             clipBehavior: Clip.antiAlias,
             child: _saving
@@ -549,9 +549,9 @@ class _QuoteLogoPickerState extends State<QuoteLogoPicker> {
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_photo_alternate_rounded, size: 24, color: accent.withOpacity(0.6)),
+                          Icon(Icons.add_photo_alternate_rounded, size: 24, color: accent.withValues(alpha: 0.6)),
                           const SizedBox(height: 4),
-                          Text('Logo', style: TextStyle(fontSize: 10, color: accent.withOpacity(0.7), fontWeight: FontWeight.w600)),
+                          Text('Logo', style: TextStyle(fontSize: 10, color: accent.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
                         ],
                       ),
           ),
@@ -606,7 +606,7 @@ class _LogoSourceTile extends StatelessWidget {
       onTap: onTap,
       leading: Container(
         width: 40, height: 40,
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: colorScheme.onSurface)),
@@ -695,7 +695,7 @@ class _QuoteLogoRepositionDialogState extends State<_QuoteLogoRepositionDialog> 
             const SizedBox(height: 6),
             Text(
               'Drag to move · Pinch or use slider to zoom',
-              style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.45)),
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
@@ -750,14 +750,14 @@ class _QuoteLogoRepositionDialogState extends State<_QuoteLogoRepositionDialog> 
 
             Row(
               children: [
-                Icon(Icons.zoom_out_rounded, size: 20, color: colorScheme.onSurface.withOpacity(0.4)),
+                Icon(Icons.zoom_out_rounded, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                 Expanded(
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: accent,
-                      inactiveTrackColor: accent.withOpacity(0.2),
+                      inactiveTrackColor: accent.withValues(alpha: 0.2),
                       thumbColor: accent,
-                      overlayColor: accent.withOpacity(0.12),
+                      overlayColor: accent.withValues(alpha: 0.12),
                       trackHeight: 3,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
                     ),
@@ -772,12 +772,12 @@ class _QuoteLogoRepositionDialogState extends State<_QuoteLogoRepositionDialog> 
                     ),
                   ),
                 ),
-                Icon(Icons.zoom_in_rounded, size: 20, color: colorScheme.onSurface.withOpacity(0.4)),
+                Icon(Icons.zoom_in_rounded, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
               ],
             ),
             Text(
               '${(_scale * 100).round()}%',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.4)),
             ),
             const SizedBox(height: 4),
 
@@ -786,8 +786,8 @@ class _QuoteLogoRepositionDialogState extends State<_QuoteLogoRepositionDialog> 
                 _scale = 1.0;
                 _pixelOffset = Offset.zero;
               }),
-              icon: Icon(Icons.center_focus_strong_rounded, size: 16, color: colorScheme.onSurface.withOpacity(0.45)),
-              label: Text('Reset to centre', style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.45))),
+              icon: Icon(Icons.center_focus_strong_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+              label: Text('Reset to centre', style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45))),
             ),
             const SizedBox(height: 8),
 
@@ -796,7 +796,7 @@ class _QuoteLogoRepositionDialogState extends State<_QuoteLogoRepositionDialog> 
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.45))),
+                    child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -860,9 +860,9 @@ class QuoteItemCard extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: isDark ? colorScheme.surfaceContainerHighest.withOpacity(0.5) : Colors.white,
+        color: isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.3), width: 1),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -874,7 +874,7 @@ class QuoteItemCard extends StatelessWidget {
                 Container(
                   width: 28,
                   height: 28,
-                  decoration: BoxDecoration(color: accent.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
                   child: Center(
                     child: Text('${index + 1}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: accent)),
                   ),
@@ -889,7 +889,7 @@ class QuoteItemCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFFEF5350).withOpacity(0.12) : const Color(0xFFFFEBEE),
+                        color: isDark ? const Color(0xFFEF5350).withValues(alpha: 0.12) : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.close_rounded, color: Color(0xFFEF5350), size: 16),
@@ -905,9 +905,9 @@ class QuoteItemCard extends StatelessWidget {
               onChanged: (_) => onChanged(),
               decoration: InputDecoration(
                 labelText: 'Description',
-                labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
                 hintText: 'e.g. Consulting Services',
-                hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.35), fontSize: 13),
+                hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
                 filled: true,
                 fillColor: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -954,14 +954,14 @@ class QuoteItemCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(isDark ? 0.12 : 0.07),
+                      color: accent.withValues(alpha: isDark ? 0.12 : 0.07),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: accent.withOpacity(0.3), width: 1),
+                      border: Border.all(color: accent.withValues(alpha: 0.3), width: 1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5))),
+                        Text('Total', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                         const SizedBox(height: 2),
                         Text('$currencySymbol${total.toStringAsFixed(2)}',
                             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: accent)),
@@ -980,7 +980,7 @@ class QuoteItemCard extends StatelessWidget {
   InputDecoration _smallDeco(BuildContext context, String label, ColorScheme cs, bool isDark, Color accent) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.6), fontSize: 12),
+      labelStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 12),
       filled: true,
       fillColor: isDark ? cs.surfaceContainerHighest : const Color(0xFFF9F9F9),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -1021,9 +1021,9 @@ class QuoteTotalsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? accent.withOpacity(0.1) : accent.withOpacity(0.06),
+        color: isDark ? accent.withValues(alpha: 0.1) : accent.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.3)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -1033,7 +1033,7 @@ class QuoteTotalsCard extends StatelessWidget {
           const SizedBox(height: 8),
           _row('Discount (${discountRate.toStringAsFixed(discountRate % 1 == 0 ? 0 : 1)}%)',
               '-$currencySymbol${discountAmount.toStringAsFixed(2)}', colorScheme),
-          Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Divider(color: accent.withOpacity(0.3), height: 1)),
+          Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Divider(color: accent.withValues(alpha: 0.3), height: 1)),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1050,7 +1050,7 @@ class QuoteTotalsCard extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.7))),
+        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
         Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
       ],
     );
@@ -1090,7 +1090,7 @@ class QuoteColorPicker extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isSelected ? quoteColorPrimary(scheme) : colorScheme.outline.withOpacity(0.3),
+                color: isSelected ? quoteColorPrimary(scheme) : colorScheme.outline.withValues(alpha: 0.3),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -1121,7 +1121,7 @@ class QuoteColorPicker extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
-                      color: isSelected ? quoteColorPrimary(scheme) : colorScheme.onSurface.withOpacity(0.6),
+                      color: isSelected ? quoteColorPrimary(scheme) : colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),

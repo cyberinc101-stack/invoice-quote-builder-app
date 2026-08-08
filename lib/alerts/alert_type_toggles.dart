@@ -87,7 +87,7 @@ class AlertTypeTogglesList extends StatelessWidget {
                   width: dense ? 30 : 36,
                   height: dense ? 30 : 36,
                   decoration: BoxDecoration(
-                    color: item.color.withOpacity(0.12),
+                    color: item.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(item.icon, size: dense ? 15 : 18, color: item.color),
@@ -110,7 +110,7 @@ class AlertTypeTogglesList extends StatelessWidget {
                           item.subtitle,
                           style: TextStyle(
                             fontSize: 11,
-                            color: cs.onSurface.withOpacity(0.5),
+                            color: cs.onSurface.withValues(alpha: 0.5),
                           ),
                         ),
                     ],

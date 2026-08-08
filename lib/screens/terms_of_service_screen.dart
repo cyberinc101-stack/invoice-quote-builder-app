@@ -48,7 +48,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1A1A2E).withOpacity(0.3),
+                    color: const Color(0xFF1A1A2E).withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -61,7 +61,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.description_rounded,
@@ -80,7 +80,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Text(
@@ -177,7 +177,7 @@ class TermsOfServiceScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -194,7 +194,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.12),
+                    color: colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(icon, size: 18, color: colorScheme.primary),
@@ -229,7 +229,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF1A1A2E).withOpacity(0.25),
+                      color: const Color(0xFF1A1A2E).withValues(alpha: 0.25),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -244,7 +244,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
+                            color: Colors.white.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.business_rounded,
@@ -275,7 +275,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    Container(height: 1, color: Colors.white.withOpacity(0.1)),
+                    Container(height: 1, color: Colors.white.withValues(alpha: 0.1)),
                     const SizedBox(height: 14),
                     Row(
                       children: [
@@ -283,7 +283,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.12),
+                            color: Colors.white.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.mail_outline_rounded,
@@ -309,7 +309,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13.5,
                   height: 1.65,
-                  color: colorScheme.onSurface.withOpacity(0.7),
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
           ],

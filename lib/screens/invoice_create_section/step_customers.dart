@@ -1,4 +1,4 @@
-﻿// lib/screens/invoice_create_section/step_customers.dart
+// lib/screens/invoice_create_section/step_customers.dart
 //
 // UPDATED (this pass): Customer logo picking now uses SharedLogoPicker
 // (lib/widgets/shared_logo_picker.dart) instead of a plain ImagePicker +
@@ -176,7 +176,7 @@ class _StepCustomersState extends State<StepCustomers> {
         Expanded(
           child: CustomScrollView(
             slivers: [
-              // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Header ──────────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
@@ -203,7 +203,7 @@ class _StepCustomersState extends State<StepCustomers> {
                                   'Add and select a customer for this invoice',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: colorScheme.onSurface.withOpacity(0.45),
+                                    color: colorScheme.onSurface.withValues(alpha: 0.45),
                                   ),
                                 ),
                               ],
@@ -232,7 +232,7 @@ class _StepCustomersState extends State<StepCustomers> {
                                   fontWeight: FontWeight.w600,
                                   color: atMax
                                       ? const Color(0xFFEF5350)
-                                      : colorScheme.onSurface.withOpacity(0.45),
+                                      : colorScheme.onSurface.withValues(alpha: 0.45),
                                 ),
                               ),
                             ),
@@ -251,7 +251,7 @@ class _StepCustomersState extends State<StepCustomers> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isDark
-                                ? _accent.withOpacity(0.4)
+                                ? _accent.withValues(alpha: 0.4)
                                 : const Color(0xFFA5D6A7),
                           ),
                         ),
@@ -303,9 +303,9 @@ class _StepCustomersState extends State<StepCustomers> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: atMax
-                                  ? colorScheme.outline.withOpacity(0.3)
+                                  ? colorScheme.outline.withValues(alpha: 0.3)
                                   : (isDark
-                                      ? _accent.withOpacity(0.5)
+                                      ? _accent.withValues(alpha: 0.5)
                                       : const Color(0xFFA5D6A7)),
                               width: 1.5,
                             ),
@@ -317,7 +317,7 @@ class _StepCustomersState extends State<StepCustomers> {
                               Icon(
                                 Icons.person_add_rounded,
                                 color: atMax
-                                    ? colorScheme.onSurface.withOpacity(0.3)
+                                    ? colorScheme.onSurface.withValues(alpha: 0.3)
                                     : _accent,
                                 size: 22,
                               ),
@@ -329,7 +329,7 @@ class _StepCustomersState extends State<StepCustomers> {
                                       : 'Add New Customer',
                                   style: TextStyle(
                                     color: atMax
-                                        ? colorScheme.onSurface.withOpacity(0.3)
+                                        ? colorScheme.onSurface.withValues(alpha: 0.3)
                                         : _accent,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 15,
@@ -348,7 +348,7 @@ class _StepCustomersState extends State<StepCustomers> {
                 ),
               ),
 
-              // â”€â”€ Library header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Library header ───────────────────────────────────────────
               if (!_loading && _library.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -378,17 +378,17 @@ class _StepCustomersState extends State<StepCustomers> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
-                                color: _accent.withOpacity(0.12),
+                                color: _accent.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                _selectedIndex != null ? '1 âœ“' : 'none',
+                                _selectedIndex != null ? '1 ✓' : 'none',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: _selectedIndex != null
                                       ? _accent
-                                      : colorScheme.onSurface.withOpacity(0.45),
+                                      : colorScheme.onSurface.withValues(alpha: 0.45),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -438,7 +438,7 @@ class _StepCustomersState extends State<StepCustomers> {
                           'Tap a card to select it for this invoice.',
                           style: TextStyle(
                             fontSize: 11,
-                            color: colorScheme.onSurface.withOpacity(0.45),
+                            color: colorScheme.onSurface.withValues(alpha: 0.45),
                           ),
                         ),
                       ],
@@ -446,7 +446,7 @@ class _StepCustomersState extends State<StepCustomers> {
                   ),
                 ),
 
-              // â”€â”€ Customer cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Customer cards ───────────────────────────────────────────
               if (!_loading && _showLibraryPanel && _library.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -468,7 +468,7 @@ class _StepCustomersState extends State<StepCustomers> {
                   ),
                 ),
 
-              // â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Empty state ──────────────────────────────────────────────
               if (!_loading && _library.isEmpty)
                 SliverFillRemaining(
                   child: EmptyState(
@@ -541,19 +541,19 @@ class _CustomerCard extends StatelessWidget {
         color: isSelected
             ? (isDark ? const Color(0xFF0D1F0D) : Colors.white)
             : (isDark
-                ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                 : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? _accent.withOpacity(isDark ? 0.6 : 0.5)
-              : colorScheme.outline.withOpacity(0.3),
+              ? _accent.withValues(alpha: isDark ? 0.6 : 0.5)
+              : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: _accent.withOpacity(isDark ? 0.12 : 0.08),
+                  color: _accent.withValues(alpha: isDark ? 0.12 : 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 )
@@ -580,7 +580,7 @@ class _CustomerCard extends StatelessWidget {
                   border: Border.all(
                     color: isSelected
                         ? _accent
-                        : colorScheme.onSurface.withOpacity(0.3),
+                        : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -601,14 +601,14 @@ class _CustomerCard extends StatelessWidget {
                       ? Colors.black
                       : (isSelected
                           ? (isDark
-                              ? _accent.withOpacity(0.15)
+                              ? _accent.withValues(alpha: 0.15)
                               : const Color(0xFFE8F5E9))
                           : colorScheme.surfaceContainerHighest
-                              .withOpacity(0.5)),
+                              .withValues(alpha: 0.5)),
                   border: Border.all(
                     color: isSelected
-                        ? _accent.withOpacity(0.4)
-                        : colorScheme.outline.withOpacity(0.3),
+                        ? _accent.withValues(alpha: 0.4)
+                        : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -631,7 +631,7 @@ class _CustomerCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             color: isSelected
                                 ? _accent
-                                : colorScheme.onSurface.withOpacity(0.3),
+                                : colorScheme.onSurface.withValues(alpha: 0.3),
                           ),
                         ),
                       ),
@@ -650,7 +650,7 @@ class _CustomerCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: isSelected
                             ? colorScheme.onSurface
-                            : colorScheme.onSurface.withOpacity(0.4),
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (customer.email.isNotEmpty) ...[
@@ -661,7 +661,7 @@ class _CustomerCard extends StatelessWidget {
                           fontSize: 13,
                           color: isSelected
                               ? _accent
-                              : colorScheme.onSurface.withOpacity(0.3),
+                              : colorScheme.onSurface.withValues(alpha: 0.3),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -672,13 +672,13 @@ class _CustomerCard extends StatelessWidget {
                         children: [
                           Icon(Icons.phone_rounded,
                               size: 11,
-                              color: colorScheme.onSurface.withOpacity(0.3)),
+                              color: colorScheme.onSurface.withValues(alpha: 0.3)),
                           const SizedBox(width: 3),
                           Text(
                             customer.phone,
                             style: TextStyle(
                               fontSize: 11,
-                              color: colorScheme.onSurface.withOpacity(0.45),
+                              color: colorScheme.onSurface.withValues(alpha: 0.45),
                             ),
                           ),
                         ],
@@ -690,14 +690,14 @@ class _CustomerCard extends StatelessWidget {
                         children: [
                           Icon(Icons.location_on_rounded,
                               size: 11,
-                              color: colorScheme.onSurface.withOpacity(0.3)),
+                              color: colorScheme.onSurface.withValues(alpha: 0.3)),
                           const SizedBox(width: 2),
                           Expanded(
                             child: Text(
                               customer.address,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface.withOpacity(0.45),
+                                color: colorScheme.onSurface.withValues(alpha: 0.45),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -712,7 +712,7 @@ class _CustomerCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: _accent.withOpacity(isDark ? 0.18 : 0.1),
+                          color: _accent.withValues(alpha: isDark ? 0.18 : 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
@@ -739,7 +739,7 @@ class _CustomerCard extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? _accent.withOpacity(0.12)
+                            ? _accent.withValues(alpha: 0.12)
                             : const Color(0xFFE8F5E9),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -755,7 +755,7 @@ class _CustomerCard extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -774,7 +774,7 @@ class _CustomerCard extends StatelessWidget {
 }
 
 // =============================================================================
-// Bottom Sheet â€“ add / edit a customer
+// Bottom Sheet – add / edit a customer
 // =============================================================================
 
 class _CustomerSheet extends StatefulWidget {
@@ -896,7 +896,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
             fontWeight: FontWeight.w500,
             color: current > max
                 ? const Color(0xFFF44336)
-                : colorScheme.onSurface.withOpacity(0.35),
+                : colorScheme.onSurface.withValues(alpha: 0.35),
           ),
         ),
       ),
@@ -969,7 +969,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                                       : const Color(0xFFE8F5E9),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                      color: _accent.withOpacity(0.3)),
+                                      color: _accent.withValues(alpha: 0.3)),
                                 ),
                                 child: const Text(
                                   'Editing',
@@ -984,7 +984,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                         ),
                         const SizedBox(height: 20),
 
-                        // â”€â”€ Logo section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                        // ── Logo section ──────────────────────────────────
                         _sectionLabel('Customer Logo'),
                         SharedLogoPicker(
                           logoPath: _logoPath,
@@ -1001,7 +1001,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                         ),
                         const SizedBox(height: 20),
 
-                        // â”€â”€ Basic details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                        // ── Basic details ─────────────────────────────────
                         _sectionLabel('Customer Details'),
                         _SheetField(
                           ctrl: _nameCtrl,
@@ -1151,13 +1151,13 @@ class _SheetField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         labelStyle:
-            TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+            TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,
         hintStyle: TextStyle(
-            color: colorScheme.onSurface.withOpacity(0.35), fontSize: 13),
+            color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
         prefixIcon: icon != null
             ? Icon(icon, size: 20,
-                color: colorScheme.onSurface.withOpacity(0.45))
+                color: colorScheme.onSurface.withValues(alpha: 0.45))
             : null,
         suffixIcon: atLimit
             ? Tooltip(

@@ -368,9 +368,9 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: color.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -382,7 +382,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: colorScheme.onSurface.withOpacity(0.7),
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -486,7 +486,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
           icon: Icon(Icons.add_rounded, color: _accent),
           label: Text('Add Item', style: TextStyle(color: _accent, fontWeight: FontWeight.w700)),
           style: OutlinedButton.styleFrom(
-            side: BorderSide(color: _accent.withOpacity(0.4)),
+            side: BorderSide(color: _accent.withValues(alpha: 0.4)),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),

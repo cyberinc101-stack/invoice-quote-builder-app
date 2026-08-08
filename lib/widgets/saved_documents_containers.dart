@@ -364,9 +364,9 @@ class _FilterBar extends StatelessWidget {
           final chipBg = isSelected
               ? color
               : (isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5));
-          final textColor = isSelected ? Colors.white : colorScheme.onSurface.withOpacity(0.55);
-          final badgeBg = isSelected ? Colors.white.withOpacity(0.2) : colorScheme.onSurface.withOpacity(0.1);
-          final badgeText = isSelected ? Colors.white : colorScheme.onSurface.withOpacity(0.45);
+          final textColor = isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.55);
+          final badgeBg = isSelected ? Colors.white.withValues(alpha: 0.2) : colorScheme.onSurface.withValues(alpha: 0.1);
+          final badgeText = isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.45);
 
           return GestureDetector(
             onTap: () => onFilterChanged(filter),
@@ -377,7 +377,7 @@ class _FilterBar extends StatelessWidget {
                 color: chipBg,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: isSelected
-                    ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))]
+                    ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))]
                     : [],
               ),
               child: Row(
@@ -421,15 +421,15 @@ class _DocCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
-    final borderColor = isDark ? accent.withOpacity(0.18) : const Color(0xFFF0F0F0);
+    final borderColor = isDark ? accent.withValues(alpha: 0.18) : const Color(0xFFF0F0F0);
 
     return Container(
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: accent.withOpacity(isDark ? 0.12 : 0.08), blurRadius: 12, offset: const Offset(0, 4)),
-          BoxShadow(color: Colors.black.withOpacity(isDark ? 0.25 : 0.04), blurRadius: 4, offset: const Offset(0, 1)),
+          BoxShadow(color: accent.withValues(alpha: isDark ? 0.12 : 0.08), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04), blurRadius: 4, offset: const Offset(0, 1)),
         ],
         border: Border.all(color: borderColor),
       ),
@@ -446,12 +446,12 @@ class _DocCard extends StatelessWidget {
                 height: 52,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [accent, accent.withOpacity(0.72)],
+                    colors: [accent, accent.withValues(alpha: 0.72)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(0.28), blurRadius: 8, offset: const Offset(0, 3))],
+                  boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3))],
                 ),
                 child: Icon(_iconFor(doc.type), color: Colors.white, size: 24),
               ),
@@ -474,21 +474,21 @@ class _DocCard extends StatelessWidget {
                         Text(_labelFor(doc.type),
                             style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
                         const SizedBox(width: 8),
-                        Icon(Icons.access_time_rounded, size: 12, color: colorScheme.onSurface.withOpacity(0.3)),
+                        Icon(Icons.access_time_rounded, size: 12, color: colorScheme.onSurface.withValues(alpha: 0.3)),
                         const SizedBox(width: 3),
                         Text('Edited ${_formatDate(doc.date)}',
-                            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.35))),
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.35))),
                       ],
                     ),
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        Icon(Icons.event_rounded, size: 12, color: colorScheme.onSurface.withOpacity(0.3)),
+                        Icon(Icons.event_rounded, size: 12, color: colorScheme.onSurface.withValues(alpha: 0.3)),
                         const SizedBox(width: 3),
                         Text('${doc.secondaryDateLabel}: ${doc.secondaryDateValue}',
                             style: TextStyle(
                                 fontSize: 12,
-                                color: colorScheme.onSurface.withOpacity(0.5),
+                                color: colorScheme.onSurface.withValues(alpha: 0.5),
                                 fontWeight: FontWeight.w500)),
                       ],
                     ),
@@ -504,7 +504,7 @@ class _DocCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: doc.statusColor.withOpacity(isDark ? 0.18 : 0.1),
+                  color: doc.statusColor.withValues(alpha: isDark ? 0.18 : 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -547,14 +547,14 @@ class _EmptyState extends StatelessWidget {
                 color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Icon(Icons.description_outlined, size: 36, color: colorScheme.onSurface.withOpacity(0.3)),
+              child: Icon(Icons.description_outlined, size: 36, color: colorScheme.onSurface.withValues(alpha: 0.3)),
             ),
             const SizedBox(height: 16),
             Text('No documents yet',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withOpacity(0.55))),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: colorScheme.onSurface.withValues(alpha: 0.55))),
             const SizedBox(height: 6),
             Text('Create an invoice, quote, or receipt to see it here',
-                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.35))),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.35))),
           ],
         ),
       ),

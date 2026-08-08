@@ -253,14 +253,14 @@ class _ReceiptBusinessProfileLibrarySectionState
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: atMax ? const Color(0xFFEF5350) : colorScheme.onSurface.withOpacity(0.45),
+                  color: atMax ? const Color(0xFFEF5350) : colorScheme.onSurface.withValues(alpha: 0.45),
                 ),
               ),
           ],
         ),
         Text(
           'Tap a saved profile to use it for this receipt.',
-          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
         ),
         const SizedBox(height: 10),
 
@@ -279,10 +279,10 @@ class _ReceiptBusinessProfileLibrarySectionState
             decoration: BoxDecoration(
               color: atMax
                   ? (isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5))
-                  : accent.withOpacity(isDark ? 0.14 : 0.08),
+                  : accent.withValues(alpha: isDark ? 0.14 : 0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: atMax ? colorScheme.outline.withOpacity(0.3) : accent.withOpacity(0.4),
+                color: atMax ? colorScheme.outline.withValues(alpha: 0.3) : accent.withValues(alpha: 0.4),
                 width: 1.5,
               ),
             ),
@@ -291,13 +291,13 @@ class _ReceiptBusinessProfileLibrarySectionState
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.add_business_rounded,
-                    color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent, size: 20),
+                    color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent, size: 20),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     atMax ? 'Maximum Profiles Reached' : 'Add New Business Profile',
                     style: TextStyle(
-                      color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent,
+                      color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -383,15 +383,15 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? (isDark ? accent.withOpacity(0.1) : Colors.white)
-            : (isDark ? colorScheme.surfaceContainerHighest.withOpacity(0.5) : const Color(0xFFF9F9F9)),
+            ? (isDark ? accent.withValues(alpha: 0.1) : Colors.white)
+            : (isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5) : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isSelected ? accent.withOpacity(isDark ? 0.6 : 0.5) : colorScheme.outline.withOpacity(0.3),
+          color: isSelected ? accent.withValues(alpha: isDark ? 0.6 : 0.5) : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
-            ? [BoxShadow(color: accent.withOpacity(isDark ? 0.12 : 0.08), blurRadius: 8, offset: const Offset(0, 2))]
+            ? [BoxShadow(color: accent.withValues(alpha: isDark ? 0.12 : 0.08), blurRadius: 8, offset: const Offset(0, 2))]
             : [],
       ),
       child: InkWell(
@@ -411,7 +411,7 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isSelected ? accent : Colors.transparent,
                   border: Border.all(
-                    color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                    color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -423,11 +423,11 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? accent.withOpacity(isDark ? 0.18 : 0.1)
-                      : colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      ? accent.withValues(alpha: isDark ? 0.18 : 0.1)
+                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: profile.shape.radiusFor(40),
                   border: Border.all(
-                    color: isSelected ? accent.withOpacity(0.4) : colorScheme.outline.withOpacity(0.3),
+                    color: isSelected ? accent.withValues(alpha: 0.4) : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -441,7 +441,7 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                         boxSize: 40,
                       )
                     : Icon(Icons.storefront_rounded,
-                        color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3), size: 18),
+                        color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3), size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -453,7 +453,7 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.4),
+                        color: isSelected ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (profile.businessName.isNotEmpty) ...[
@@ -461,20 +461,20 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                       Text(profile.businessName,
                           style: TextStyle(
                               fontSize: 12,
-                              color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                              color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                               fontWeight: FontWeight.w600)),
                     ],
                     if (profile.businessEmail.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(profile.businessEmail,
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45))),
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45))),
                     ],
                     if (isSelected) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: accent.withOpacity(isDark ? 0.18 : 0.1),
+                          color: accent.withValues(alpha: isDark ? 0.18 : 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text('Active for this receipt',
@@ -492,7 +492,7 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: accent.withOpacity(isDark ? 0.14 : 0.1),
+                        color: accent.withValues(alpha: isDark ? 0.14 : 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.edit_rounded, color: accent, size: 14),
@@ -505,7 +505,7 @@ class _ReceiptBusinessProfileCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFFEF5350).withOpacity(0.12) : const Color(0xFFFFEBEE),
+                        color: isDark ? const Color(0xFFEF5350).withValues(alpha: 0.12) : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.delete_rounded, color: Color(0xFFEF5350), size: 14),

@@ -357,7 +357,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Row(
                           children: [
-                            Icon(Icons.date_range_rounded, size: 16, color: colorScheme.onSurface.withOpacity(0.5)),
+                            Icon(Icons.date_range_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.5)),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -402,7 +402,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
                           ),
                           const SizedBox(width: 4),
-                          Icon(Icons.expand_more_rounded, size: 18, color: colorScheme.onSurface.withOpacity(0.45)),
+                          Icon(Icons.expand_more_rounded, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.45)),
                         ],
                       ),
                     ),
@@ -479,18 +479,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.03),
+                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.request_quote_rounded, size: 16, color: colorScheme.onSurface.withOpacity(0.5)),
+                    Icon(Icons.request_quote_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.5)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Accepted quotes ${_isRangeActive ? 'in this range' : 'this month'} (not counted as income): '
                         '${acceptedQuotesThisPeriod.length} · ${quotePipeline.toStringAsFixed(2)} total',
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.6)),
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.6)),
                       ),
                     ),
                   ],
@@ -503,7 +503,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(height: 4),
               Text(
                 'Always shows the trend around the month view, independent of the active range above.',
-                style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.4)),
+                style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.4)),
               ),
             ],
             const SizedBox(height: 10),
@@ -525,7 +525,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             if (sortedCategoryEntries.isEmpty)
               Text(
                 'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
-                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.45)),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               )
             else
               for (final entry in sortedCategoryEntries)

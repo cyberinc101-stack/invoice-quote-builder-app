@@ -57,7 +57,7 @@ void showDocumentOptionsMenu(
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: cs.onSurface.withOpacity(0.15),
+                    color: cs.onSurface.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -74,14 +74,14 @@ void showDocumentOptionsMenu(
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withOpacity(0.45),
+                  color: cs.onSurface.withValues(alpha: 0.45),
                   letterSpacing: 1.0,
                 ),
               ),
               const SizedBox(height: 6),
               ...statusOptions.map((opt) => _StatusRadioTile(option: opt)),
               const SizedBox(height: 10),
-              Divider(color: cs.outline.withOpacity(0.15)),
+              Divider(color: cs.outline.withValues(alpha: 0.15)),
               const SizedBox(height: 6),
               _MenuTile(
                 icon: Icons.drive_file_rename_outline_rounded,
@@ -138,7 +138,7 @@ class _StatusRadioTile extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: option.selected ? option.color : cs.outline.withOpacity(0.4),
+                  color: option.selected ? option.color : cs.outline.withValues(alpha: 0.4),
                   width: 2,
                 ),
               ),
@@ -200,7 +200,7 @@ class _MenuTile extends StatelessWidget {
             Container(
               width: 34,
               height: 34,
-              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
               child: Icon(icon, size: 17, color: color),
             ),
             const SizedBox(width: 12),

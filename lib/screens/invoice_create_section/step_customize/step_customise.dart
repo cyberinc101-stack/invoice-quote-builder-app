@@ -1,4 +1,4 @@
-﻿// lib/screens/invoice_create_section/step_customize/step_customise.dart
+// lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
 // FIX (this pass): "Preview & Download" at the bottom of this step was a
 // TODO -- tapping it did nothing. It now pushes InvoiceFullPreviewScreen,
@@ -97,7 +97,7 @@ class _StepCustomiseState extends State<StepCustomise> {
                   'Personalise your invoice design',
                   style: TextStyle(
                     fontSize: 13,
-                    color: colorScheme.onSurface.withOpacity(0.45),
+                    color: colorScheme.onSurface.withValues(alpha: 0.45),
                   ),
                 ),
 
@@ -131,7 +131,7 @@ class _StepCustomiseState extends State<StepCustomise> {
                           : const Color(0xFFE3F2FD),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: const Color(0xFF2196F3).withOpacity(0.25),
+                        color: const Color(0xFF2196F3).withValues(alpha: 0.25),
                       ),
                     ),
                     child: const Row(
@@ -194,9 +194,9 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colorScheme.outline.withOpacity(0.15)),
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
           ),
           child: Row(children: [
             Container(width: 7, height: 7,
@@ -207,11 +207,11 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
             const Spacer(),
             Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.article_outlined, size: 13,
-                  color: colorScheme.onSurface.withOpacity(0.45)),
+                  color: colorScheme.onSurface.withValues(alpha: 0.45)),
               const SizedBox(width: 4),
               Text(_pageCount == 1 ? '1 page' : '$_pageCount pages',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface.withOpacity(0.6))),
+                      color: colorScheme.onSurface.withValues(alpha: 0.6))),
             ]),
           ]),
         ),
@@ -221,7 +221,7 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.08),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 12, offset: const Offset(0, 4)),
                 ],
               ),
@@ -247,7 +247,7 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
         Center(
           child: Text('Live preview - changes appear instantly.',
               style: TextStyle(fontSize: 11,
-                  color: colorScheme.onSurface.withOpacity(0.35),
+                  color: colorScheme.onSurface.withValues(alpha: 0.35),
                   fontStyle: FontStyle.italic)),
         ),
       ],
@@ -320,7 +320,7 @@ class _ColourSection extends StatelessWidget {
                         : null,
                     boxShadow: isActive
                         ? [BoxShadow(
-                            color: color.withOpacity(0.45),
+                            color: color.withValues(alpha: 0.45),
                             blurRadius: 10,
                             offset: const Offset(0, 3))]
                         : [],
@@ -341,7 +341,7 @@ class _ColourSection extends StatelessWidget {
             ).$1}',
             style: TextStyle(
                 fontSize: 11,
-                color: colorScheme.onSurface.withOpacity(0.4)),
+                color: colorScheme.onSurface.withValues(alpha: 0.4)),
           ),
         ],
       ),
@@ -398,7 +398,7 @@ class _FontSection extends StatelessWidget {
                 border: Border.all(
                   color: isActive
                       ? accent
-                      : colorScheme.outline.withOpacity(0.2),
+                      : colorScheme.outline.withValues(alpha: 0.2),
                 ),
               ),
               child: Text(
@@ -408,7 +408,7 @@ class _FontSection extends StatelessWidget {
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                   color: isActive
                       ? Colors.white
-                      : colorScheme.onSurface.withOpacity(0.75),
+                      : colorScheme.onSurface.withValues(alpha: 0.75),
                 ),
               ),
             ),
@@ -443,14 +443,14 @@ class _SizeSection extends StatelessWidget {
               Text('A',
                   style: TextStyle(
                       fontSize: 12,
-                      color: colorScheme.onSurface.withOpacity(0.5))),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5))),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor:   accent,
-                    inactiveTrackColor: accent.withOpacity(0.2),
+                    inactiveTrackColor: accent.withValues(alpha: 0.2),
                     thumbColor:         accent,
-                    overlayColor:       accent.withOpacity(0.15),
+                    overlayColor:       accent.withValues(alpha: 0.15),
                     trackHeight:        4,
                   ),
                   child: Slider(
@@ -465,7 +465,7 @@ class _SizeSection extends StatelessWidget {
               Text('A',
                   style: TextStyle(
                       fontSize: 18,
-                      color: colorScheme.onSurface.withOpacity(0.5))),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5))),
             ],
           ),
           Text(
@@ -504,7 +504,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E2E) : colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.15)),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -512,7 +512,7 @@ class _SectionCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, size: 16,
-                  color: colorScheme.onSurface.withOpacity(0.55)),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55)),
               const SizedBox(width: 6),
               Text(title,
                   style: TextStyle(
@@ -615,7 +615,7 @@ class _BottomBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(Icons.arrow_back_rounded,
-                  color: colorScheme.onSurface.withOpacity(0.55), size: 22),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55), size: 22),
             ),
           ),
           const SizedBox(width: 12),

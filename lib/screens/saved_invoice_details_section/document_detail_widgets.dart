@@ -29,7 +29,7 @@ class DetailStatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -41,7 +41,7 @@ class DetailStatCard extends StatelessWidget {
           Container(
             width: 32, height: 32,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.12),
+              color: iconColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(icon, color: iconColor, size: 16),
@@ -62,7 +62,7 @@ class DetailStatCard extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 10,
-              color: colorScheme.onSurface.withOpacity(0.4),
+              color: colorScheme.onSurface.withValues(alpha: 0.4),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -120,7 +120,7 @@ class DetailActivityRow extends StatelessWidget {
         Container(
           width: 36, height: 36,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color, size: 17),
@@ -131,7 +131,7 @@ class DetailActivityRow extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 14,
-              color: colorScheme.onSurface.withOpacity(0.55),
+              color: colorScheme.onSurface.withValues(alpha: 0.55),
               fontWeight: FontWeight.w400,
             ),
           ),
@@ -199,7 +199,7 @@ class DetailLineItemRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontSize: 11,
-                color: colorScheme.onSurface.withOpacity(0.45),
+                color: colorScheme.onSurface.withValues(alpha: 0.45),
               ),
             ),
           ),
@@ -252,7 +252,7 @@ class DetailActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: backgroundColor.withOpacity(0.4),
+              color: backgroundColor.withValues(alpha: 0.4),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -308,9 +308,9 @@ class DetailIconButton extends StatelessWidget {
         child: Container(
           width: 50, height: 50,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.2)),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Icon(icon, color: color, size: 22),
         ),
@@ -345,7 +345,7 @@ class DetailSheetOption extends StatelessWidget {
       leading: Container(
         width: 38, height: 38,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: color, size: 18),
@@ -361,7 +361,7 @@ class DetailSheetOption extends StatelessWidget {
       trailing: Icon(
         Icons.arrow_forward_ios_rounded,
         size: 14,
-        color: colorScheme.onSurface.withOpacity(0.3),
+        color: colorScheme.onSurface.withValues(alpha: 0.3),
       ),
       contentPadding: EdgeInsets.zero,
     );

@@ -181,7 +181,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                     selected: selected,
                     onSelected: (_) =>
                         setState(() => _selectedCategory = cat),
-                    selectedColor: colorScheme.primary.withOpacity(0.15),
+                    selectedColor: colorScheme.primary.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? colorScheme.surfaceContainerHighest
                         : const Color(0xFFF0F2F5),
@@ -191,13 +191,13 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                       fontSize: 13,
                       color: selected
                           ? colorScheme.primary
-                          : colorScheme.onSurface.withOpacity(0.6),
+                          : colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
                         color: selected
-                            ? colorScheme.primary.withOpacity(0.5)
+                            ? colorScheme.primary.withValues(alpha: 0.5)
                             : Colors.transparent,
                       ),
                     ),
@@ -217,12 +217,12 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                       children: [
                         Icon(Icons.search_off,
                             size: 64,
-                            color: colorScheme.onSurface.withOpacity(0.2)),
+                            color: colorScheme.onSurface.withValues(alpha: 0.2)),
                         const SizedBox(height: 12),
                         Text(
                           'No results found',
                           style: TextStyle(
-                            color: colorScheme.onSurface.withOpacity(0.4),
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
                           ),
                         ),
                       ],
@@ -252,7 +252,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1A1A2E).withOpacity(0.3),
+                    color: const Color(0xFF1A1A2E).withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -356,7 +356,7 @@ class _FaqTileState extends State<_FaqTile> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: colorScheme.primary.withOpacity(0.1),
+              color: colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(Icons.question_answer_outlined,
@@ -375,7 +375,7 @@ class _FaqTileState extends State<_FaqTile> {
               style: TextStyle(
                 fontSize: 13,
                 height: 1.6,
-                color: colorScheme.onSurface.withOpacity(0.7),
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ],

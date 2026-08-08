@@ -374,7 +374,7 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
             fontSize: 11,
             color: current > max
                 ? const Color(0xFFF44336)
-                : colorScheme.onSurface.withOpacity(0.35),
+                : colorScheme.onSurface.withValues(alpha: 0.35),
           ),
         ),
       ),
@@ -416,7 +416,7 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                         'Fill in the details to generate your invoice',
                         style: TextStyle(
                           fontSize: 13,
-                          color: colorScheme.onSurface.withOpacity(0.45),
+                          color: colorScheme.onSurface.withValues(alpha: 0.45),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -477,10 +477,10 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                         decoration: InputDecoration(
                           labelText: 'Select Currency',
                           labelStyle: TextStyle(
-                              color: colorScheme.onSurface.withOpacity(0.6)),
+                              color: colorScheme.onSurface.withValues(alpha: 0.6)),
                           prefixIcon: Icon(Icons.attach_money_rounded,
                               size: 20,
-                              color: colorScheme.onSurface.withOpacity(0.45)),
+                              color: colorScheme.onSurface.withValues(alpha: 0.45)),
                           filled: true,
                           fillColor: isDark
                               ? colorScheme.surfaceContainerHighest
@@ -771,7 +771,7 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                                     'Tap Continue below to customise the look.',
                                     style: TextStyle(
                                         color: Colors.white
-                                            .withOpacity(0.6),
+                                            .withValues(alpha: 0.6),
                                         fontSize: 12),
                                   ),
                                 ],
@@ -827,7 +827,7 @@ class _ContextBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
               color: isDark
-                  ? const Color(0xFFFFE082).withOpacity(0.4)
+                  ? const Color(0xFFFFE082).withValues(alpha: 0.4)
                   : const Color(0xFFFFE082)),
         ),
         child: Row(
@@ -897,9 +897,9 @@ class _BannerChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? color.withOpacity(0.12) : color.withOpacity(0.08),
+        color: isDark ? color.withValues(alpha: 0.12) : color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.35)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -922,7 +922,7 @@ class _BannerChip extends StatelessWidget {
                     sub!,
                     style: TextStyle(
                       fontSize: 11,
-                      color: color.withOpacity(0.7),
+                      color: color.withValues(alpha: 0.7),
                     ),
                   ),
               ],
@@ -975,11 +975,11 @@ class _ItemCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isDark
-            ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
             : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: colorScheme.outline.withOpacity(0.3), width: 1),
+            color: colorScheme.outline.withValues(alpha: 0.3), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -992,7 +992,7 @@ class _ItemCard extends StatelessWidget {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.12),
+                    color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
@@ -1023,7 +1023,7 @@ class _ItemCard extends StatelessWidget {
                       height: 28,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1047,10 +1047,10 @@ class _ItemCard extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Description',
                 labelStyle: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.6)),
+                    color: colorScheme.onSurface.withValues(alpha: 0.6)),
                 hintText: 'e.g. Consulting Services',
                 hintStyle: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.35),
+                    color: colorScheme.onSurface.withValues(alpha: 0.35),
                     fontSize: 13),
                 filled: true,
                 fillColor: isDark
@@ -1124,10 +1124,10 @@ class _ItemCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(isDark ? 0.12 : 0.07),
+                      color: accent.withValues(alpha: isDark ? 0.12 : 0.07),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: accent.withOpacity(0.3), width: 1),
+                          color: accent.withValues(alpha: 0.3), width: 1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1136,7 +1136,7 @@ class _ItemCard extends StatelessWidget {
                             style: TextStyle(
                                 fontSize: 10,
                                 color:
-                                    colorScheme.onSurface.withOpacity(0.5))),
+                                    colorScheme.onSurface.withValues(alpha: 0.5))),
                         const SizedBox(height: 2),
                         Text(
                           '$currencySymbol${item.total.toStringAsFixed(2)}',
@@ -1162,7 +1162,7 @@ class _ItemCard extends StatelessWidget {
       ColorScheme cs, bool isDark, Color accent) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.6), fontSize: 12),
+      labelStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 12),
       filled: true,
       fillColor:
           isDark ? cs.surfaceContainerHighest : const Color(0xFFF9F9F9),
@@ -1213,7 +1213,7 @@ class _TotalsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF0D1B2E) : const Color(0xFFE3F2FD),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.3)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -1230,7 +1230,7 @@ class _TotalsCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Divider(
-                color: accent.withOpacity(0.3), height: 1),
+                color: accent.withValues(alpha: 0.3), height: 1),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1264,7 +1264,7 @@ class _TotalsCard extends StatelessWidget {
       children: [
         Text(label,
             style: TextStyle(
-                fontSize: 13, color: cs.onSurface.withOpacity(0.7))),
+                fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
         Text(value,
             style: TextStyle(
                 fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
@@ -1311,7 +1311,7 @@ class _ColorSchemePicker extends StatelessWidget {
               border: Border.all(
                 color: isSelected
                     ? const Color(0xFF2196F3)
-                    : colorScheme.outline.withOpacity(0.3),
+                    : colorScheme.outline.withValues(alpha: 0.3),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -1359,7 +1359,7 @@ class _ColorSchemePicker extends StatelessWidget {
                           : FontWeight.normal,
                       color: isSelected
                           ? const Color(0xFF2196F3)
-                          : colorScheme.onSurface.withOpacity(0.6),
+                          : colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -1428,13 +1428,13 @@ class _InvoiceField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         labelStyle:
-            TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+            TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,
         hintStyle: TextStyle(
-            color: colorScheme.onSurface.withOpacity(0.35), fontSize: 13),
+            color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
         prefixIcon: icon != null
             ? Icon(icon, size: 20,
-                color: colorScheme.onSurface.withOpacity(0.45))
+                color: colorScheme.onSurface.withValues(alpha: 0.45))
             : null,
         suffixIcon: suffix ??
             (atLimit
@@ -1501,7 +1501,7 @@ class _DateField extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface.withOpacity(0.6),
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
         const SizedBox(height: 4),
@@ -1521,7 +1521,7 @@ class _DateField extends StatelessWidget {
               children: [
                 Icon(Icons.calendar_month_rounded,
                     size: 18,
-                    color: colorScheme.onSurface.withOpacity(0.45)),
+                    color: colorScheme.onSurface.withValues(alpha: 0.45)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1585,7 +1585,7 @@ class _InvoiceBottomBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(Icons.arrow_back_rounded,
-                  color: colorScheme.onSurface.withOpacity(0.55), size: 22),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55), size: 22),
             ),
           ),
           const SizedBox(width: 10),

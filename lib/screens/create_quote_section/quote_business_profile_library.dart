@@ -375,14 +375,14 @@ class _QuoteBusinessProfileLibrarySectionState
                   fontWeight: FontWeight.w600,
                   color: atMax
                       ? const Color(0xFFEF5350)
-                      : colorScheme.onSurface.withOpacity(0.45),
+                      : colorScheme.onSurface.withValues(alpha: 0.45),
                 ),
               ),
           ],
         ),
         Text(
           'Tap a saved profile to use it for this quote.',
-          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
         ),
         const SizedBox(height: 10),
 
@@ -401,10 +401,10 @@ class _QuoteBusinessProfileLibrarySectionState
             decoration: BoxDecoration(
               color: atMax
                   ? (isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5))
-                  : accent.withOpacity(isDark ? 0.14 : 0.08),
+                  : accent.withValues(alpha: isDark ? 0.14 : 0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: atMax ? colorScheme.outline.withOpacity(0.3) : accent.withOpacity(0.4),
+                color: atMax ? colorScheme.outline.withValues(alpha: 0.3) : accent.withValues(alpha: 0.4),
                 width: 1.5,
               ),
             ),
@@ -413,13 +413,13 @@ class _QuoteBusinessProfileLibrarySectionState
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.add_business_rounded,
-                    color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent, size: 20),
+                    color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent, size: 20),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     atMax ? 'Maximum Profiles Reached' : 'Add New Business Profile',
                     style: TextStyle(
-                      color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent,
+                      color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -507,21 +507,21 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? (isDark ? accent.withOpacity(0.1) : Colors.white)
+            ? (isDark ? accent.withValues(alpha: 0.1) : Colors.white)
             : (isDark
-                ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                 : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? accent.withOpacity(isDark ? 0.6 : 0.5)
-              : colorScheme.outline.withOpacity(0.3),
+              ? accent.withValues(alpha: isDark ? 0.6 : 0.5)
+              : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: accent.withOpacity(isDark ? 0.12 : 0.08),
+                  color: accent.withValues(alpha: isDark ? 0.12 : 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 )
@@ -545,7 +545,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isSelected ? accent : Colors.transparent,
                   border: Border.all(
-                    color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                    color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -560,10 +560,10 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isSelected
-                      ? accent.withOpacity(isDark ? 0.18 : 0.1)
-                      : colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      ? accent.withValues(alpha: isDark ? 0.18 : 0.1)
+                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   border: Border.all(
-                    color: isSelected ? accent.withOpacity(0.4) : colorScheme.outline.withOpacity(0.3),
+                    color: isSelected ? accent.withValues(alpha: 0.4) : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -571,7 +571,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                 child: hasLogo
                     ? _CardLogo(profile: profile)
                     : Icon(Icons.storefront_rounded,
-                        color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3), size: 18),
+                        color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3), size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -585,7 +585,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: isSelected
                             ? colorScheme.onSurface
-                            : colorScheme.onSurface.withOpacity(0.4),
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (profile.businessName.isNotEmpty) ...[
@@ -594,7 +594,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                         profile.businessName,
                         style: TextStyle(
                           fontSize: 12,
-                          color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                          color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -602,7 +602,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                     if (profile.businessEmail.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(profile.businessEmail,
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45))),
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45))),
                     ],
                   ],
                 ),
@@ -615,7 +615,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: accent.withOpacity(isDark ? 0.14 : 0.1),
+                        color: accent.withValues(alpha: isDark ? 0.14 : 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.edit_rounded, color: accent, size: 14),
@@ -629,7 +629,7 @@ class _QuoteBusinessProfileCard extends StatelessWidget {
                       height: 28,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFFEF5350).withOpacity(0.12)
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
                             : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),

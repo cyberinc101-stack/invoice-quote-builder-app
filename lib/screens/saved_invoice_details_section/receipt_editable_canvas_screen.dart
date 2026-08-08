@@ -466,7 +466,7 @@ class _ReceiptEditableCanvasScreenState
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 20,
                         offset: const Offset(0, 6))
                   ],
@@ -521,7 +521,7 @@ class _ReceiptEditableCanvasScreenState
                                   controller: _businessEmailCtrl,
                                   hint: 'Business email',
                                   style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
+                                      color: Colors.white.withValues(alpha: 0.85),
                                       fontSize: 12),
                                   onChanged: (v) => _update(
                                       (d) => d.copyWith(businessEmail: v)),
@@ -530,7 +530,7 @@ class _ReceiptEditableCanvasScreenState
                                   controller: _businessPhoneCtrl,
                                   hint: 'Business phone',
                                   style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
+                                      color: Colors.white.withValues(alpha: 0.85),
                                       fontSize: 12),
                                   onChanged: (v) => _update(
                                       (d) => d.copyWith(businessPhone: v)),
@@ -539,7 +539,7 @@ class _ReceiptEditableCanvasScreenState
                                   controller: _businessAddressCtrl,
                                   hint: 'Business address',
                                   style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
+                                      color: Colors.white.withValues(alpha: 0.85),
                                       fontSize: 12),
                                   onChanged: (v) => _update(
                                       (d) => d.copyWith(businessAddress: v)),
@@ -563,7 +563,7 @@ class _ReceiptEditableCanvasScreenState
                                   hint: '#',
                                   textAlign: TextAlign.right,
                                   style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
+                                      color: Colors.white.withValues(alpha: 0.85),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600),
                                   onChanged: (v) => _update(
@@ -632,7 +632,7 @@ class _ReceiptEditableCanvasScreenState
                       padding:
                           const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                       decoration: BoxDecoration(
-                          color: accent.withOpacity(0.09),
+                          color: accent.withValues(alpha: 0.09),
                           borderRadius: BorderRadius.circular(8)),
                       child: Row(
                         children: [
@@ -755,7 +755,7 @@ class _ReceiptEditableCanvasScreenState
                     Padding(
                       padding:
                           const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      child: Divider(height: 1, color: accent.withOpacity(0.2)),
+                      child: Divider(height: 1, color: accent.withValues(alpha: 0.2)),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
@@ -893,7 +893,7 @@ class _ReceiptEditableCanvasScreenState
                   TextStyle(fontSize: 10, color: accent, fontWeight: FontWeight.w600)),
           Text(DateFormat(_kDateFmt).format(date), style: const TextStyle(fontSize: 10)),
           const SizedBox(width: 2),
-          Icon(Icons.edit_calendar_rounded, size: 12, color: accent.withOpacity(0.6)),
+          Icon(Icons.edit_calendar_rounded, size: 12, color: accent.withValues(alpha: 0.6)),
         ],
       ),
     );
@@ -937,7 +937,7 @@ class _AccentColorRow extends StatelessWidget {
                   boxShadow: isActive
                       ? [
                           BoxShadow(
-                              color: color.withOpacity(0.45),
+                              color: color.withValues(alpha: 0.45),
                               blurRadius: 8,
                               offset: const Offset(0, 3))
                         ]
@@ -978,7 +978,7 @@ class _PaymentMethodRow extends StatelessWidget {
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isActive ? accent.withOpacity(0.12) : Colors.white,
+                  color: isActive ? accent.withValues(alpha: 0.12) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                       color: isActive ? accent : Colors.grey.shade300,
@@ -1037,7 +1037,7 @@ class _EditableText extends StatelessWidget {
         isDense: true,
         isCollapsed: true,
         hintText: hint,
-        hintStyle: style.copyWith(color: style.color?.withOpacity(0.4) ?? Colors.grey),
+        hintStyle: style.copyWith(color: style.color?.withValues(alpha: 0.4) ?? Colors.grey),
         border: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(vertical: 2),
       ),

@@ -1,12 +1,12 @@
-﻿// lib/create_receipt/receipt_client_library.dart
+// lib/create_receipt/receipt_client_library.dart
 //
-// Saved "client" library for the receipt Client & Details step â€” same UX as
+// Saved "client" library for the receipt Client & Details step — same UX as
 // invoice_edit_section/step_customers/step_customers.dart (tap a saved card
 // to reuse a client's details instead of retyping them) and
 // create_quote_section/quote_client_library.dart, kept self-contained per
 // the receipt flow's existing convention (no dependency on invoice or quote
 // files). No inline client fields remain on the receipt Client & Details
-// step â€” only this saved-list section + "Add New Client" opening the sheet.
+// step — only this saved-list section + "Add New Client" opening the sheet.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -221,14 +221,14 @@ class _ReceiptClientLibrarySectionState extends State<ReceiptClientLibrarySectio
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: atMax ? const Color(0xFFEF5350) : colorScheme.onSurface.withOpacity(0.45),
+                  color: atMax ? const Color(0xFFEF5350) : colorScheme.onSurface.withValues(alpha: 0.45),
                 ),
               ),
           ],
         ),
         Text(
           'Tap a saved client to use them for this receipt.',
-          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45)),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
         ),
         const SizedBox(height: 10),
 
@@ -247,10 +247,10 @@ class _ReceiptClientLibrarySectionState extends State<ReceiptClientLibrarySectio
             decoration: BoxDecoration(
               color: atMax
                   ? (isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF5F5F5))
-                  : accent.withOpacity(isDark ? 0.14 : 0.08),
+                  : accent.withValues(alpha: isDark ? 0.14 : 0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: atMax ? colorScheme.outline.withOpacity(0.3) : accent.withOpacity(0.4),
+                color: atMax ? colorScheme.outline.withValues(alpha: 0.3) : accent.withValues(alpha: 0.4),
                 width: 1.5,
               ),
             ),
@@ -259,13 +259,13 @@ class _ReceiptClientLibrarySectionState extends State<ReceiptClientLibrarySectio
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.person_add_rounded,
-                    color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent, size: 20),
+                    color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent, size: 20),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     atMax ? 'Maximum Clients Reached' : 'Add New Client',
                     style: TextStyle(
-                      color: atMax ? colorScheme.onSurface.withOpacity(0.3) : accent,
+                      color: atMax ? colorScheme.onSurface.withValues(alpha: 0.3) : accent,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -349,15 +349,15 @@ class _ReceiptClientCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? (isDark ? accent.withOpacity(0.1) : Colors.white)
-            : (isDark ? colorScheme.surfaceContainerHighest.withOpacity(0.5) : const Color(0xFFF9F9F9)),
+            ? (isDark ? accent.withValues(alpha: 0.1) : Colors.white)
+            : (isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5) : const Color(0xFFF9F9F9)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isSelected ? accent.withOpacity(isDark ? 0.6 : 0.5) : colorScheme.outline.withOpacity(0.3),
+          color: isSelected ? accent.withValues(alpha: isDark ? 0.6 : 0.5) : colorScheme.outline.withValues(alpha: 0.3),
           width: isSelected ? 1.5 : 1,
         ),
         boxShadow: isSelected
-            ? [BoxShadow(color: accent.withOpacity(isDark ? 0.12 : 0.08), blurRadius: 8, offset: const Offset(0, 2))]
+            ? [BoxShadow(color: accent.withValues(alpha: isDark ? 0.12 : 0.08), blurRadius: 8, offset: const Offset(0, 2))]
             : [],
       ),
       child: InkWell(
@@ -377,7 +377,7 @@ class _ReceiptClientCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isSelected ? accent : Colors.transparent,
                   border: Border.all(
-                    color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                    color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -390,10 +390,10 @@ class _ReceiptClientCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isSelected
-                      ? accent.withOpacity(isDark ? 0.18 : 0.1)
-                      : colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      ? accent.withValues(alpha: isDark ? 0.18 : 0.1)
+                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   border: Border.all(
-                    color: isSelected ? accent.withOpacity(0.4) : colorScheme.outline.withOpacity(0.3),
+                    color: isSelected ? accent.withValues(alpha: 0.4) : colorScheme.outline.withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
@@ -403,7 +403,7 @@ class _ReceiptClientCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                      color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -418,7 +418,7 @@ class _ReceiptClientCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.4),
+                        color: isSelected ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     if (client.email.isNotEmpty) ...[
@@ -426,20 +426,20 @@ class _ReceiptClientCard extends StatelessWidget {
                       Text(client.email,
                           style: TextStyle(
                               fontSize: 12,
-                              color: isSelected ? accent : colorScheme.onSurface.withOpacity(0.3),
+                              color: isSelected ? accent : colorScheme.onSurface.withValues(alpha: 0.3),
                               fontWeight: FontWeight.w600)),
                     ],
                     if (client.phone.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(client.phone,
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.45))),
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45))),
                     ],
                     if (isSelected) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: accent.withOpacity(isDark ? 0.18 : 0.1),
+                          color: accent.withValues(alpha: isDark ? 0.18 : 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text('Active for this receipt',
@@ -457,7 +457,7 @@ class _ReceiptClientCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: accent.withOpacity(isDark ? 0.14 : 0.1),
+                        color: accent.withValues(alpha: isDark ? 0.14 : 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.edit_rounded, color: accent, size: 14),
@@ -470,7 +470,7 @@ class _ReceiptClientCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFFEF5350).withOpacity(0.12) : const Color(0xFFFFEBEE),
+                        color: isDark ? const Color(0xFFEF5350).withValues(alpha: 0.12) : const Color(0xFFFFEBEE),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.delete_rounded, color: Color(0xFFEF5350), size: 14),

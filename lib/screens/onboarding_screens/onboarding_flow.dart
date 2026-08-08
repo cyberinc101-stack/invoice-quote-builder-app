@@ -215,8 +215,8 @@ class _TopBar extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.08)
-                      : Colors.black.withOpacity(0.06),
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.arrow_back_rounded,
@@ -231,7 +231,7 @@ class _TopBar extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withOpacity(0.35),
+                  color: colorScheme.onSurface.withValues(alpha: 0.35),
                   letterSpacing: 0.5,
                 ),
               ),
@@ -246,8 +246,8 @@ class _TopBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.08)
-                      : Colors.black.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -255,7 +255,7 @@ class _TopBar extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface.withOpacity(0.55),
+                    color: colorScheme.onSurface.withValues(alpha: 0.55),
                   ),
                 ),
               ),
@@ -310,7 +310,7 @@ class _BottomBar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(3),
                   color: isActive
                       ? accent
-                      : colorScheme.onSurface.withOpacity(0.15),
+                      : colorScheme.onSurface.withValues(alpha: 0.15),
                 ),
               );
             }),
@@ -328,7 +328,7 @@ class _BottomBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: accent.withOpacity(0.4),
+                    color: accent.withValues(alpha: 0.4),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),

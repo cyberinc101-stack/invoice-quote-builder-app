@@ -70,7 +70,7 @@ Widget _techDarkFullHeader(DocTemplateAdapter a) {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    border: Border.all(color: a.accent.withOpacity(0.55), width: 1),
+                    border: Border.all(color: a.accent.withValues(alpha: 0.55), width: 1),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text('[ ${a.docNumber.isEmpty ? '----' : a.docNumber} ]',
@@ -170,7 +170,7 @@ class _TechDarkMetaRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: _kTechPanel, borderRadius: BorderRadius.circular(3),
-                    border: Border.all(color: a.statusColor.withOpacity(0.6), width: 1)),
+                    border: Border.all(color: a.statusColor.withValues(alpha: 0.6), width: 1)),
                 child: Text(a.statusLabel.toUpperCase(), style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
                     letterSpacing: 1.0, color: a.statusColor, fontFamily: a.fontFamily)),
               ),

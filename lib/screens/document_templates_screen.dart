@@ -185,7 +185,7 @@ class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
                         ),
                       ),
                     ),
@@ -233,7 +233,7 @@ class _TypeChip extends StatelessWidget {
     final bg = isSelected
         ? const Color(0xFF1A1A2E)
         : (isDark ? cs.surfaceContainerHighest : const Color(0xFFF5F5F5));
-    final fg = isSelected ? Colors.white : cs.onSurface.withOpacity(0.55);
+    final fg = isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.55);
 
     return GestureDetector(
       onTap: onTap,
@@ -279,10 +279,10 @@ class _TemplateCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outline.withOpacity(0.2)),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -310,7 +310,7 @@ class _TemplateCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Row(
@@ -330,12 +330,12 @@ class _TemplateCard extends StatelessWidget {
                   if (!entry.available)
                     Positioned.fill(
                       child: Container(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         alignment: Alignment.center,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.65),
+                            color: Colors.black.withValues(alpha: 0.65),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
@@ -354,7 +354,7 @@ class _TemplateCard extends StatelessWidget {
                     bottom: 0,
                     child: Container(
                       height: 3,
-                      color: entry.accentColor.withOpacity(entry.available ? 1 : 0.4),
+                      color: entry.accentColor.withValues(alpha: entry.available ? 1 : 0.4),
                     ),
                   ),
                 ],
@@ -372,7 +372,7 @@ class _TemplateCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: entry.available
                           ? cs.onSurface
-                          : cs.onSurface.withOpacity(0.4),
+                          : cs.onSurface.withValues(alpha: 0.4),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -384,7 +384,7 @@ class _TemplateCard extends StatelessWidget {
                       fontSize: 11,
                       color: entry.available
                           ? entry.accentColor
-                          : cs.onSurface.withOpacity(0.3),
+                          : cs.onSurface.withValues(alpha: 0.3),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

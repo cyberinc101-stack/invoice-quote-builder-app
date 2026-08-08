@@ -291,7 +291,7 @@ class SharedLogoPicker extends StatelessWidget {
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerHighest,
           borderRadius: logoShape.radiusFor(boxSize),
-          border: Border.all(color: accent.withOpacity(0.4), width: 1.5),
+          border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.5),
         ),
         clipBehavior: Clip.antiAlias,
         child: _hasLogo
@@ -313,12 +313,12 @@ class SharedLogoPicker extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.business_rounded,
-                      size: boxSize * 0.31, color: accent.withOpacity(0.5)),
+                      size: boxSize * 0.31, color: accent.withValues(alpha: 0.5)),
                   SizedBox(height: boxSize * 0.045),
                   Text('Upload',
                       style: TextStyle(
                           fontSize: boxSize * 0.11,
-                          color: accent.withOpacity(0.6),
+                          color: accent.withValues(alpha: 0.6),
                           fontWeight: FontWeight.w600)),
                 ],
               ),
@@ -399,9 +399,9 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          color: accent.withOpacity(0.08),
+          color: accent.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: accent.withOpacity(0.35)),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -432,7 +432,7 @@ class _OptionTile extends StatelessWidget {
       leading: Container(
         width: 40,
         height: 40,
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(label,
@@ -522,7 +522,7 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
             const SizedBox(height: 6),
             Text(
               'Drag to move · Pinch or use slider to zoom',
-              style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.45)),
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
@@ -583,20 +583,20 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                     margin: const EdgeInsets.symmetric(horizontal: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: selected ? accent.withOpacity(0.12) : Colors.transparent,
+                      color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: selected ? accent : colorScheme.outline.withOpacity(0.3)),
+                      border: Border.all(color: selected ? accent : colorScheme.outline.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(s.icon, size: 16, color: selected ? accent : colorScheme.onSurface.withOpacity(0.5)),
+                        Icon(s.icon, size: 16, color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.5)),
                         const SizedBox(width: 5),
                         Text(s.label,
                             style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: selected ? accent : colorScheme.onSurface.withOpacity(0.5))),
+                                color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.5))),
                       ],
                     ),
                   ),
@@ -607,14 +607,14 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
 
             Row(
               children: [
-                Icon(Icons.zoom_out_rounded, size: 20, color: colorScheme.onSurface.withOpacity(0.4)),
+                Icon(Icons.zoom_out_rounded, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                 Expanded(
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: accent,
-                      inactiveTrackColor: accent.withOpacity(0.2),
+                      inactiveTrackColor: accent.withValues(alpha: 0.2),
                       thumbColor: accent,
-                      overlayColor: accent.withOpacity(0.12),
+                      overlayColor: accent.withValues(alpha: 0.12),
                       trackHeight: 3,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
                     ),
@@ -629,12 +629,12 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                     ),
                   ),
                 ),
-                Icon(Icons.zoom_in_rounded, size: 20, color: colorScheme.onSurface.withOpacity(0.4)),
+                Icon(Icons.zoom_in_rounded, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
               ],
             ),
             Text(
               '${(_scale * 100).round()}%',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withOpacity(0.4)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.onSurface.withValues(alpha: 0.4)),
             ),
             const SizedBox(height: 4),
 
@@ -643,9 +643,9 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                 _scale = 1.0;
                 _pixelOffset = Offset.zero;
               }),
-              icon: Icon(Icons.center_focus_strong_rounded, size: 16, color: colorScheme.onSurface.withOpacity(0.45)),
+              icon: Icon(Icons.center_focus_strong_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               label: Text('Reset to centre',
-                  style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.45))),
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45))),
             ),
             const SizedBox(height: 8),
 
@@ -654,7 +654,7 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.45))),
+                    child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
                   ),
                 ),
                 const SizedBox(width: 8),
