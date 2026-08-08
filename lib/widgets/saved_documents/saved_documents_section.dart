@@ -7,14 +7,26 @@
 // rename, move-to-folder, delete), and the top-level build()/_buildEntries()
 // that picks which card layout to render.
 //
-// NEW (this pass): SavedDocumentsSection now accepts an optional
-// `initialFolder` — seeded into _selectedFolder in initState() — so callers
-// (e.g. FoldersOverviewScreen) can push straight into this widget already
-// filtered to one folder. When _selectedFolder is set, a small
-// "Folder: X ✕" banner renders above the filter bar / selection toolbar,
-// with the ✕ clearing the filter via setState.
+// NEW (this pass): tapping the Folders quick-chip in DocumentFilterBar no
+// longer navigates to a separate FoldersOverviewScreen — it now flips
+// _browsingFolders to true, which swaps the filter bar for a small "←
+// Folders" header and swaps the document list for FoldersGridView
+// (lib/widgets/folders_grid_view.dart), all inline on this same screen.
+// Tapping a folder tile sets _selectedFolder and flips _browsingFolders
+// back to false in one go, landing on the normal filtered document view
+// with the existing "Folder: X ✕" banner. This mirrors how selectionMode
+// already swaps out the filter bar for its own toolbar — browsingFolders,
+// selectionMode, and the normal filter bar are three mutually exclusive
+// states for the top control row.
 //
-// FIX (this pass): _DocCompactGridCard's GridView delegate had
+// NEW (earlier pass): SavedDocumentsSection accepts an optional
+// `initialFolder` — seeded into _selectedFolder in initState() — so callers
+// (e.g. FoldersOverviewScreen's standalone entry point) can push straight
+// into this widget already filtered to one folder. When _selectedFolder is
+// set, a small "Folder: X ✕" banner renders above the filter bar /
+// selection toolbar, with the ✕ clearing the filter via setState.
+//
+// FIX (earlier pass): _DocCompactGridCard's GridView delegate had
 // mainAxisExtent: 124, which clipped the last ~8px of its Column (the
 // Due/Paid/Expires row) — bumped to 134. Only the compact-grid layout uses
 // this delegate, so the other three card layouts are unaffected.
@@ -79,6 +91,7 @@ import '../../export/bulk_document_export_service.dart';
 import '../../screens/saved_invoice_details_section/saved_document_detail_screen.dart';
 import '../document_filter_bar.dart';
 import '../document_status_menu.dart';
+import '../folders_grid_view.dart';
 
 part 'doc_layout_mode.dart';
 part 'doc_card_shared.dart';
@@ -188,8 +201,9 @@ class _DocEntry {
 
 class SavedDocumentsSection extends StatefulWidget {
   /// When set, seeds _selectedFolder in initState so this section opens
-  /// already filtered to one folder (used by FoldersOverviewScreen). Leave
-  /// null for the normal, unfiltered entry point (e.g. from home_screen.dart).
+  /// already filtered to one folder (used by FoldersOverviewScreen's
+  /// standalone entry point). Leave null for the normal, unfiltered entry
+  /// point (e.g. from home_screen.dart).
   final String? initialFolder;
 
   const SavedDocumentsSection({super.key, this.initialFolder});
@@ -213,6 +227,16 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   double?          _minAmount;
   double?          _maxAmount;
   String?          _selectedFolder;
+
+  // ── Folder browsing (inline) ────────────────────────────────────────
+  //
+  // NEW: when true, the filter bar and document list are swapped out for
+  // a "← Folders" header + FoldersGridView, right here on this same
+  // screen. Picking a tile sets _selectedFolder and flips this back to
+  // false in one setState call. Mutually exclusive with _selectionMode —
+  // entering one doesn't need to explicitly clear the other since neither
+  // UI affordance to enter one is visible while the other is active.
+  bool _browsingFolders = false;
 
   // ── Selection mode ──────────────────────────────────────────────────
   bool _selectionMode = false;
@@ -1182,11 +1206,16 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // NEW: "Folder: X ✕" banner — shown whenever _selectedFolder is
-            // set, whether via the Folders quick-chip in DocumentFilterBar
-            // or via widget.initialFolder (FoldersOverviewScreen entry).
-            // Tapping ✕ just clears the filter; it doesn't navigate back.
-            if (_selectedFolder != null)
+            // "Folder: X ✕" banner — shown whenever _selectedFolder is set
+            // (either via the Filters sheet's dropdown, via
+            // widget.initialFolder, or via picking a tile while browsing
+            // folders below). Tapping ✕ just clears the filter; it doesn't
+            // navigate back. Suppressed while _browsingFolders is true —
+            // the two shouldn't ever be true at once in practice (picking
+            // a tile clears _browsingFolders in the same setState that
+            // sets this), but the guard keeps the header from doubling up
+            // if that ever changes.
+            if (_selectedFolder != null && !_browsingFolders)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Container(
@@ -1216,6 +1245,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                 ),
               ),
+
+            // ── Top control row: selection toolbar, folder-browsing
+            // header, or the normal filter bar — mutually exclusive.
             if (_selectionMode)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1281,6 +1313,27 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                 ),
               )
+            else if (_browsingFolders)
+              // NEW: replaces the filter bar while browsing folders inline.
+              // Back arrow just flips _browsingFolders back off — it
+              // doesn't touch any other filter state, so returning lands
+              // exactly where the user left the document list.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => setState(() => _browsingFolders = false),
+                      child: Icon(Icons.arrow_back_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.75)),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Folders',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.onSurface),
+                    ),
+                  ],
+                ),
+              )
             else
               DocumentFilterBar(
                 selectedType: _selectedType,
@@ -1325,6 +1378,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 selectedFolder: _selectedFolder,
                 onFolderChanged: (f) => setState(() => _selectedFolder = f),
                 availableFolders: allFolderNames,
+                // NEW: shows the folder grid inline instead of navigating.
+                onFoldersChipTap: () => setState(() => _browsingFolders = true),
                 needsActionCount: needsActionCount,
                 overdueCount: overdueCount,
                 draftsCount: draftsCount,
@@ -1333,7 +1388,22 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 overdue61plusCount: countAgingBucket(allInvoices, QuickFilter.overdue61plus),
               ),
             const SizedBox(height: 16),
-            if (!hasResults)
+
+            // ── Content area: folder grid, "no results", or document list.
+            if (_browsingFolders)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: FoldersGridView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  onFolderTap: (name) => setState(() {
+                    _selectedFolder   = name;
+                    _browsingFolders  = false;
+                  }),
+                ),
+              )
+            else if (!hasResults)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 child: Center(
@@ -1450,7 +1520,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             crossAxisCount: 3,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            // FIX: was 124 — clipped the Due/Paid/Expires row by ~8px.
             mainAxisExtent: 134,
           ),
           children: entries

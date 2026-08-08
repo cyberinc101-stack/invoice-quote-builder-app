@@ -9,22 +9,20 @@
 // onFolderChanged, availableFolders. "Clear all" also resets the folder
 // filter.
 //
-// FIX (this pass): the Status section (Payment/Quote/Receipt) only used to
+// CHANGED (this pass): the quick-access "Folders" chip no longer navigates
+// anywhere itself — it now calls the new required onFoldersChipTap
+// callback, letting the parent (SavedDocumentsSection) decide what
+// "tapping Folders" means. In practice that means flipping an inline
+// _browsingFolders flag so the folder grid renders right where the
+// document list normally shows, instead of pushing a new screen. The
+// folders_overview_screen.dart import is gone since this widget no longer
+// references it directly.
+//
+// FIX (earlier pass): the Status section (Payment/Quote/Receipt) only used to
 // render when selectedType matched that exact pill, so with "All" selected
 // — the default — no status dropdown ever showed, even when documents
 // existed. Now each status dropdown shows whenever its type is selected OR
 // "All" is selected and that type has documents.
-//
-// CHANGED (this pass): the quick-access "Folders" chip in the always-visible
-// row used to open its own lightweight "Filter by Folder" bottom sheet
-// (_openFolderPicker) that just applied a filter in place. That's confusing
-// next to the real Folders browsing screen (FoldersOverviewScreen) — tapping
-// "Folders" here now pushes straight into FoldersOverviewScreen instead,
-// so there's one consistent way to browse folders app-wide. The old picker
-// sheet and its _FolderOptionTile helper are removed since nothing calls
-// them anymore. The chip still reflects the current selectedFolder (shown
-// highlighted with the folder name) if one happens to be active via the
-// Filters sheet's own Folder dropdown, which is unchanged.
 //
 // NEW (earlier pass): a quick-access "Folders" chip in the always-visible
 // scrollable row itself, positioned immediately to the left of the Drafts
@@ -37,7 +35,6 @@ import '../models/invoice_data.dart' show PaymentStatus;
 import '../models/quote_data.dart' show QuoteStatus;
 import '../models/receipt_data.dart' show ReceiptStatus;
 import '../filters/filter_types.dart';
-import '../screens/folders_overview_screen.dart';
 
 enum DocTypeFilter { all, invoices, quotes, receipts }
 
@@ -86,6 +83,11 @@ class DocumentFilterBar extends StatefulWidget {
   final ValueChanged<String?> onFolderChanged;
   final List<String> availableFolders;
 
+  // NEW: called when the quick-access "Folders" chip is tapped. This
+  // widget no longer navigates on its own — the parent decides (e.g.
+  // SavedDocumentsSection flips its inline _browsingFolders flag).
+  final VoidCallback onFoldersChipTap;
+
   const DocumentFilterBar({
     super.key,
     required this.selectedType,
@@ -122,6 +124,7 @@ class DocumentFilterBar extends StatefulWidget {
     required this.selectedFolder,
     required this.onFolderChanged,
     required this.availableFolders,
+    required this.onFoldersChipTap,
   });
 
   @override
@@ -634,11 +637,14 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                 ),
                 const SizedBox(width: 8),
 
-                // CHANGED: tapping this now pushes straight into
-                // FoldersOverviewScreen (the real folder-browsing grid)
-                // instead of opening a separate quick-filter picker sheet.
-                // See file header comment.
-                _FolderChip(selectedFolder: widget.selectedFolder),
+                // CHANGED: no longer navigates itself — calls
+                // widget.onFoldersChipTap so the parent decides what
+                // "Folders" tapped means (SavedDocumentsSection flips its
+                // inline _browsingFolders flag).
+                _FolderChip(
+                  selectedFolder: widget.selectedFolder,
+                  onTap: widget.onFoldersChipTap,
+                ),
                 const SizedBox(width: 8),
 
                 _QuickPill(
@@ -801,13 +807,12 @@ class _QuickPill extends StatelessWidget {
 
 // ── Folders quick-access chip ───────────────────────────────────────────
 //
-// CHANGED (this pass): no longer opens its own picker sheet — tapping it
-// pushes straight into FoldersOverviewScreen, the real folder-browsing
-// grid (tiles with counts, rename, delete-folder, tap-to-view). This is
-// now the one consistent entry point to "see my folders" — the old
-// "Filter by Folder" popup was a second, inconsistent way to get a
-// similar-but-not-identical result and it wasn't obvious which one you'd
-// get by tapping this chip.
+// CHANGED (this pass): no longer owns navigation — tapping it just calls
+// the onTap callback passed in from DocumentFilterBar (which forwards
+// widget.onFoldersChipTap). The parent screen decides what that means:
+// SavedDocumentsSection flips its inline _browsingFolders flag so the
+// folder grid renders in place of the document list, right here on the
+// same screen, instead of pushing to a separate FoldersOverviewScreen.
 //
 // The chip still shows the current selectedFolder (highlighted, like an
 // active pill) if a folder filter happens to be set via the Filters
@@ -815,8 +820,9 @@ class _QuickPill extends StatelessWidget {
 
 class _FolderChip extends StatelessWidget {
   final String? selectedFolder;
+  final VoidCallback onTap;
 
-  const _FolderChip({required this.selectedFolder});
+  const _FolderChip({required this.selectedFolder, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -825,10 +831,7 @@ class _FolderChip extends StatelessWidget {
     final label = selectedFolder ?? 'Folders';
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const FoldersOverviewScreen()),
-      ),
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         constraints: const BoxConstraints(maxWidth: 140),
