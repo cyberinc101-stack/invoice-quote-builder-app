@@ -7,18 +7,29 @@
 // +X% / -X% badge (green = up, red = down), hand-drawn with CustomPainter
 // (no chart package dependency).
 //
-// MODERN-UI PASS (this update): visual rebuild only — the public API
-// (ReportsTrendChartCard(pointsBuilder:, isDark:, initiallyExpanded:)) is
-// unchanged, so reports_screen.dart does not need to change. What's new:
-//   - Catmull-Rom smoothed curve instead of straight line segments
-//   - Multi-stop gradient area fill + soft blurred glow under the line
-//   - Animated count-up on the headline value (TweenAnimationBuilder)
-//   - Sliding-pill segmented control for the metric toggle
-//   - Gradient pill range chips with a pressed-scale tap animation
-//   - Floating scrub tooltip bubble (real widget, not canvas text) that
-//     follows the touch position, with a connecting gradient guide line
-//   - Faint min/max value labels drawn in-canvas at the chart corners
-//   - Comma-grouped amount formatting (no intl dependency)
+// STATS + EDGE-CLIP FIX PASS (this update): visual rebuild only — the
+// public API (ReportsTrendChartCard(pointsBuilder:, isDark:,
+// initiallyExpanded:)) is unchanged, so reports_screen.dart does not need
+// to change. What's new:
+//   - Fixed a clipping bug where the last-point marker (and any point
+//     sitting at the very first/last x position) could bleed past the
+//     card's rounded edge — the plot area is now inset by
+//     kTrendChartInset on both sides, and the canvas is explicitly
+//     clipped to its own bounds as a second safety net.
+//   - Added an Avg / Highest / Lowest stats strip under the chart, so the
+//     card carries real period-level information, not just the current
+//     endpoint value.
+//   - Peak and trough points are now marked directly on the curve with
+//     small ring markers + floating value labels (skipped when the peak
+//     or trough IS the last point, since that's already marked/labelled
+//     in the header).
+//   - A faint dashed average line runs across the chart with an "Avg"
+//     tag at the right edge.
+//
+// Everything from the previous pass is otherwise unchanged: Catmull-Rom
+// smoothed curve, multi-stop gradient area fill + glow, animated
+// count-up headline value, sliding-pill metric segmented control,
+// gradient range pills, floating scrub tooltip, comma-grouped amounts.
 //
 // Kept dependency-free (no provider reads in here), same pattern as
 // reports_widgets.dart — the screen supplies a `pointsBuilder` callback
@@ -33,12 +44,17 @@
 //   5Y / 10Y -> yearly points  (5 / 10 points)
 //
 // The collapse icon in the header hides the metric control, range chips,
-// and chart body via AnimatedCrossFade, leaving just the compact header
-// (label + value + % badge) visible — this is the "hide with an icon"
-// behavior.
+// chart, and stats strip via AnimatedCrossFade, leaving just the compact
+// header (label + value + % badge) visible — this is the "hide with an
+// icon" behavior.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+
+// Shared inset between the widget's touch/tooltip math and the painter's
+// point placement, so a marker's glow halo always has room inside the
+// canvas and never bleeds past the card's rounded corners.
+const double kTrendChartInset = 12;
 
 // ── Public data types ───────────────────────────────────────────────────
 
@@ -222,6 +238,15 @@ class _ReportsTrendChartCardState extends State<ReportsTrendChartCard> {
     final displayValue = hasTouch ? points[_touchIndex!].value : (points.isNotEmpty ? points.last.value : 0.0);
     final displayDate = hasTouch ? points[_touchIndex!].date : (points.isNotEmpty ? points.last.date : null);
 
+    // Period-level stats for the strip under the chart.
+    double avg = 0, high = 0, low = 0;
+    if (points.isNotEmpty) {
+      final values = points.map((p) => p.value).toList();
+      avg = values.reduce((a, b) => a + b) / values.length;
+      high = values.reduce(math.max);
+      low = values.reduce(math.min);
+    }
+
     final bg = widget.isDark
         ? const LinearGradient(
             begin: Alignment.topLeft,
@@ -354,6 +379,8 @@ class _ReportsTrendChartCardState extends State<ReportsTrendChartCard> {
                           style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: 0.35))),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  _StatsStrip(avg: avg, high: high, low: low, isDark: widget.isDark),
                 ],
                 const SizedBox(height: 14),
                 SizedBox(
@@ -624,6 +651,70 @@ class _RangePillState extends State<_RangePill> {
   }
 }
 
+// ── Avg / Highest / Lowest stats strip ────────────────────────────────────
+
+class _StatsStrip extends StatelessWidget {
+  final double avg;
+  final double high;
+  final double low;
+  final bool isDark;
+  const _StatsStrip({required this.avg, required this.high, required this.low, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.onSurface.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _StatCell(label: 'Average', value: avg, color: cs.onSurface.withValues(alpha: 0.75))),
+          _StatDivider(isDark: isDark),
+          Expanded(child: _StatCell(label: 'Highest', value: high, color: const Color(0xFF16C784))),
+          _StatDivider(isDark: isDark),
+          Expanded(child: _StatCell(label: 'Lowest', value: low, color: const Color(0xFFEF4655))),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatDivider extends StatelessWidget {
+  final bool isDark;
+  const _StatDivider({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 28, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08));
+}
+
+class _StatCell extends StatelessWidget {
+  final String label;
+  final double value;
+  final Color color;
+  const _StatCell({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.45))),
+        const SizedBox(height: 3),
+        Text(
+          _fmtAmount(value),
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ],
+    );
+  }
+}
+
 // ── Chart area — gesture layer + canvas painter + floating scrub tooltip ─
 
 class _TrendChartArea extends StatelessWidget {
@@ -651,16 +742,18 @@ class _TrendChartArea extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final n = points.length;
+        final plotWidth = math.max(1.0, width - kTrendChartInset * 2);
 
         void updateTouch(Offset localPosition) {
           if (width <= 0) return;
-          final idx = ((localPosition.dx / width) * (n - 1)).round().clamp(0, n - 1);
+          final x = (localPosition.dx - kTrendChartInset).clamp(0.0, plotWidth);
+          final idx = ((x / plotWidth) * (n - 1)).round().clamp(0, n - 1);
           onTouchChanged(idx);
         }
 
         final ti = touchIndex;
         final showTooltip = ti != null && ti >= 0 && ti < n;
-        final tooltipX = showTooltip ? (n == 1 ? 0.0 : (ti / (n - 1)) * width) : 0.0;
+        final tooltipX = showTooltip ? kTrendChartInset + (n == 1 ? 0.0 : (ti / (n - 1)) * plotWidth) : 0.0;
 
         return SizedBox(
           height: _height,
@@ -785,6 +878,11 @@ class _TrendChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (points.length < 2) return;
 
+    // Safety net: even with the inset below, clip to the widget's own
+    // bounds so nothing (glow blur, halos) can bleed past the card edge.
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
     final values = points.map((p) => p.value).toList();
     var minV = values.reduce(math.min);
     var maxV = values.reduce(math.max);
@@ -797,8 +895,10 @@ class _TrendChartPainter extends CustomPainter {
     maxV += pad;
 
     final n = points.length;
+    final plotWidth = math.max(1.0, size.width - kTrendChartInset * 2);
+
     Offset offsetFor(int i) {
-      final x = n == 1 ? 0.0 : (i / (n - 1)) * size.width;
+      final x = kTrendChartInset + (n == 1 ? 0.0 : (i / (n - 1)) * plotWidth);
       final t = (values[i] - minV) / (maxV - minV);
       final y = size.height - t * size.height;
       return Offset(x, y);
@@ -840,6 +940,22 @@ class _TrendChartPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawPath(areaPath, areaPaint);
 
+    // Faint dashed average line, with a small "Avg" tag at the right edge.
+    final avg = values.reduce((a, b) => a + b) / values.length;
+    final avgT = (avg - minV) / (maxV - minV);
+    final avgY = size.height - avgT * size.height;
+    if (avgY > 4 && avgY < size.height - 4) {
+      final avgPaint = Paint()
+        ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.16)
+        ..strokeWidth = 1;
+      double x = 0;
+      while (x < size.width) {
+        canvas.drawLine(Offset(x, avgY), Offset(math.min(x + 4, size.width), avgY), avgPaint);
+        x += 7;
+      }
+      _drawLabel(canvas, 'Avg', Offset(size.width - 22, avgY - 12), isDark);
+    }
+
     // Soft blurred glow behind the line for a "neon" fintech feel.
     final glowPaint = Paint()
       ..color = lineColor.withValues(alpha: 0.35)
@@ -859,6 +975,22 @@ class _TrendChartPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(linePath, linePaint);
 
+    // Peak/trough markers — skipped when the extreme point IS the last
+    // point, since that's already marked and shown in the header.
+    final maxIdx = values.indexOf(values.reduce(math.max));
+    final minIdx = values.indexOf(values.reduce(math.min));
+    void drawExtremeMarker(int idx) {
+      if (idx == n - 1) return; // already marked as the last point
+      final o = offsets[idx];
+      canvas.drawCircle(o, 4.5, Paint()..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.9)..style = PaintingStyle.stroke..strokeWidth = 1.4);
+      canvas.drawCircle(o, 2.2, Paint()..color = lineColor);
+      final below = o.dy < size.height * 0.3;
+      _drawValueLabel(canvas, size, o, _fmtAmount(values[idx]), isDark, below: below);
+    }
+
+    drawExtremeMarker(maxIdx);
+    if (minIdx != maxIdx) drawExtremeMarker(minIdx);
+
     // Last-point marker with a soft halo.
     final lastO = offsets.last;
     canvas.drawCircle(lastO, 9, Paint()..color = lineColor.withValues(alpha: 0.16));
@@ -867,10 +999,6 @@ class _TrendChartPainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4);
-
-    // Faint min/max value labels at the chart corners.
-    _drawLabel(canvas, _fmtAmount(maxV - pad), Offset(2, 2), isDark);
-    _drawLabel(canvas, _fmtAmount(minV + pad), Offset(2, size.height - 14), isDark);
 
     // Touch scrub indicator — gradient guide line + halo dot.
     final ti = touchIndex;
@@ -891,17 +1019,32 @@ class _TrendChartPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2);
     }
+
+    canvas.restore();
   }
 
   void _drawLabel(Canvas canvas, String text, Offset pos, bool isDark) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.28)),
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.32)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, pos);
+  }
+
+  void _drawValueLabel(Canvas canvas, Size size, Offset o, String text, bool isDark, {required bool below}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.55)),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final dy = below ? o.dy + 7 : o.dy - 7 - tp.height;
+    final dx = (o.dx - tp.width / 2).clamp(0.0, size.width - tp.width);
+    tp.paint(canvas, Offset(dx, dy));
   }
 
   @override
