@@ -1001,6 +1001,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Collapsible Net/Income/Expenses trend chart — 1W up to 10Y,
+          // green/red % change badge, tap-and-drag scrub. Sits right below
+          // the data-source toggle chips and above the Income/Expenses/Net
+          // stat cards, so it reads as "here's the shape of the numbers
+          // below." Anchored on "today", not the period selector above
+          // (see _buildTrendPoints doc comment) — and shown regardless of
+          // whether the selected month has data, since it isn't scoped to
+          // that month anyway. Replaces the old static 6-month TrendStrip.
+          ReportsTrendChartCard(
+            isDark: isDark,
+            initiallyExpanded: false,
+            pointsBuilder: (metric, range) => _buildTrendPoints(
+              metric: metric,
+              range: range,
+              invoices: invoices,
+              receipts: receipts,
+              expenseProvider: expenseProvider,
+              prefs: prefs,
+            ),
+          ),
+          const SizedBox(height: 16),
+
           if (!hasAnyDataThisMonth) ...[
             ReportsEmptyState(isDark: isDark),
           ] else ...[
@@ -1084,24 +1106,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               onLayoutChanged: (m) => setState(() => _docsLayoutMode = m),
               isDark: isDark,
               emptyLabel: 'No invoices, quotes, receipts, or expenses in this period.',
-            ),
-            const SizedBox(height: 24),
-
-            // Collapsible Net/Income/Expenses trend chart — 1W up to 10Y,
-            // green/red % change badge, tap-and-drag scrub. Replaces the
-            // old static 6-month TrendStrip. Anchored on "today", not the
-            // period selector above (see _buildTrendPoints doc comment).
-            ReportsTrendChartCard(
-              isDark: isDark,
-              initiallyExpanded: false,
-              pointsBuilder: (metric, range) => _buildTrendPoints(
-                metric: metric,
-                range: range,
-                invoices: invoices,
-                receipts: receipts,
-                expenseProvider: expenseProvider,
-                prefs: prefs,
-              ),
             ),
             const SizedBox(height: 24),
 
