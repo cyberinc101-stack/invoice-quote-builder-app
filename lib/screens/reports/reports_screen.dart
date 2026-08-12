@@ -469,7 +469,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // on "today" (not the selected month/range — a multi-year trend
   // shouldn't jump around as you browse individual months). Reuses
   // _filterByRange/_sumIncome so this can never disagree with the rest of
-  // the screen about what counts as income.
+  // the screen about what counts as income. Every source is gated by the
+  // same DataSourceToggleRow chips (Invoices/Quotes/Receipts/Expenses)
+  // that gate Income/Expenses/Net above — turning a chip off removes that
+  // source from the chart too, not just the stat cards. Quotes never
+  // factor into Net/Income here, same as everywhere else on this screen
+  // (accepted quotes are shown separately as a pipeline total, never
+  // counted as income).
   List<TrendChartPoint> _buildTrendPoints({
     required TrendMetric metric,
     required TrendRange range,
@@ -518,7 +524,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final bucketInvoices = _filterByRange(invoices, (x) => x.createdAt, bucketStart, bucketEndInclusive);
       final bucketReceipts = _filterByRange(receipts, (x) => x.createdAt, bucketStart, bucketEndInclusive);
       final incomeVal = _sumIncome(invoices: bucketInvoices, receipts: bucketReceipts, prefs: prefs);
-      final expenseVal = expenseProvider.totalForRange(bucketStart, bucketEndInclusive);
+      final expenseVal = prefs.includeExpenses
+          ? expenseProvider.totalForRange(bucketStart, bucketEndInclusive)
+          : 0.0;
 
       final value = switch (metric) {
         TrendMetric.net => incomeVal - expenseVal,
@@ -1085,6 +1093,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             // period selector above (see _buildTrendPoints doc comment).
             ReportsTrendChartCard(
               isDark: isDark,
+              initiallyExpanded: false,
               pointsBuilder: (metric, range) => _buildTrendPoints(
                 metric: metric,
                 range: range,
