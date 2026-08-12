@@ -1,9 +1,29 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// EXPENSES-MERGED PASS (this update): expenses are now folded directly
-// into `docItems` as ReportsDocumentItem entries (ReportsDocType.expense
-// — see reports_document_list.dart) and rendered by the same
+// TREND-CHART PASS (this update): the static "6-month trend" TrendStrip
+// (reports_charts.dart) is retired and replaced by ReportsTrendChartCard
+// (reports_trend_chart.dart) — a collapsible card with a Net/Income/
+// Expenses metric toggle and a 1W/1M/3M/6M/1Y/2Y/5Y/10Y range selector,
+// rendered as a line+area chart with a stock-app-style +X%/-X% badge
+// (green = up, red = down) and a tap-and-drag scrub readout. The old
+// `trendPoints`/MonthTrendPoint computation is gone; in its place,
+// _buildTrendPoints() buckets the already folder-scoped invoices/
+// receipts/expenses into whatever granularity the selected range calls
+// for (daily/weekly/monthly/yearly — see TrendRangeX in
+// reports_trend_chart.dart), anchored on "today" rather than the
+// month/range picker above it, same reasoning the old trend strip used
+// for staying anchored on _month regardless of an active custom range —
+// a multi-year trend shouldn't jump around as you browse individual
+// months. It reuses _filterByRange/_sumIncome so it can never disagree
+// with the rest of the screen about what counts as income.
+//
+// ── Everything else below is unchanged from the previous pass — see
+// original header comments preserved below. ──
+//
+// EXPENSES-MERGED PASS (earlier): expenses are folded directly into
+// `docItems` as ReportsDocumentItem entries (ReportsDocType.expense —
+// see reports_document_list.dart) and rendered by the same
 // ReportsDocumentSection as invoices/quotes/receipts, with its own
 // filter pill and using category color as accent. The old, separate
 // "Expenses in this period" section (ReportsListItem/ReportsItemSection
@@ -22,10 +42,6 @@
 // _isReportable()); an expense counts when it's not manually excluded
 // (expenses have no completion concept). Merging the display doesn't
 // change what's counted — only how it's browsed.
-//
-// ── Everything below this point is unchanged from the previous pass,
-// except the docItems construction and the section list near the bottom
-// — see original header comments preserved below. ──
 //
 // THIS PASS (earlier): wired ReportsPrefs.includeExpenses through —
 // periodExpenses, expensesThisMonth, the "Expenses by category"
@@ -74,16 +90,12 @@
 // Custom date-range filtering. When a range is picked via
 // month_picker_sheet.dart's range mode, Income/Expenses/Net/quote-
 // pipeline/invoice-status/category-breakdown all total against the exact
-// range instead of the single selected month. The 6-month trend strip
-// intentionally still shows monthly cadence around _month regardless — a
-// "6-month trend" doesn't make sense to redefine around an arbitrary
-// range, so it's called out with a small caption instead of silently
-// guessing what the person wants there.
+// range instead of the single selected month.
 //
 // The month/day bucketing (_groupByMonth, invoicesByMonth, etc.) is kept
-// for single-month mode and the trend strip's perf benefit; range mode
-// filters the raw lists directly since a range is a one-off scan, not
-// something computed 6-8 times per render like the month lookups are.
+// for single-month mode; range mode filters the raw lists directly since
+// a range is a one-off scan, not something computed repeatedly per
+// render like the month lookups are.
 //
 // Tax set-aside estimate card, right under Net — net for the active
 // period × prefs.taxRatePercent, adjustable inline.
@@ -130,6 +142,7 @@ import 'reports_charts.dart';
 import 'reports_document_list.dart';
 import 'reports_item_list.dart';
 import 'reports_prefs.dart';
+import 'reports_trend_chart.dart';
 import 'reports_widgets.dart';
 
 const Color kReportsAccent = Color(0xFF00897B);
@@ -352,7 +365,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     setState(() => _selectedFolder = picked.isEmpty ? null : picked);
   }
 
-  // ── One-time grouping helper (single-month mode + trend strip) ─────────
+  // ── One-time grouping helper (single-month mode) ───────────────────────
 
   Map<String, List<T>> _groupByMonth<T>(List<T> items, DateTime Function(T) dateOf) {
     final map = <String, List<T>>{};
@@ -364,9 +377,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return map;
   }
 
-  // Exact-bounds range filter — used only when a custom range is active,
-  // so it's fine that this is a plain O(n) scan rather than a
-  // precomputed map.
+  // Exact-bounds range filter — used when a custom range is active and by
+  // the trend chart's per-bucket lookups, so it's fine that this is a
+  // plain O(n) scan rather than a precomputed map.
   List<T> _filterByRange<T>(List<T> items, DateTime Function(T) dateOf, DateTime start, DateTime end) {
     final rangeStart = DateTime(start.year, start.month, start.day);
     final rangeEndExclusive = DateTime(end.year, end.month, end.day + 1);
@@ -378,9 +391,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // Gated: paid invoices + issued receipts, but only the ones that are
   // 100% complete and not excluded. This is the single choke point for
-  // "does this document count as income" — _incomeForMonth and the range
-  // branch both funnel through here, so trend/margin/current-period totals
-  // can never disagree about which documents are reportable.
+  // "does this document count as income" — _incomeForMonth, the range
+  // branch, and the trend chart's bucketing all funnel through here, so
+  // trend/margin/current-period totals can never disagree about which
+  // documents are reportable.
   double _sumIncome({
     required List<SavedInvoice> invoices,
     required List<SavedReceipt> receipts,
@@ -449,6 +463,75 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return totals;
   }
 
+  // ── Data for the collapsible trend chart (reports_trend_chart.dart).
+  // Buckets the already folder-scoped invoices/receipts/expenses into
+  // TrendRange.bucketCount points of TrendRange.bucketUnit width, anchored
+  // on "today" (not the selected month/range — a multi-year trend
+  // shouldn't jump around as you browse individual months). Reuses
+  // _filterByRange/_sumIncome so this can never disagree with the rest of
+  // the screen about what counts as income.
+  List<TrendChartPoint> _buildTrendPoints({
+    required TrendMetric metric,
+    required TrendRange range,
+    required List<SavedInvoice> invoices,
+    required List<SavedReceipt> receipts,
+    required ExpenseProvider expenseProvider,
+    required ReportsPrefs prefs,
+  }) {
+    final now = DateTime.now();
+    final unit = range.bucketUnit;
+    final count = range.bucketCount;
+    final points = <TrendChartPoint>[];
+
+    for (int i = count - 1; i >= 0; i--) {
+      DateTime bucketStart;
+      DateTime bucketEndInclusive;
+      DateTime labelDate;
+
+      switch (unit) {
+        case TrendBucketUnit.day:
+          final d = DateTime(now.year, now.month, now.day - i);
+          bucketStart = d;
+          bucketEndInclusive = d;
+          labelDate = d;
+          break;
+        case TrendBucketUnit.week:
+          final end = DateTime(now.year, now.month, now.day - i * 7);
+          bucketStart = end.subtract(const Duration(days: 6));
+          bucketEndInclusive = end;
+          labelDate = end;
+          break;
+        case TrendBucketUnit.month:
+          final m = DateTime(now.year, now.month - i, 1);
+          bucketStart = DateTime(m.year, m.month, 1);
+          bucketEndInclusive = DateTime(m.year, m.month + 1, 0);
+          labelDate = bucketEndInclusive;
+          break;
+        case TrendBucketUnit.year:
+          final y = now.year - i;
+          bucketStart = DateTime(y, 1, 1);
+          bucketEndInclusive = DateTime(y, 12, 31);
+          labelDate = bucketEndInclusive;
+          break;
+      }
+
+      final bucketInvoices = _filterByRange(invoices, (x) => x.createdAt, bucketStart, bucketEndInclusive);
+      final bucketReceipts = _filterByRange(receipts, (x) => x.createdAt, bucketStart, bucketEndInclusive);
+      final incomeVal = _sumIncome(invoices: bucketInvoices, receipts: bucketReceipts, prefs: prefs);
+      final expenseVal = expenseProvider.totalForRange(bucketStart, bucketEndInclusive);
+
+      final value = switch (metric) {
+        TrendMetric.net => incomeVal - expenseVal,
+        TrendMetric.income => incomeVal,
+        TrendMetric.expenses => expenseVal,
+      };
+
+      points.add(TrendChartPoint(date: labelDate, value: value));
+    }
+
+    return points;
+  }
+
   @override
   Widget build(BuildContext context) {
     final invoicesAll = context.watch<InvoiceProvider>().savedInvoices;
@@ -489,7 +572,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     // Folder scope applied here, before any month/range bucketing —
     // everything below this point (invoicesByMonth, range filtering, the
-    // trend strip's per-month lookups) operates on these already-narrowed
+    // trend chart's per-bucket lookups) operates on these already-narrowed
     // lists, so the folder scope composes automatically with both
     // single-month and custom-range mode without touching that logic.
     final invoices = _selectedFolder == null
@@ -586,19 +669,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         netChangePercent = net > 0 ? 100 : -100;
       }
     }
-
-    // ── 6-month trend strip — always anchored on _month regardless of an
-    // active range (see file header comment). Expenses bar respects
-    // prefs.includeExpenses too, so a disabled Expenses source reads as
-    // $0 consistently everywhere in the screen. ─────────────────────────
-    final trendPoints = <MonthTrendPoint>[
-      for (int i = 5; i >= 0; i--)
-        MonthTrendPoint(
-          month: _monthsBefore(_month, i),
-          income: _incomeForMonth(_monthsBefore(_month, i), invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs),
-          expenses: prefs.includeExpenses ? expenseProvider.totalForMonth(_monthsBefore(_month, i)) : 0.0,
-        ),
-    ];
 
     // ── Invoice status breakdown — gated the same way as income. ────────
     final statusTotals = <String, double>{};
@@ -1009,16 +1079,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 24),
 
-            const ReportsSectionHeader(title: '6-month trend'),
-            if (_isRangeActive) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Always shows the trend around the month view, independent of the active range above.',
-                style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+            // Collapsible Net/Income/Expenses trend chart — 1W up to 10Y,
+            // green/red % change badge, tap-and-drag scrub. Replaces the
+            // old static 6-month TrendStrip. Anchored on "today", not the
+            // period selector above (see _buildTrendPoints doc comment).
+            ReportsTrendChartCard(
+              isDark: isDark,
+              pointsBuilder: (metric, range) => _buildTrendPoints(
+                metric: metric,
+                range: range,
+                invoices: invoices,
+                receipts: receipts,
+                expenseProvider: expenseProvider,
+                prefs: prefs,
               ),
-            ],
-            const SizedBox(height: 10),
-            TrendStrip(points: trendPoints, isDark: isDark),
+            ),
             const SizedBox(height: 24),
 
             if (statusSegments.isNotEmpty) ...[
