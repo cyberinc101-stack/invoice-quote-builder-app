@@ -57,6 +57,268 @@ class ClientStatementLine {
   });
 }
 
+// ── All-clients entry point ─────────────────────────────────────────────
+// ENTRY-POINT PASS (this update): Top Clients (and its onClientTap) only
+// ever lists clients with PAID invoices or issued receipts — that's
+// deliberate, it's a realized-income leaderboard. But it means a client
+// who's been invoiced and hasn't paid yet — the client you'd most want a
+// statement for — has no row there to tap. ClientStatementsEntryRow +
+// showClientStatementsListSheet give statements their own always-visible
+// door, independent of whether anything's been paid this period: any
+// client with at least one reportable invoice or issued receipt shows up,
+// so an unpaid invoice is still enough to reach that client's statement.
+
+// One client's rolled-up totals for the "all clients" list — same
+// invoiced/received/balance math as the single-client sheet below, just
+// precomputed so the list can show a balance next to each name without
+// every row re-deriving it on tap.
+class ClientStatementSummary {
+  final String clientName;
+  final List<ClientStatementLine> lines;
+  final double totalInvoiced;
+  final double totalReceived;
+  final double balance;
+
+  const ClientStatementSummary._({
+    required this.clientName,
+    required this.lines,
+    required this.totalInvoiced,
+    required this.totalReceived,
+    required this.balance,
+  });
+
+  factory ClientStatementSummary.fromLines(String clientName, List<ClientStatementLine> lines) {
+    final totalInvoiced = lines.where((l) => !l.isPayment).fold(0.0, (s, l) => s + l.amount);
+    final totalReceived = lines.where((l) => l.isPayment).fold(0.0, (s, l) => s + l.amount);
+    return ClientStatementSummary._(
+      clientName: clientName,
+      lines: lines,
+      totalInvoiced: totalInvoiced,
+      totalReceived: totalReceived,
+      balance: totalInvoiced - totalReceived,
+    );
+  }
+}
+
+// Always-visible tappable row — sits above/near Top Clients regardless of
+// whether Top Clients itself has anything to show, so "no paid income yet
+// this period" never means "no way to see what's owed."
+class ClientStatementsEntryRow extends StatelessWidget {
+  final bool isDark;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const ClientStatementsEntryRow({
+    super.key,
+    required this.isDark,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E2235) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.receipt_long_rounded, size: 16, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Client statements', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'See what every client has been invoiced and what they owe.',
+                      style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.35)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Modal list of every client with a reportable invoice or issued receipt
+// in the period, sorted by outstanding balance (highest first, since
+// that's the one you're most likely opening this to check). Tapping a
+// row opens that client's full statement via showClientStatementSheet.
+Future<void> showClientStatementsListSheet(
+  BuildContext context, {
+  required String periodLabel,
+  required List<ClientStatementSummary> summaries,
+  required bool isDark,
+  required Color accent,
+}) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => _ClientStatementsListBody(
+      periodLabel: periodLabel,
+      summaries: summaries,
+      isDark: isDark,
+      accent: accent,
+    ),
+  );
+}
+
+class _ClientStatementsListBody extends StatelessWidget {
+  final String periodLabel;
+  final List<ClientStatementSummary> summaries;
+  final bool isDark;
+  final Color accent;
+
+  const _ClientStatementsListBody({
+    required this.periodLabel,
+    required this.summaries,
+    required this.isDark,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.35,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (ctx, scrollController) => SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 36, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Client statements', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                  const SizedBox(height: 2),
+                  Text(periodLabel, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: summaries.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'No invoiced or paid clients in this period.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: 0.45)),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      itemCount: summaries.length,
+                      separatorBuilder: (_, __) => Divider(height: 1, color: cs.outline.withValues(alpha: 0.12)),
+                      itemBuilder: (ctx, i) {
+                        final s = summaries[i];
+                        final trimmed = s.clientName.trim();
+                        final initials = trimmed.isEmpty
+                            ? '?'
+                            : trimmed.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              showClientStatementSheet(
+                                context,
+                                clientName: s.clientName,
+                                periodLabel: periodLabel,
+                                lines: s.lines,
+                                isDark: isDark,
+                                accent: accent,
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), shape: BoxShape.circle),
+                                    alignment: Alignment.center,
+                                    child: Text(initials, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: accent)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(s.clientName,
+                                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: cs.onSurface),
+                                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        Text(
+                                          s.balance > 0 ? 'Balance due' : (s.balance < 0 ? 'Overpaid' : 'Settled'),
+                                          style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    _fmt(s.balance),
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: s.balance > 0
+                                          ? const Color(0xFFE53935)
+                                          : (s.balance < 0 ? const Color(0xFF4CAF50) : cs.onSurface.withValues(alpha: 0.5)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.35)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _fmt(double v) => v.toStringAsFixed(2);
 
 const _shortMonths = [

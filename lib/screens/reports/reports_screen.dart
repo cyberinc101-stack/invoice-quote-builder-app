@@ -31,7 +31,7 @@
 // expenses looked visually different from the other three document
 // types, both here and versus Home's own unified list. _expensesLayoutMode
 // is gone too; there's now one layout control for the whole merged
-// section (_docsLayoutMode). "Expenses by category" and its underlying
+// section (_docsLayoutMode).  "Expenses by category" and its underlying
 // byCategory rollup are UNCHANGED — that's a genuinely different view
 // (category totals, not individual transactions) and stays as its own
 // section further down the screen.
@@ -138,6 +138,7 @@ import '../../providers/quote_provider.dart';
 import '../../providers/receipt_provider.dart';
 import '../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'month_picker_sheet.dart';
+import 'reports_client_statement.dart';
 import 'reports_charts.dart';
 import 'reports_document_list.dart';
 import 'reports_item_list.dart';
@@ -538,6 +539,111 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     return points;
+  }
+
+  // ── Per-client statement of account. Builds the ledger lines from the
+  // already-computed period lists (periodInvoices/periodReceipts) so it
+  // can never disagree with the rest of the screen about the active
+  // month/range/folder scope. Unlike Top Clients (which only sums PAID
+  // invoices + issued receipts, i.e. realized income), a statement shows
+  // every reportable invoice regardless of payment status — the whole
+  // point of a statement is to show what's still owed, not just what's
+  // been collected. Receipts still only count when issued, since a
+  // refunded receipt isn't a payment received. Shared by both the
+  // single-client tap (Top Clients rows) and the all-clients list below,
+  // so both can never disagree about what belongs to a given client.
+  List<ClientStatementLine> _statementLinesForClient(
+    String clientName, {
+    required List<SavedInvoice> periodInvoices,
+    required List<SavedReceipt> periodReceipts,
+  }) {
+    final invoiceLines = periodInvoices
+        .where((i) =>
+            i.data.clientName.trim() == clientName &&
+            _isReportable(i.completionPercent, i.data.excludeFromReports))
+        .map((i) => ClientStatementLine(
+              date: i.createdAt,
+              label: i.title.isEmpty ? 'Invoice' : i.title,
+              docTypeLabel: 'Invoice',
+              amount: i.data.grandTotal,
+              isPayment: false,
+            ));
+
+    final receiptLines = periodReceipts
+        .where((r) =>
+            r.data.clientName.trim() == clientName &&
+            r.data.status == ReceiptStatus.issued &&
+            _isReportable(r.completionPercent, r.data.excludeFromReports))
+        .map((r) => ClientStatementLine(
+              date: r.createdAt,
+              label: r.title.isEmpty ? 'Receipt' : r.title,
+              docTypeLabel: 'Receipt',
+              amount: r.data.amountPaid,
+              isPayment: true,
+            ));
+
+    return [...invoiceLines, ...receiptLines];
+  }
+
+  void _openClientStatement(
+    String clientName, {
+    required List<SavedInvoice> periodInvoices,
+    required List<SavedReceipt> periodReceipts,
+  }) {
+    showClientStatementSheet(
+      context,
+      clientName: clientName,
+      periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+      lines: _statementLinesForClient(
+        clientName,
+        periodInvoices: periodInvoices,
+        periodReceipts: periodReceipts,
+      ),
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      accent: kReportsAccent,
+    );
+  }
+
+  // ── All-clients statements list — the always-visible entry point.
+  // Unlike _openClientStatement (reached by tapping a Top Clients row,
+  // which only lists clients with PAID income), this includes ANY client
+  // with a reportable invoice or issued receipt in the period, paid or
+  // not — so a client who's been invoiced but hasn't paid yet still shows
+  // up and is reachable even when Income is 0.00 and Top Clients isn't
+  // rendered at all.
+  void _openAllClientStatements({
+    required List<SavedInvoice> periodInvoices,
+    required List<SavedReceipt> periodReceipts,
+  }) {
+    final clientNames = <String>{
+      for (final i in periodInvoices.where(
+          (i) => _isReportable(i.completionPercent, i.data.excludeFromReports)))
+        if (i.data.clientName.trim().isNotEmpty) i.data.clientName.trim(),
+      for (final r in periodReceipts.where((r) =>
+          r.data.status == ReceiptStatus.issued &&
+          _isReportable(r.completionPercent, r.data.excludeFromReports)))
+        if (r.data.clientName.trim().isNotEmpty) r.data.clientName.trim(),
+    };
+
+    final summaries = clientNames
+        .map((name) => ClientStatementSummary.fromLines(
+              name,
+              _statementLinesForClient(
+                name,
+                periodInvoices: periodInvoices,
+                periodReceipts: periodReceipts,
+              ),
+            ))
+        .toList()
+      ..sort((a, b) => b.balance.abs().compareTo(a.balance.abs()));
+
+    showClientStatementsListSheet(
+      context,
+      periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+      summaries: summaries,
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      accent: kReportsAccent,
+    );
   }
 
   @override
@@ -1093,6 +1199,62 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             const SizedBox(height: 24),
 
+            // ── Insight cards — Top Clients and Expenses by category
+            // moved up here (above "Documents in this period") so the
+            // higher-level summaries sit together right after the
+            // stat/tax cards, and the raw per-document list reads as the
+            // detail underneath them rather than something to scroll
+            // past to reach the summaries.
+            //
+            // ClientStatementsEntryRow is deliberately OUTSIDE the
+            // topClientsTop5 check below — Top Clients only lists clients
+            // with PAID income, so on a month with $0 collected (like
+            // this one) it doesn't render at all and there'd be no way to
+            // reach a statement. This row stays visible any time there's
+            // period data at all, and opens the full client list rather
+            // than a single client.
+            ClientStatementsEntryRow(
+              isDark: isDark,
+              accent: kReportsAccent,
+              onTap: () => _openAllClientStatements(
+                periodInvoices: periodInvoices,
+                periodReceipts: periodReceipts,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (topClientsTop5.isNotEmpty) ...[
+              ReportsTopClientsCard(
+                entries: topClientsTop5,
+                isDark: isDark,
+                accent: kReportsAccent,
+                onClientTap: (name) => _openClientStatement(
+                  name,
+                  periodInvoices: periodInvoices,
+                  periodReceipts: periodReceipts,
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            ReportsSectionHeader(title: 'Expenses by category'),
+            const SizedBox(height: 12),
+            if (sortedCategoryEntries.isEmpty)
+              Text(
+                !prefs.includeExpenses
+                    ? 'Expenses are turned off for this report.'
+                    : 'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+              )
+            else
+              for (final entry in sortedCategoryEntries)
+                CategoryBarRow(
+                  category: categories.byId(entry.key),
+                  amount: entry.value,
+                  fraction: entry.value / maxCategoryAmount,
+                ),
+            const SizedBox(height: 24),
+
             // The saved documents (invoices, quotes, receipts, AND
             // expenses now) behind Income/Expenses/the status breakdown/
             // the quote pipeline, all rendered with the same card visuals
@@ -1113,28 +1275,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               StatusBreakdownBar(title: 'Invoice value by status', segments: statusSegments, isDark: isDark),
               const SizedBox(height: 24),
             ],
-
-            if (topClientsTop5.isNotEmpty) ...[
-              TopClientsCard(entries: topClientsTop5, isDark: isDark, accent: kReportsAccent),
-              const SizedBox(height: 24),
-            ],
-
-            ReportsSectionHeader(title: 'Expenses by category'),
-            const SizedBox(height: 12),
-            if (sortedCategoryEntries.isEmpty)
-              Text(
-                !prefs.includeExpenses
-                    ? 'Expenses are turned off for this report.'
-                    : 'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
-                style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
-              )
-            else
-              for (final entry in sortedCategoryEntries)
-                CategoryBarRow(
-                  category: categories.byId(entry.key),
-                  amount: entry.value,
-                  fraction: entry.value / maxCategoryAmount,
-                ),
           ],
         ],
       ),
