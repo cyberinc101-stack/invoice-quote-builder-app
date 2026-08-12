@@ -78,30 +78,24 @@ class ExpenseListCard extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(14),
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: prefs.showLogo
-                        ? CrossAxisAlignment.stretch
-                        : CrossAxisAlignment.center,
-                    children: [
-                      if (prefs.showLogo) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: ExpenseGradientAvatar(
-                            logoPath: entry.logoPath,
-                            logoOffset: entry.logoOffset,
-                            logoScale: entry.logoScale,
-                            logoShape: entry.logoShape,
-                            category: entry.category,
-                            size: 64,
-                            width: 64,
-                            height: double.infinity,
-                            iconSize: 26,
-                            borderRadius: 14,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                      ],
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (prefs.showLogo) ...[
+                      ExpenseGradientAvatar(
+                        logoPath: entry.logoPath,
+                        logoOffset: entry.logoOffset,
+                        logoScale: entry.logoScale,
+                        logoShape: entry.logoShape,
+                        category: entry.category,
+                        size: 72,
+                        width: 72,
+                        height: 96,
+                        iconSize: 30,
+                        borderRadius: 16,
+                      ),
+                      const SizedBox(width: 14),
+                    ],
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -193,8 +187,7 @@ class ExpenseListCard extends StatelessWidget {
                           if (!selectionMode) ExpenseThreeDotIcon(onTap: entry.onShowMenu),
                         ],
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
               if (selectionMode)

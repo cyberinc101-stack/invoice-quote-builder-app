@@ -524,26 +524,22 @@ class _ReportsDocCard extends StatelessWidget {
               BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
             ],
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: prefs.showLogo ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
-              children: [
-                if (prefs.showLogo) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: _ReportsLogoAvatar(
-                      logoPath: item.logoPath,
-                      businessName: item.businessName,
-                      accentColor: item.accentColor,
-                      size: 64,
-                      width: 64,
-                      height: double.infinity,
-                      iconSize: 26,
-                      borderRadius: 12,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                ],
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (prefs.showLogo) ...[
+                _ReportsLogoAvatar(
+                  logoPath: item.logoPath,
+                  businessName: item.businessName,
+                  accentColor: item.accentColor,
+                  size: 72,
+                  width: 72,
+                  height: 96,
+                  iconSize: 30,
+                  borderRadius: 14,
+                ),
+                const SizedBox(width: 14),
+              ],
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -648,8 +644,7 @@ class _ReportsDocCard extends StatelessWidget {
                     ),
                   ],
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),

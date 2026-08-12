@@ -76,28 +76,22 @@ class _DocCard extends StatelessWidget {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: prefs.showLogo
-                    ? CrossAxisAlignment.stretch
-                    : CrossAxisAlignment.start,
-                children: [
-                  if (prefs.showLogo) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _DocLogoAvatar(
-                        logoPath: entry.logoPath,
-                        businessName: entry.businessName,
-                        accentColor: entry.accentColor,
-                        size: 64,
-                        width: 64,
-                        height: double.infinity,
-                        iconSize: 26,
-                        borderRadius: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                  ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (prefs.showLogo) ...[
+                  _DocLogoAvatar(
+                    logoPath: entry.logoPath,
+                    businessName: entry.businessName,
+                    accentColor: entry.accentColor,
+                    size: 72,
+                    width: 72,
+                    height: 96,
+                    iconSize: 30,
+                    borderRadius: 14,
+                  ),
+                  const SizedBox(width: 14),
+                ],
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -216,8 +210,7 @@ class _DocCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                ],
-              ),
+              ],
             ),
             if (selectionMode)
               Positioned(
