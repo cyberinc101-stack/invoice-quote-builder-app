@@ -2,6 +2,15 @@
 //
 // Generates and exports invoice PDFs.
 //
+// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// [shareText] parameter — a pre-filled message body passed straight
+// through to Share.shareXFiles' `text` field. Used by the Alerts screen's
+// "Follow Up" action (alerts_screen.dart) to open the OS share sheet with
+// a friendly "this invoice is overdue" nudge already typed out, so the
+// user just picks email/WhatsApp/SMS and hits send. Omitted (null) for
+// every other caller, so normal shares are unchanged from before this
+// pass.
+//
 // REWRITE: previously built against an `Invoice`/`BusinessInfo`/`ClientInfo`
 // shape (businessInfo.name, customer.email, enabledFields map, items cast
 // from dynamic) that does not match the app's real data model. Confirmed
@@ -14,7 +23,7 @@
 // The existing pdf_service.dart (CV/resume PDFs) is untouched — this is the
 // invoice-only PDF path.
 //
-// REWRITE (this pass): threads the visual layout chosen in
+// REWRITE (earlier pass): threads the visual layout chosen in
 // InvoiceTemplateChooserScreen through to PDF generation. `layoutTemplateId`
 // is a plain optional parameter on the public methods — deliberately NOT a
 // field on SavedInvoice/InvoiceData, so nothing about those models needs to
@@ -24,13 +33,12 @@
 // Adding template #2 later is: write its own _buildXxxPdf() method, add one
 // case to the switch below — no other file in this chain needs to change.
 //
-// NEW (this pass): generatePdfBytes() is a thin public wrapper around the
+// NEW (earlier pass): generatePdfBytes() is a thin public wrapper around the
 // existing private _buildPdf() dispatcher — it hands back raw PDF bytes
 // without writing a named file to Downloads or a temp dir. Added for
 // FolderDownloadService, which bundles several invoices' PDFs into one ZIP
 // and needs the bytes in memory rather than a file per invoice already
-// written under its own name. generateAndDownloadPDF/generateAndSharePDF
-// below are completely unchanged.
+// written under its own name. generateAndDownloadPDF below is unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -61,9 +69,14 @@ class InvoicePdfService {
   }
 
   /// Generates the PDF and triggers the OS share sheet.
+  /// [shareText] is an optional pre-filled message body (used by the
+  /// Alerts screen's "Follow Up" action to prefill a friendly nudge about
+  /// this invoice) — omitted entirely for normal shares, unchanged from
+  /// before this pass.
   Future<void> generateAndSharePDF(
     SavedInvoice invoice, {
     int? layoutTemplateId,
+    String? shareText,
   }) async {
     final bytes = await _buildPdf(invoice, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
@@ -73,6 +86,7 @@ class InvoicePdfService {
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Invoice ${invoice.data.invoiceNumber}',
+      text: shareText,
     );
   }
 

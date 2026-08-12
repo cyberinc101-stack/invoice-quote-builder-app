@@ -6,10 +6,13 @@
 // getters, QuoteColor scheme) — no dispatcher/layout switch since quotes
 // only have one layout so far.
 //
-// NEW (this pass): generatePdfBytes() — same purpose as the identically-named
+// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// [shareText] parameter — pre-filled message body used by the Alerts
+// screen's "Follow Up" action. Omitted (null) for every other caller.
+//
+// NEW (earlier pass): generatePdfBytes() — same purpose as the identically-named
 // method added to InvoicePdfService: raw bytes for FolderDownloadService's
-// ZIP bundling, no file written. generateAndDownloadPDF/generateAndSharePDF
-// below are unchanged.
+// ZIP bundling, no file written. generateAndDownloadPDF below is unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -33,7 +36,10 @@ class QuotePdfService {
     return file.path;
   }
 
-  Future<void> generateAndSharePDF(SavedQuote quote) async {
+  /// [shareText] is an optional pre-filled message body (used by the
+  /// Alerts screen's "Follow Up" action) — omitted entirely for normal
+  /// shares, unchanged from before this pass.
+  Future<void> generateAndSharePDF(SavedQuote quote, {String? shareText}) async {
     final bytes = await _buildPdf(quote);
     final dir   = await getTemporaryDirectory();
     final file  = File(
@@ -42,6 +48,7 @@ class QuotePdfService {
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Quote ${quote.data.quoteNumber}',
+      text: shareText,
     );
   }
 

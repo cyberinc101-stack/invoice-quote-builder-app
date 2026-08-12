@@ -5,10 +5,14 @@
 // has no dueDate/expiryDate, uses paymentDate + paymentMethod, and its final
 // total getter is amountPaid (not grandTotal).
 //
-// NEW (this pass): generatePdfBytes() — same purpose as the identically-named
+// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// [shareText] parameter — pre-filled message body used by the Alerts
+// screen's "Follow Up" action. Omitted (null) for every other caller.
+//
+// NEW (earlier pass): generatePdfBytes() — same purpose as the identically-named
 // method added to InvoicePdfService/QuotePdfService: raw bytes for
 // FolderDownloadService's ZIP bundling, no file written.
-// generateAndDownloadPDF/generateAndSharePDF below are unchanged.
+// generateAndDownloadPDF below is unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -32,7 +36,10 @@ class ReceiptPdfService {
     return file.path;
   }
 
-  Future<void> generateAndSharePDF(SavedReceipt receipt) async {
+  /// [shareText] is an optional pre-filled message body (used by the
+  /// Alerts screen's "Follow Up" action) — omitted entirely for normal
+  /// shares, unchanged from before this pass.
+  Future<void> generateAndSharePDF(SavedReceipt receipt, {String? shareText}) async {
     final bytes = await _buildPdf(receipt);
     final dir   = await getTemporaryDirectory();
     final file  = File(
@@ -41,6 +48,7 @@ class ReceiptPdfService {
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Receipt ${receipt.data.receiptNumber}',
+      text: shareText,
     );
   }
 
