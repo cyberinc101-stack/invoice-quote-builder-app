@@ -3,16 +3,17 @@
 //
 // Month/day picker for the Reports screen — Single date / Date range toggle.
 //
-// FIX (this pass): range-highlight logic rewritten to compare plain
-// (year, month, day) integers instead of DateTime objects. DateTime
-// equality/isBefore/isAfter comparisons are timezone/DST-sensitive and can
-// silently disagree across a setState rebuild even when the underlying
-// calendar date is identical — that was the root cause of the start date's
-// highlight dropping out as soon as the end date was picked. Packing each
-// date into a single comparable int (_dayKey = year*10000 + month*100 + day)
-// makes start/end/in-range checks pure integer comparisons with no
-// ambiguity, so both endpoints now stay highlighted reliably, with days
-// strictly between them getting a lighter tint.
+// FIX (this pass): the day grid was driven by a separate `_selectedYear`
+// that only got updated when a month chip was tapped (_selectMonth), NOT
+// when the year strip was tapped. Navigating to a different year via the
+// year strip, then tapping a day WITHOUT first re-tapping a month, meant
+// the tap's date was computed against the stale old year — silently
+// producing a wrong start/end date and broken-looking range highlighting.
+// Fixed by removing `_selectedYear` entirely and always deriving the day
+// grid from `_displayedYear` (the single source of truth the year strip
+// already controls), so the two can never drift apart again. Year
+// chevrons now also route through `_selectYearChip` (previously they
+// mutated `_displayedYear` directly and skipped the day-clamp step).
 
 import 'package:flutter/material.dart';
 
@@ -91,16 +92,21 @@ class _MonthPickerSheet extends StatefulWidget {
 
 class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   late _PickerMode _mode;
+
+  // Single source of truth for "what year is the day grid showing" —
+  // drives the year strip highlight AND the day grid. Previously there
+  // was also a separate `_selectedYear` that only synced on month-tap;
+  // that split was the root cause of the range-picker bug (see file
+  // header) — always read/write _displayedYear, never reintroduce a
+  // second year field.
   late int _displayedYear;
   late int _selectedMonth; // focused month for the day grid — used in both modes
-  late int _selectedYear;  // focused year for the day grid — used in both modes
   late int _selectedDay;   // single mode only
 
   // Range mode state — stored as plain (year, month, day) int keys, NOT
-  // DateTime objects. This is the actual fix: comparing DateTime instances
-  // for equality/ordering across a setState rebuild is timezone/DST
-  // sensitive and was the source of the start-date highlight dropping out
-  // as soon as the end date got picked. Ints have no such ambiguity.
+  // DateTime objects. Comparing DateTime instances for equality/ordering
+  // across a setState rebuild is timezone/DST sensitive; ints have no
+  // such ambiguity.
   int? _rangeStartKey;
   int? _rangeEndKey;
   DateTime? _rangeStartDate; // kept alongside the key purely for display text
@@ -127,13 +133,12 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
 
     final focusBasis = widget.initialRangeStart ?? widget.initialMonth;
     _displayedYear = focusBasis.year;
-    _selectedYear = focusBasis.year;
     _selectedMonth = focusBasis.month;
-    _selectedDay = widget.initialMonth.day.clamp(1, _daysInMonth(_selectedYear, _selectedMonth));
+    _selectedDay = widget.initialMonth.day.clamp(1, _daysInMonth(_displayedYear, _selectedMonth));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_yearStripController.hasClients) return;
-      final index = _selectedYear - (DateTime.now().year - 15);
+      final index = _displayedYear - (DateTime.now().year - 15);
       final target = (index * 64.0) - 100;
       _yearStripController.jumpTo(target.clamp(0.0, _yearStripController.position.maxScrollExtent));
     });
@@ -150,8 +155,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   void _selectMonth(int month) {
     setState(() {
       _selectedMonth = month;
-      _selectedYear = _displayedYear;
-      _selectedDay = _selectedDay.clamp(1, _daysInMonth(_selectedYear, _selectedMonth));
+      _selectedDay = _selectedDay.clamp(1, _daysInMonth(_displayedYear, _selectedMonth));
     });
   }
 
@@ -161,8 +165,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
       return;
     }
 
-    final tappedDate = DateTime(_selectedYear, _selectedMonth, day);
-    final tappedKey = _dayKey(_selectedYear, _selectedMonth, day);
+    final tappedDate = DateTime(_displayedYear, _selectedMonth, day);
+    final tappedKey = _dayKey(_displayedYear, _selectedMonth, day);
 
     setState(() {
       final hasCompleteRange = _rangeStartKey != null && _rangeEndKey != null;
@@ -191,7 +195,11 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   }
 
   void _selectYearChip(int year) {
-    setState(() => _displayedYear = year);
+    setState(() {
+      _displayedYear = year;
+      // Re-clamp in case the new year changes days-in-month (leap year).
+      _selectedDay = _selectedDay.clamp(1, _daysInMonth(_displayedYear, _selectedMonth));
+    });
   }
 
   String _rangeStatusText() {
@@ -207,8 +215,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
 
-    final daysInSelectedMonth = _daysInMonth(_selectedYear, _selectedMonth);
-    final leadingBlanks = DateTime(_selectedYear, _selectedMonth, 1).weekday % 7;
+    final daysInSelectedMonth = _daysInMonth(_displayedYear, _selectedMonth);
+    final leadingBlanks = DateTime(_displayedYear, _selectedMonth, 1).weekday % 7;
 
     final canConfirm = _mode == _PickerMode.single || (_rangeStartKey != null && _rangeEndKey != null);
 
@@ -264,7 +272,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             children: [
               IconButton(
                 icon: const Icon(Icons.chevron_left_rounded),
-                onPressed: () => setState(() => _displayedYear--),
+                onPressed: () => _selectYearChip(_displayedYear - 1),
                 color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
               SizedBox(
@@ -277,7 +285,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right_rounded),
-                onPressed: () => setState(() => _displayedYear++),
+                onPressed: () => _selectYearChip(_displayedYear + 1),
                 color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ],
@@ -342,7 +350,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             ),
             itemBuilder: (context, index) {
               final month = index + 1;
-              final isSelected = _selectedYear == _displayedYear && _selectedMonth == month;
+              final isSelected = _selectedMonth == month;
               final isCurrent = _displayedYear == now.year && month == now.month;
 
               return Material(
@@ -441,10 +449,9 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             itemBuilder: (context, index) {
               if (index < leadingBlanks) return const SizedBox.shrink();
               final day = index - leadingBlanks + 1;
-              final cellKey = _dayKey(_selectedYear, _selectedMonth, day);
+              final cellKey = _dayKey(_displayedYear, _selectedMonth, day);
               final isToday = _displayedYear == now.year &&
                   _selectedMonth == now.month &&
-                  _selectedYear == _displayedYear &&
                   day == now.day;
 
               bool isSelected = false;
@@ -516,7 +523,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                           if (_mode == _PickerMode.single) {
                             Navigator.pop(
                               context,
-                              DatePickerResult.month(DateTime(_selectedYear, _selectedMonth, _selectedDay)),
+                              DatePickerResult.month(DateTime(_displayedYear, _selectedMonth, _selectedDay)),
                             );
                           } else {
                             Navigator.pop(

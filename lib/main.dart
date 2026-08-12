@@ -1,6 +1,6 @@
 // lib/main.dart
 //
-// NOTIFICATION TAP-THROUGH (this pass): added rootNavigatorKey and wired
+// NOTIFICATION TAP-THROUGH (earlier pass): added rootNavigatorKey and wired
 // NotificationService.instance.onReminderTapped so tapping a reminder
 // notification actually opens RemindersScreen with that reminder
 // highlighted — previously nothing consumed a notification tap at all, so
@@ -10,6 +10,20 @@
 // this very launch was caused by the notification tap (the Navigator
 // doesn't exist yet at the point NotificationService.init() runs, so that
 // specific tap has to be replayed once it does).
+//
+// DOCUMENT ALERT PUSH (this pass): DocumentAlertScheduler now schedules
+// real push notifications for overdue invoices / expiring quotes / stale
+// drafts (see lib/alerts/notifications/document_alert_scheduler.dart and
+// the hooks added to InvoiceProvider/QuoteProvider/ReceiptProvider). Wired
+// onDocumentAlertTapped here so tapping one of those opens the right
+// document. SavedDocumentDetailScreen's factories (.invoice/.quote/
+// .receipt) take the actual Saved* object rather than a bare id, so the
+// handler below looks the document up from the matching provider via
+// rootNavigatorKey.currentContext (providers live above MaterialApp in the
+// widget tree, so the navigator's own context can still read them) before
+// pushing. If the document was deleted between the notification firing and
+// being tapped, the lookup comes back null and this is a silent no-op
+// rather than a crash.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +39,7 @@ import 'alerts/alert_prefs.dart';
 import 'alerts/custom_reminders/reminder_provider.dart';
 import 'alerts/custom_reminders/reminder_screen.dart';
 import 'alerts/notifications/notification_service.dart';
+import 'screens/saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'screens/reports/reports_prefs.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -167,6 +182,53 @@ Future<void> main() async {
         builder: (_) => RemindersScreen(highlightReminderId: reminderId),
       ),
     );
+  };
+
+  // Route a tapped document alert (overdue invoice / quote expiring /
+  // draft nudge) to that document's detail screen. `category` is the raw
+  // DocAlertCategory.name string from document_alert_scheduler.dart:
+  // "overdueInvoice" / "draftInvoice" -> invoice, "quoteExpiring" /
+  // "draftQuote" -> quote, "draftReceipt" -> receipt. The document is
+  // looked up fresh from its provider (rather than trusting anything
+  // cached in the notification payload) so a rename/status-change since
+  // the push was scheduled is always reflected, and a deletion in the
+  // meantime is a safe no-op instead of showing stale data.
+  NotificationService.instance.onDocumentAlertTapped = (category, docId) {
+    final navState = rootNavigatorKey.currentState;
+    final context = rootNavigatorKey.currentContext;
+    if (navState == null || context == null) return;
+
+    switch (category) {
+      case 'overdueInvoice':
+      case 'draftInvoice':
+        final inv = context.read<InvoiceProvider>().getInvoiceById(docId);
+        if (inv != null) {
+          navState.push(MaterialPageRoute(
+            builder: (_) => SavedDocumentDetailScreen.invoice(inv),
+          ));
+        }
+        break;
+      case 'quoteExpiring':
+      case 'draftQuote':
+        final q = context.read<QuoteProvider>().getQuoteById(docId);
+        if (q != null) {
+          navState.push(MaterialPageRoute(
+            builder: (_) => SavedDocumentDetailScreen.quote(q),
+          ));
+        }
+        break;
+      case 'draftReceipt':
+        final matches = context
+            .read<ReceiptProvider>()
+            .savedReceipts
+            .where((r) => r.id == docId);
+        if (matches.isNotEmpty) {
+          navState.push(MaterialPageRoute(
+            builder: (_) => SavedDocumentDetailScreen.receipt(matches.first),
+          ));
+        }
+        break;
+    }
   };
 
   await Future.wait([

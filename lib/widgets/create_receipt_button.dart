@@ -1,7 +1,16 @@
+// create_receipt_button.dart
+// lib/widgets/create_receipt_button.dart
+//
+// UPDATED: now pushes ReceiptTemplateChooserScreen ("Choose a Design")
+// first, matching how the invoice and quote "Create" buttons work — the
+// chooser is responsible for pushing CreateReceiptScreen(layoutTemplateId:)
+// once a design is picked, so this button no longer navigates to
+// CreateReceiptScreen directly.
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/receipt_provider.dart';
-import '../create_receipt/create_receipt_screen.dart';
+import '../create_receipt/receipt_template_chooser_screen.dart';
 
 class CreateReceiptButton extends StatelessWidget {
   const CreateReceiptButton({super.key});
@@ -14,7 +23,7 @@ class CreateReceiptButton extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => const CreateReceiptScreen(),
+            builder: (_) => const ReceiptTemplateChooserScreen(),
           ),
         );
       },

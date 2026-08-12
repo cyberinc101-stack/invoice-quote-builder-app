@@ -23,6 +23,14 @@
 // default case, since Executive (id 1) is the only layout actually built.
 // Adding template #2 later is: write its own _buildXxxPdf() method, add one
 // case to the switch below — no other file in this chain needs to change.
+//
+// NEW (this pass): generatePdfBytes() is a thin public wrapper around the
+// existing private _buildPdf() dispatcher — it hands back raw PDF bytes
+// without writing a named file to Downloads or a temp dir. Added for
+// FolderDownloadService, which bundles several invoices' PDFs into one ZIP
+// and needs the bytes in memory rather than a file per invoice already
+// written under its own name. generateAndDownloadPDF/generateAndSharePDF
+// below are completely unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -66,6 +74,16 @@ class InvoicePdfService {
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Invoice ${invoice.data.invoiceNumber}',
     );
+  }
+
+  /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService to
+  /// bundle several invoices' PDFs into one ZIP without each one first
+  /// landing under its own name in Downloads or a temp dir.
+  Future<Uint8List> generatePdfBytes(
+    SavedInvoice invoice, {
+    int? layoutTemplateId,
+  }) {
+    return _buildPdf(invoice, layoutTemplateId: layoutTemplateId);
   }
 
   // ── Layout dispatcher ───────────────────────────────────────────────────────

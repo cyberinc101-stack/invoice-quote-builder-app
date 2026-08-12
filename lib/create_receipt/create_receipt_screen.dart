@@ -1,6 +1,18 @@
 // lib/create_receipt/create_receipt_screen.dart
 //
-// UPDATED (this pass): Business step and Client & Details step now match
+// TEMPLATE ROUTING (this pass): accepts an optional layoutTemplateId, same
+// role as EditorScreen/QuoteEditorScreen's parameter of the same name —
+// set when the receipt was started from a template card on
+// DocumentTemplatesScreen instead of the plain "Create Receipt" button.
+// Resolved to a design name via kInvoiceTemplates (invoice's and quote's
+// template registries list the exact same 10 designs by id/name, so
+// either works as the lookup source) and saved as the receipt's
+// templateName — same field invoices/quotes already use, previously
+// always hardcoded to 'Standard' here since receipts had no template
+// concept yet. Only applies to new receipts; editing an existing one
+// (existingReceiptId set) keeps whatever templateName it already has.
+//
+// UPDATED (earlier pass): Business step and Client & Details step now match
 // the invoice/quote flow's saved-profile pattern:
 //   - Business step: inline Logo/Business Name/Email/Phone/Address fields
 //     removed. Only ReceiptBusinessProfileLibrarySection (saved cards +
@@ -36,6 +48,8 @@ import 'package:provider/provider.dart';
 import '../models/invoice_data.dart' show LineItem;
 import '../models/receipt_data.dart';
 import '../providers/receipt_provider.dart';
+import '../screens/invoice_create_section/invoice_template_previews/preview_registry.dart'
+    show kInvoiceTemplates;
 import '../widgets/step_editor_header.dart';
 import 'receipt_business_profile_library.dart';
 import 'receipt_client_library.dart';
@@ -44,8 +58,13 @@ import 'receipt_full_preview_screen.dart';
 
 class CreateReceiptScreen extends StatefulWidget {
   final String? existingReceiptId;
+  final int? layoutTemplateId;
 
-  const CreateReceiptScreen({super.key, this.existingReceiptId});
+  const CreateReceiptScreen({
+    super.key,
+    this.existingReceiptId,
+    this.layoutTemplateId,
+  });
 
   @override
   State<CreateReceiptScreen> createState() => _CreateReceiptScreenState();
@@ -64,6 +83,19 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   int _step = 0;
 
   bool get _isEditing => widget.existingReceiptId != null;
+
+  // Resolved once from widget.layoutTemplateId — 'Standard' if none was
+  // passed (plain "Create Receipt" entry point) or the id doesn't match
+  // any known design. Editing an existing receipt ignores this entirely
+  // and keeps its already-saved templateName (see _persistDraft).
+  String get _templateName {
+    final id = widget.layoutTemplateId;
+    if (id == null) return 'Standard';
+    for (final t in kInvoiceTemplates) {
+      if (t.id == id) return t.name;
+    }
+    return 'Standard';
+  }
 
   late TextEditingController _receiptNumberCtrl;
   late TextEditingController _notesCtrl;
@@ -195,7 +227,11 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
       title: _selectedClient?.name.isNotEmpty == true
           ? 'Receipt for ${_selectedClient!.name}'
           : 'Receipt ${_receiptNumberCtrl.text.trim()}',
-      templateName: 'Standard',
+      // New receipts started from a template card carry that design's name
+      // through; editing an existing receipt keeps whatever it already had
+      // (saveCurrentReceipt only overwrites templateName on first save for
+      // a given id — see ReceiptProvider.saveCurrentReceipt).
+      templateName: _templateName,
     );
   }
 

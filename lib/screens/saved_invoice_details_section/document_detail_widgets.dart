@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 
 // ---------------------------------------------------------------------------
 // Stat card used in the stats row
+//
+// REDESIGN (this pass): made to actually read as the important numbers on
+// the screen rather than small supporting metadata. Value font roughly
+// doubled (13 -> 24) and given negative letter-spacing for a tighter,
+// ledger-style number look; the label moved above the value as a small
+// uppercase caption (formal-document convention — caption above figure)
+// instead of below it; icon badge enlarged and given a subtle border
+// instead of just a flat tint so it reads as a discrete card element
+// rather than a decoration; a thin accent-colored top rule replaces the
+// previous plain white card, giving each stat a quiet category marker
+// without resorting to a loud colored background.
 // ---------------------------------------------------------------------------
 class DetailStatCard extends StatelessWidget {
   final String value;
@@ -23,47 +34,64 @@ class DetailStatCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E2235) : Colors.white,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.12)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(icon, color: iconColor, size: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: colorScheme.onSurface.withValues(alpha: 0.4),
-              fontWeight: FontWeight.w500,
+          Container(height: 3, color: iconColor.withValues(alpha: 0.75)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 34, height: 34,
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: iconColor.withValues(alpha: 0.22)),
+                      ),
+                      child: Icon(icon, color: iconColor, size: 17),
+                    ),
+                    const Spacer(),
+                    Text(
+                      label.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: colorScheme.onSurface.withValues(alpha: 0.42),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    color: colorScheme.onSurface,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
@@ -74,6 +102,10 @@ class DetailStatCard extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Section heading label
+//
+// FORMALIZED (this pass): uppercase + wider letter-spacing, smaller/lighter
+// weight — reads as a document section header (INVOICE / LINE ITEMS style)
+// rather than an app-UI heading.
 // ---------------------------------------------------------------------------
 class DetailSectionLabel extends StatelessWidget {
   final String label;
@@ -83,12 +115,12 @@ class DetailSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      label,
+      label.toUpperCase(),
       style: TextStyle(
-        fontSize: 16,
+        fontSize: 12.5,
         fontWeight: FontWeight.w700,
-        color: Theme.of(context).colorScheme.onSurface,
-        letterSpacing: 0.2,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+        letterSpacing: 1.0,
       ),
     );
   }
@@ -224,6 +256,11 @@ class DetailLineItemRow extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Bottom bar action button (wide)
+//
+// FORMALIZED (this pass): dropped the saturated colored drop-shadow (read
+// as a playful consumer-app "glow") for a plain neutral shadow — the
+// button's own fill color still carries the accent, it just no longer
+// casts colored light.
 // ---------------------------------------------------------------------------
 class DetailActionButton extends StatelessWidget {
   final String label;
@@ -250,11 +287,11 @@ class DetailActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: backgroundColor.withValues(alpha: 0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: Color(0x1F000000),
+              blurRadius: 10,
+              offset: Offset(0, 3),
             ),
           ],
         ),

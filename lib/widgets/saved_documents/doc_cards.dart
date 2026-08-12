@@ -6,11 +6,25 @@
 // selection mode (long-press to enter, tap to toggle) and the 3-dot
 // options menu when not in selection mode.
 //
-// FIX (this pass): every layout now surfaces entry.secondaryDateLabel /
-// entry.secondaryDateValue (Due/Paid for invoices, Expires for quotes, Paid
-// for receipts) alongside the existing last-edited `entry.date` — previously
-// only last-edited was shown anywhere in these cards, and _DocCompactGridCard
-// showed no date at all.
+// NEW (this pass): every layout now renders the document's business logo
+// via _DocLogoAvatar (doc_card_shared.dart) instead of the old generic
+// description icon, and surfaces three extra stats that were previously
+// nowhere on the cards: Created date (entry.createdLabel, distinct from
+// the existing last-edited entry.date), line-item count (entry.itemCount),
+// and the document's final total (entry.totalAmount, formatted via the
+// shared _formatCardAmount() in saved_documents_section.dart). List and
+// grid show all three; compactGrid and compact-row — both already tight
+// on space — show only the total amount, since it's the single most
+// useful at-a-glance stat and the others would force overflow or
+// unreadably small text at those sizes.
+//
+// FIX (earlier pass, kept): every layout surfaces entry.secondaryDateLabel
+// / entry.secondaryDateValue (Due/Paid for invoices, Expires for quotes,
+// Paid for receipts) alongside the last-edited entry.date.
+//
+// REDESIGN (earlier pass, kept): _DocCompactGridCard built for a 4-across
+// grid. Title forced to a single line, Spacer pins the status chip to the
+// card's bottom edge.
 
 part of 'saved_documents_section.dart';
 
@@ -63,15 +77,15 @@ class _DocCard extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: entry.accentColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.description_rounded, color: entry.accentColor, size: 24),
+                _DocLogoAvatar(
+                  logoPath: entry.logoPath,
+                  businessName: entry.businessName,
+                  accentColor: entry.accentColor,
+                  size: 48,
+                  iconSize: 24,
+                  borderRadius: 12,
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -115,6 +129,22 @@ class _DocCard extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                                 color: cs.onSurface.withValues(alpha: 0.55))),
                       ]),
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                        const SizedBox(width: 4),
+                        Text('Created ${entry.createdLabel}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withValues(alpha: 0.45))),
+                        const SizedBox(width: 10),
+                        Icon(Icons.receipt_long_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                        const SizedBox(width: 4),
+                        Text('${entry.itemCount} item${entry.itemCount == 1 ? '' : 's'}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withValues(alpha: 0.45))),
+                      ]),
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
@@ -133,6 +163,15 @@ class _DocCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    Text(
+                      _formatCardAmount(entry.totalAmount),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -197,7 +236,7 @@ class _DocGridCard extends StatelessWidget {
       onTap: () => selectionMode ? onToggleSelect(entry.key) : entry.onTap(),
       onLongPress: () => onEnterSelection(entry.key),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -220,22 +259,21 @@ class _DocGridCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: entry.accentColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.description_rounded, color: entry.accentColor, size: 18),
+                _DocLogoAvatar(
+                  logoPath: entry.logoPath,
+                  businessName: entry.businessName,
+                  accentColor: entry.accentColor,
+                  size: 32,
+                  iconSize: 16,
+                  borderRadius: 9,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         entry.title,
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface),
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -243,38 +281,58 @@ class _DocGridCard extends StatelessWidget {
                     if (entry.isPositiveStatus) _positiveDot(),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   entry.subtitle,
-                  style: TextStyle(fontSize: 10, color: entry.accentColor, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 9.5, color: entry.accentColor, fontWeight: FontWeight.w600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   '${entry.secondaryDateLabel}: ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Edited ${entry.date}',
-                  style: TextStyle(fontSize: 9.5, color: cs.onSurface.withValues(alpha: 0.35)),
+                  style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.35)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: entry.accentColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    entry.statusLabel,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: entry.accentColor),
-                  ),
+                const SizedBox(height: 2),
+                Text(
+                  'Created ${entry.createdLabel} · ${entry.itemCount} item${entry.itemCount == 1 ? '' : 's'}',
+                  style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.35)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: entry.accentColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        entry.statusLabel,
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: entry.accentColor),
+                      ),
+                    ),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(
+                        _formatCardAmount(entry.totalAmount),
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -299,6 +357,12 @@ class _DocGridCard extends StatelessWidget {
 
 // -----------------------------------------------------------------------------
 // _DocCompactGridCard — COMPACT GRID layout
+//
+// Built for a 4-across grid. Only the total amount is added here (not
+// created date / item count) — at ~80-90dp wide there's no room for more
+// text without forcing overflow or unreadable font sizes. Total amount was
+// picked as the one extra stat worth the space since it's the number
+// people scan for first.
 // -----------------------------------------------------------------------------
 
 class _DocCompactGridCard extends StatelessWidget {
@@ -325,10 +389,10 @@ class _DocCompactGridCard extends StatelessWidget {
       onTap: () => selectionMode ? onToggleSelect(entry.key) : entry.onTap(),
       onLongPress: () => onEnterSelection(entry.key),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected ? cs.primary : cs.outline.withValues(alpha: 0.2),
             width: selected ? 2 : 1,
@@ -336,8 +400,8 @@ class _DocCompactGridCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              blurRadius: 5,
+              offset: const Offset(0, 1),
             ),
           ],
         ),
@@ -345,26 +409,24 @@ class _DocCompactGridCard extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: entry.accentColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Icon(Icons.description_rounded, color: entry.accentColor, size: 15),
+                _DocLogoAvatar(
+                  logoPath: entry.logoPath,
+                  businessName: entry.businessName,
+                  accentColor: entry.accentColor,
+                  size: 22,
+                  iconSize: 12,
+                  borderRadius: 7,
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         entry.title,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface),
-                        maxLines: 2,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurface),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -374,20 +436,27 @@ class _DocCompactGridCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${entry.secondaryDateLabel}: ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 8.5, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 2),
+                Text(
+                  _formatCardAmount(entry.totalAmount),
+                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
                     color: entry.accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     entry.statusLabel,
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: entry.accentColor),
+                    style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: entry.accentColor),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -457,14 +526,13 @@ class _DocCompactRow extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: entry.accentColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.description_rounded, color: entry.accentColor, size: 15),
+                _DocLogoAvatar(
+                  logoPath: entry.logoPath,
+                  businessName: entry.businessName,
+                  accentColor: entry.accentColor,
+                  size: 28,
+                  iconSize: 15,
+                  borderRadius: 8,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -483,11 +551,23 @@ class _DocCompactRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '${entry.secondaryDateLabel} ${entry.secondaryDateValue}',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatCardAmount(entry.totalAmount),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${entry.secondaryDateLabel} ${entry.secondaryDateValue}',
+                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
                 const SizedBox(width: 8),
                 Container(

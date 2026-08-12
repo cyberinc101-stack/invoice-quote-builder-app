@@ -3,70 +3,30 @@
 // One unified screen for SavedInvoice / SavedQuote / SavedReceipt, matched to
 // the shape of those models exactly as defined in lib/models/*.dart.
 //
-// ── STATUS ──────────────────────────────────────────────────────────────
-// Rename/delete call the REAL provider methods (confirmed against
-// invoice_provider.dart / quote_provider.dart / receipt_provider.dart):
-//   Invoice: renameInvoice(id, title) / deleteInvoice(id)
-//   Quote:   renameQuote(id, title)   / deleteQuote(id)
-//   Receipt: renameSavedReceipt(id, title) / deleteSavedReceipt(id)
+// FIX (this pass): PDF / Excel / CSV export in the options sheet was
+// previously invoice-only — _handleDownloadPdf, _handleSharePdf,
+// _handleExportXlsx, and _handleExportCsv all early-returned with an
+// "isn't built yet" snackbar for quotes and receipts. QuotePdfService,
+// ReceiptPdfService (lib/services/) and the newly-added
+// QuoteExportService, ReceiptExportService (lib/export/) already exist and
+// mirror InvoicePdfService/InvoiceExportService exactly, so all four
+// handlers now dispatch on widget.type instead of hard-coding the invoice
+// path. Filenames/snackbars/error handling are unchanged in shape — same
+// try/catch, same "Saved to $path" / "Couldn't generate..." messages,
+// just routed to the right service per document type.
 //
-// SavedDocumentDetailScreen.demo(...) — a second entry point for UI-preview
-// purposes while still in the design phase. Takes plain values instead of
-// SavedInvoice/SavedQuote/SavedReceipt, so it has zero dependency on those
-// model constructors or on InvoiceProvider/QuoteProvider/ReceiptProvider.
-// When isDemo is true, _liveState() returns the demo values directly (no
-// provider reads at all) and Edit/Rename/Delete/Convert all just show a
-// "this is a demo" snackbar instead of touching a provider. Full Preview
-// works for BOTH demo and real documents.
+// FIX (this pass, build error): the receipt branch of _liveState() mapped
+// `qty: i.qty`, but LineItem (lib/models/invoice_data.dart) only exposes
+// `quantity` — there's no `qty` getter, so this failed to compile. Every
+// other branch (invoice, quote, demo) already used `i.quantity` correctly;
+// the receipt branch now matches.
 //
-// FIX (this pass): Edit is now FULLY WIRED for all three document types.
-// Previously Invoice Edit was stubbed with a "wiring pending" snackbar,
-// Quote Edit was stubbed with "not built yet", and Receipt Edit routed to
-// CreateReceiptScreen(existingReceiptId:...) with an assumed constructor
-// param. All three now route to a dedicated tap-to-edit canvas screen:
-//   Invoice -> InvoiceEditableCanvasScreen(invoiceId: ...)
-//   Quote   -> QuoteEditableCanvasScreen(quoteId: ...)
-//   Receipt -> ReceiptEditableCanvasScreen(receiptId: ...)
-// Each canvas seeds its provider's draft from the saved record on open,
-// edits live via the provider, and only writes back to the saved list on
-// Save. Back/cancel discards cleanly. See each canvas file's header comment
-// for exact per-type mechanics (Receipt's provider only exposes a single
-// updateReceiptData() method rather than granular update*() methods, so its
-// canvas uses a local copyWith-based helper instead).
-//
-// FIX (this pass, cont.): removed the now-unused CreateReceiptScreen import
-// — Receipt editing no longer routes there.
-//
-// FIX (latest pass): Activity card now shows a "Paid" row (green, check-
-// circle icon) whenever an invoice's InvoiceData.paidDate is set — i.e. the
-// invoice's status is currently Paid. Sourced through the same _liveState()
-// normalization used for every other date on this screen; quotes/receipts/
-// demo always pass paidDate: null since only InvoiceData tracks it.
-//
-// Everything below this point (PDF/export/convert/rename/delete/options
-// sheet) is unchanged from the previous pass.
-//
-// Real PDF export wired in. Options sheet has "Download PDF" / "Share PDF"
-// alongside Rename/Delete, calling the real InvoicePdfService
-// (lib/services/invoice_pdf_service.dart) against the live SavedInvoice.
-// Scoped to invoices only for now — quote/receipt PDF export isn't built.
-//
-// "Convert to Invoice" (on quotes) / "Convert to Receipt" (on invoices) in
-// the "⋮" options sheet. Conversion logic lives in
-// lib/conversion/document_converter.dart; this screen calls it, saves via
-// InvoiceProvider.addConvertedInvoice / ReceiptProvider.addConvertedReceipt,
-// and navigates to the new saved document's detail screen.
-//
-// "Export as Excel" / "Export as CSV" in the "⋮" options sheet, via
-// InvoiceExportService — invoice-only for now, same scoping as PDF export.
-//
-// Still open:
-// 1. The preview card is a generic branded summary, not a pixel-accurate
-//    render of your real invoice/quote/receipt layout templates.
-// 2. Quote/Receipt PDF and spreadsheet export not built — Download/Share
-//    PDF and Export XLSX/CSV only work for invoices right now.
+// Everything else in this header comment block is unchanged from the
+// previous pass — see prior history for the logo-header, Edit-wiring,
+// convert, rename/delete notes.
 // -----------------------------------------------------------------------------
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -77,7 +37,11 @@ import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
 import '../../services/invoice_pdf_service.dart';
+import '../../services/quote_pdf_service.dart';
+import '../../services/receipt_pdf_service.dart';
 import '../../export/invoice_export_service.dart';
+import '../../export/quote_export_service.dart';
+import '../../export/receipt_export_service.dart';
 import '../../conversion/document_converter.dart';
 import '../../widgets/saved_documents_containers.dart'
     show DocType, kInvoiceAccent, kQuoteAccent, kReceiptAccent;
@@ -162,6 +126,13 @@ String _typeLabel(DocType type) {
     case DocType.receipt: return 'Receipt';
   }
 }
+
+// Neutral, formal dark shade used for the header when a business logo is
+// shown in place of the accent gradient — matches the app's existing dark
+// card color (0xFF1E2235 used throughout doc_cards.dart / stat cards) so
+// the logo header reads as part of the same visual system rather than an
+// unrelated dark patch.
+const Color _kLogoHeaderColor = Color(0xFF1A1F2E);
 
 // -----------------------------------------------------------------------------
 // DemoLineItem — plain line item shape for .demo(), no model dependency
@@ -312,6 +283,16 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
+  // Resolves to a real, existing logo File, or null if there is none / the
+  // path is stale. Centralized here (rather than inline in the header
+  // widget) so both the SliverAppBar's backgroundColor decision and
+  // _HeaderBackground's rendering agree on whether "logo mode" is active.
+  File? _resolveLogoFile(String? path) {
+    if (path == null || path.isEmpty) return null;
+    final file = File(path);
+    return file.existsSync() ? file : null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -343,15 +324,14 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   // confirmed, from saved_documents_containers.dart). In demo mode, skips
   // providers entirely and returns the plain demo values passed to .demo().
   //
-  // FIX (this pass): added `paidDate` to the state shape — only ever
-  // non-null for a paid invoice (sourced from InvoiceData.paidDate); quotes,
-  // receipts, and demo documents always pass null since only invoices track
-  // a paid timestamp.
+  // FIX (this pass): added `logoPath` to the state shape, sourced from
+  // each type's businessLogoPath; always null for demo documents (no logo
+  // field on .demo()). paidDate (previous pass) unchanged.
   ({String title, String templateName, DateTime createdAt, DateTime lastEditedAt,
     int completionPercent, String statusLabel, Color statusColor, IconData statusIcon,
     double total, String currency, List<({String desc, double qty, double unitPrice, double total})> items,
     String businessName, String clientName, String primaryDate, String? secondaryDateLabel,
-    String? secondaryDate, String notes, DateTime? paidDate})
+    String? secondaryDate, String notes, DateTime? paidDate, String? logoPath})
       _liveState(BuildContext context) {
     if (widget.isDemo) {
       return (
@@ -375,6 +355,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
         secondaryDate: widget.demoSecondaryDate,
         notes: widget.demoNotes!,
         paidDate: null,
+        logoPath: null,
       );
     }
 
@@ -402,6 +383,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDate: inv.data.dueDate,
           notes: inv.data.notes,
           paidDate: inv.data.paidDate,
+          logoPath: inv.data.businessLogoPath,
         );
       case DocType.quote:
         final list = context.watch<QuoteProvider>().savedQuotes;
@@ -426,6 +408,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDate: q.data.expiryDate,
           notes: q.data.notes,
           paidDate: null,
+          logoPath: q.data.businessLogoPath,
         );
       case DocType.receipt:
         final list = context.watch<ReceiptProvider>().savedReceipts;
@@ -450,6 +433,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           secondaryDate: null,
           notes: r.data.notes,
           paidDate: null,
+          logoPath: r.data.businessLogoPath,
         );
     }
   }
@@ -490,10 +474,13 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
 
   // --- Sliver App Bar --------------------------------------------------------
   Widget _buildSliverAppBar(BuildContext context, dynamic state) {
+    final logoFile = _resolveLogoFile(state.logoPath as String?);
+    final barColor = logoFile != null ? _kLogoHeaderColor : _accent;
+
     return SliverAppBar(
       expandedHeight: 170,
       pinned: true,
-      backgroundColor: _accent,
+      backgroundColor: barColor,
       elevation: 0,
       leading: Padding(
         padding: const EdgeInsets.all(8),
@@ -530,6 +517,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
       flexibleSpace: FlexibleSpaceBar(
         background: _HeaderBackground(
           accentColor: _accent,
+          logoFile: logoFile,
           title: _currentTitle,
           typeLabel: _typeLabel(widget.type),
           typeIcon: _typeIcon(widget.type),
@@ -690,8 +678,8 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   }
 
   // --- Activity card ------------------------------------------------------------
-  // FIX (this pass): added a "Paid" row (green check-circle) whenever
-  // state.paidDate is non-null — only ever true for a paid invoice.
+  // Added a "Paid" row (green check-circle) whenever state.paidDate is
+  // non-null — only ever true for a paid invoice.
   Widget _buildActivityCard(BuildContext context, dynamic state) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -801,13 +789,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     ));
   }
 
-  // FIX (this pass): fully wired for all three document types — each routes
-  // to its own tap-to-edit canvas screen, seeded from this saved document's
-  // id. `.then((_) { setState... })` forces a rebuild on return so the
-  // header/stats/preview reflect whatever was just saved (the underlying
-  // data itself already updates live via context.watch in _liveState, but
-  // this also covers the case where nothing changed and we still want a
-  // clean repaint).
   void _handleEdit(BuildContext context) {
     if (widget.isDemo) {
       _demoSnack(context, 'This is a demo document — editing is disabled.');
@@ -881,15 +862,31 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // Downloads the invoice PDF to the Downloads folder via InvoicePdfService.
-  // Only wired for invoices right now — quote/receipt PDF export isn't built.
+  // FIX (this pass): now dispatches on widget.type instead of only ever
+  // handling invoices. Quote/receipt branches use QuotePdfService /
+  // ReceiptPdfService, which mirror InvoicePdfService's
+  // generateAndDownloadPDF signature exactly (SavedQuote/SavedReceipt in,
+  // Downloads path out). Demo documents still show the "isn't built yet"
+  // message, since there's no SavedInvoice/Quote/Receipt to hand the
+  // service in that mode.
   Future<void> _handleDownloadPdf(BuildContext context) async {
-    if (widget.type != DocType.invoice || widget.invoice == null) {
-      _demoSnack(context, 'PDF export for this document type isn\'t built yet.');
+    if (widget.isDemo) {
+      _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
     try {
-      final path = await InvoicePdfService().generateAndDownloadPDF(widget.invoice!);
+      final String path;
+      switch (widget.type) {
+        case DocType.invoice:
+          path = await InvoicePdfService().generateAndDownloadPDF(widget.invoice!);
+          break;
+        case DocType.quote:
+          path = await QuotePdfService().generateAndDownloadPDF(widget.quote!);
+          break;
+        case DocType.receipt:
+          path = await ReceiptPdfService().generateAndDownloadPDF(widget.receipt!);
+          break;
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -906,15 +903,24 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // Generates the invoice PDF and triggers the OS share sheet via
-  // InvoicePdfService. Same invoice-only scoping as _handleDownloadPdf above.
+  // FIX (this pass): same dispatch pattern as _handleDownloadPdf above.
   Future<void> _handleSharePdf(BuildContext context) async {
-    if (widget.type != DocType.invoice || widget.invoice == null) {
-      _demoSnack(context, 'PDF export for this document type isn\'t built yet.');
+    if (widget.isDemo) {
+      _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
     try {
-      await InvoicePdfService().generateAndSharePDF(widget.invoice!);
+      switch (widget.type) {
+        case DocType.invoice:
+          await InvoicePdfService().generateAndSharePDF(widget.invoice!);
+          break;
+        case DocType.quote:
+          await QuotePdfService().generateAndSharePDF(widget.quote!);
+          break;
+        case DocType.receipt:
+          await ReceiptPdfService().generateAndSharePDF(widget.receipt!);
+          break;
+      }
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -925,15 +931,27 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // Exports the invoice as an .xlsx file to the Downloads folder via
-  // InvoiceExportService. Same invoice-only scoping as the PDF handlers.
+  // FIX (this pass): dispatches on widget.type using the new
+  // QuoteExportService / ReceiptExportService, which mirror
+  // InvoiceExportService's exportSingleXlsxToDownloads signature exactly.
   Future<void> _handleExportXlsx(BuildContext context) async {
-    if (widget.type != DocType.invoice || widget.invoice == null) {
-      _demoSnack(context, 'Spreadsheet export for this document type isn\'t built yet.');
+    if (widget.isDemo) {
+      _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
     try {
-      final path = await InvoiceExportService().exportSingleXlsxToDownloads(widget.invoice!);
+      final String path;
+      switch (widget.type) {
+        case DocType.invoice:
+          path = await InvoiceExportService().exportSingleXlsxToDownloads(widget.invoice!);
+          break;
+        case DocType.quote:
+          path = await QuoteExportService().exportSingleXlsxToDownloads(widget.quote!);
+          break;
+        case DocType.receipt:
+          path = await ReceiptExportService().exportSingleXlsxToDownloads(widget.receipt!);
+          break;
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -950,14 +968,26 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // Same idea as _handleExportXlsx but for .csv.
+  // FIX (this pass): same dispatch pattern as _handleExportXlsx above, for
+  // .csv via exportSingleCsvToDownloads.
   Future<void> _handleExportCsv(BuildContext context) async {
-    if (widget.type != DocType.invoice || widget.invoice == null) {
-      _demoSnack(context, 'Spreadsheet export for this document type isn\'t built yet.');
+    if (widget.isDemo) {
+      _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
     try {
-      final path = await InvoiceExportService().exportSingleCsvToDownloads(widget.invoice!);
+      final String path;
+      switch (widget.type) {
+        case DocType.invoice:
+          path = await InvoiceExportService().exportSingleCsvToDownloads(widget.invoice!);
+          break;
+        case DocType.quote:
+          path = await QuoteExportService().exportSingleCsvToDownloads(widget.quote!);
+          break;
+        case DocType.receipt:
+          path = await ReceiptExportService().exportSingleCsvToDownloads(widget.receipt!);
+          break;
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -1091,7 +1121,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     _handleConvertInvoiceToReceipt(context);
                   },
                 ),
-              // Download / Share PDF, invoice-only for now.
+              // Download / Share PDF — now wired for all three document types.
               DetailSheetOption(
                 icon: Icons.download_rounded,
                 label: 'Download PDF',
@@ -1110,7 +1140,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                   _handleSharePdf(context);
                 },
               ),
-              // Export as Excel / CSV, invoice-only for now.
+              // Export as Excel / CSV — now wired for all three document types.
               DetailSheetOption(
                 icon: Icons.grid_on_rounded,
                 label: 'Export as Excel',
@@ -1324,9 +1354,22 @@ class _SecondaryActionButton extends StatelessWidget {
 
 // -----------------------------------------------------------------------------
 // _HeaderBackground
+//
+// Two distinct visual branches:
+//   - Logo branch: flat neutral-dark background (_kLogoHeaderColor), the
+//     logo shown large in a white rounded card (so logos with transparent
+//     backgrounds or light artwork stay legible regardless of image
+//     content), status pill / title / type row / date row unchanged below
+//     it. No decorative circles or ghost type-icon here — logo mode is
+//     meant to read as "this business's letterhead", not a branded app
+//     card, so the decoration is dropped in favor of the logo doing that
+//     job itself.
+//   - No-logo branch: unchanged from before — accent gradient, decorative
+//     circles, ghost type icon.
 // -----------------------------------------------------------------------------
 class _HeaderBackground extends StatelessWidget {
   final Color accentColor;
+  final File? logoFile;
   final String title;
   final String typeLabel;
   final IconData typeIcon;
@@ -1337,6 +1380,7 @@ class _HeaderBackground extends StatelessWidget {
 
   const _HeaderBackground({
     required this.accentColor,
+    required this.logoFile,
     required this.title,
     required this.typeLabel,
     required this.typeIcon,
@@ -1349,36 +1393,42 @@ class _HeaderBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double topInset = 56;
+    final hasLogo = logoFile != null;
 
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [accentColor, accentColor.withValues(alpha: 0.72)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: hasLogo
+            ? null
+            : LinearGradient(
+                colors: [accentColor, accentColor.withValues(alpha: 0.72)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        color: hasLogo ? _kLogoHeaderColor : null,
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(
-            top: -50, right: -50,
-            child: Container(
-              width: 160, height: 160,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)),
+          if (!hasLogo) ...[
+            Positioned(
+              top: -50, right: -50,
+              child: Container(
+                width: 160, height: 160,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)),
+              ),
             ),
-          ),
-          Positioned(
-            bottom: -20, left: -20,
-            child: Container(
-              width: 90, height: 90,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
+            Positioned(
+              bottom: -20, left: -20,
+              child: Container(
+                width: 90, height: 90,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
+              ),
             ),
-          ),
-          Positioned(
-            right: -10, bottom: -10,
-            child: Icon(typeIcon, size: 110, color: Colors.white.withValues(alpha: 0.06)),
-          ),
+            Positioned(
+              right: -10, bottom: -10,
+              child: Icon(typeIcon, size: 110, color: Colors.white.withValues(alpha: 0.06)),
+            ),
+          ],
           Padding(
             padding: const EdgeInsets.only(top: topInset),
             child: Align(
@@ -1387,6 +1437,22 @@ class _HeaderBackground extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  if (hasLogo) ...[
+                    Container(
+                      width: 56, height: 56,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.file(logoFile!, fit: BoxFit.contain),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(

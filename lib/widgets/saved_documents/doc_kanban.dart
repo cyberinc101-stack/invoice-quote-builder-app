@@ -6,6 +6,22 @@
 // multi-select in this layout) — tap opens the document, and each card
 // carries a 3-dot menu icon (always visible, since there's no
 // selection-mode toggle to conflict with here).
+//
+// NEW (this pass): kanban cards now show the business logo via
+// _DocLogoAvatar (doc_card_shared.dart, 18x18 — smallest of any layout,
+// this board is already the tightest on space) in place of the icon that
+// used to sit where the title now starts flush-left, plus the document's
+// total amount on its own small line. Created date / item count are
+// skipped here — the column is only 165 wide and the card already carries
+// title, subtitle, last-edited date, and a progress bar; adding two more
+// lines would either overflow or force everything down to unreadable
+// font sizes.
+//
+// SHRINK (earlier pass, kept): whole board scaled down — column width 165,
+// card padding/fonts trimmed, board height 380. The 3-dot icon's own size
+// lives in _ThreeDotIcon (doc_card_shared.dart) which this file doesn't
+// own, so it's wrapped in a Transform.scale here to shrink it in place
+// without touching that shared widget.
 
 part of 'saved_documents_section.dart';
 
@@ -21,7 +37,7 @@ class _DocKanbanBoard extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 420,
+      height: 380,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -47,12 +63,12 @@ class _DocKanbanColumn extends StatelessWidget {
     final accentColor = entries.isNotEmpty ? entries.first.accentColor : cs.primary;
 
     return Container(
-      width: 220,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(10),
+      width: 165,
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: cs.outline.withValues(alpha: 0.15)),
       ),
       child: Column(
@@ -61,26 +77,26 @@ class _DocKanbanColumn extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 6,
+                height: 6,
                 decoration: BoxDecoration(color: accentColor, shape: BoxShape.circle),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   statusLabel,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: cs.onSurface),
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Text(
                 '${entries.length}',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.4)),
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.4)),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.zero,
@@ -105,13 +121,13 @@ class _DocKanbanCard extends StatelessWidget {
 
     return InkWell(
       onTap: entry.onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(10),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.all(7),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
         ),
         child: Column(
@@ -120,13 +136,22 @@ class _DocKanbanCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _DocLogoAvatar(
+                  logoPath: entry.logoPath,
+                  businessName: entry.businessName,
+                  accentColor: entry.accentColor,
+                  size: 18,
+                  iconSize: 10,
+                  borderRadius: 6,
+                ),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Row(
                     children: [
                       Flexible(
                         child: Text(
                           entry.title,
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurface),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -135,31 +160,46 @@ class _DocKanbanCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _ThreeDotIcon(onTap: entry.onShowMenu),
+                Transform.scale(
+                  scale: 0.8,
+                  child: _ThreeDotIcon(onTap: entry.onShowMenu),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               entry.subtitle,
-              style: TextStyle(fontSize: 10.5, color: entry.accentColor, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 9, color: entry.accentColor, fontWeight: FontWeight.w600),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
-            Text(
-              entry.date,
-              style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: 0.4)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    entry.date,
+                    style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.4)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  _formatCardAmount(entry.totalAmount),
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: cs.onSurface),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
                 value: entry.percent / 100,
                 backgroundColor: cs.outline.withValues(alpha: 0.15),
                 valueColor: AlwaysStoppedAnimation<Color>(entry.accentColor),
-                minHeight: 3,
+                minHeight: 2.5,
               ),
             ),
           ],

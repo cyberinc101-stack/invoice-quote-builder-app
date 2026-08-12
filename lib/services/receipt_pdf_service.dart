@@ -4,6 +4,11 @@
 // directly against the real ReceiptData/SavedReceipt model — note ReceiptData
 // has no dueDate/expiryDate, uses paymentDate + paymentMethod, and its final
 // total getter is amountPaid (not grandTotal).
+//
+// NEW (this pass): generatePdfBytes() — same purpose as the identically-named
+// method added to InvoicePdfService/QuotePdfService: raw bytes for
+// FolderDownloadService's ZIP bundling, no file written.
+// generateAndDownloadPDF/generateAndSharePDF below are unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -37,6 +42,11 @@ class ReceiptPdfService {
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Receipt ${receipt.data.receiptNumber}',
     );
+  }
+
+  /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService.
+  Future<Uint8List> generatePdfBytes(SavedReceipt receipt) {
+    return _buildPdf(receipt);
   }
 
   // ── PDF builder ──────────────────────────────────────────────────────────

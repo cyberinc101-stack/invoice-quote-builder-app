@@ -5,11 +5,9 @@
 // (no provider reads in here) so the screen stays the single source of
 // truth for data and these just render whatever numbers they're given.
 //
-// NEW (this pass): TopClientsCard — renders the already-computed,
-// already-gated, already-sorted-and-capped client totals from
-// reports_screen.dart's _topClientsTotals(). No filtering/sorting logic
-// lives here, same as CategoryBarRow/StatusBreakdownBar taking finished
-// numbers rather than raw documents.
+// THIS PASS: DataSourceToggleRow grew a 4th chip — Expenses — backed by
+// ReportsPrefs.includeExpenses, alongside the existing Invoices/Quotes/
+// Receipts chips. Everything else in this file is unchanged.
 
 import 'package:flutter/material.dart';
 import '../../models/document_category.dart';
@@ -266,15 +264,17 @@ class _StepperButton extends StatelessWidget {
   }
 }
 
-// ── Data sources toggle row (Invoices / Quotes / Receipts chips) ───────────
+// ── Data sources toggle row (Invoices / Quotes / Receipts / Expenses chips) ─
 
 class DataSourceToggleRow extends StatelessWidget {
   final bool includeInvoices;
   final bool includeQuotes;
   final bool includeReceipts;
+  final bool includeExpenses;
   final ValueChanged<bool> onInvoicesChanged;
   final ValueChanged<bool> onQuotesChanged;
   final ValueChanged<bool> onReceiptsChanged;
+  final ValueChanged<bool> onExpensesChanged;
   final Color accent;
 
   const DataSourceToggleRow({
@@ -282,9 +282,11 @@ class DataSourceToggleRow extends StatelessWidget {
     required this.includeInvoices,
     required this.includeQuotes,
     required this.includeReceipts,
+    required this.includeExpenses,
     required this.onInvoicesChanged,
     required this.onQuotesChanged,
     required this.onReceiptsChanged,
+    required this.onExpensesChanged,
     required this.accent,
   });
 
@@ -319,6 +321,16 @@ class DataSourceToggleRow extends StatelessWidget {
             selected: includeReceipts,
             accent: accent,
             onChanged: onReceiptsChanged,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ToggleChip(
+            label: 'Expenses',
+            icon: Icons.payments_rounded,
+            selected: includeExpenses,
+            accent: accent,
+            onChanged: onExpensesChanged,
           ),
         ),
       ],

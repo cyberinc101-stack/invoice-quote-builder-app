@@ -6,11 +6,19 @@
 // scanning an arbitrary/unrelated QR code will fail cleanly via
 // QrDecodeResult.error rather than throwing.
 //
+// REFERENCE NUMBER PASS (this update): the payload now carries
+// referenceNumber (defaults to '' when the expense doesn't have one).
+// This is what lets expense_screen.dart's scan flow tell "open the
+// existing local expense" apart from "prefill a new one" — after decode,
+// it calls ExpenseProvider.findByReferenceNumber(draft.referenceNumber),
+// a plain local list scan. No server round-trip, no database — the QR
+// itself is the only data source.
+//
 // Payload shape:
 //   { "app": "invoice_quote_builder", "type": "expense", "v": 1,
 //     "vendor": "...", "amount": 42.5, "currency": "NZD",
 //     "categoryId": "travel", "date": "2026-07-29T00:00:00.000",
-//     "notes": "..." }
+//     "notes": "...", "referenceNumber": "..." }
 
 import 'dart:convert';
 
@@ -24,6 +32,7 @@ class ScannedExpenseDraft {
   final String categoryId;
   final DateTime date;
   final String notes;
+  final String referenceNumber;
 
   const ScannedExpenseDraft({
     required this.vendor,
@@ -32,6 +41,7 @@ class ScannedExpenseDraft {
     required this.categoryId,
     required this.date,
     required this.notes,
+    this.referenceNumber = '',
   });
 }
 
@@ -57,6 +67,7 @@ class QrService {
     required String categoryId,
     required DateTime date,
     String notes = '',
+    String referenceNumber = '',
   }) {
     return jsonEncode({
       'app': _kAppTag,
@@ -68,6 +79,7 @@ class QrService {
       'categoryId': categoryId,
       'date': date.toIso8601String(),
       'notes': notes,
+      'referenceNumber': referenceNumber,
     });
   }
 
@@ -109,6 +121,7 @@ class QrService {
         categoryId: data['categoryId'] as String? ?? 'other',
         date: DateTime.tryParse(data['date'] as String? ?? '') ?? DateTime.now(),
         notes: data['notes'] as String? ?? '',
+        referenceNumber: data['referenceNumber'] as String? ?? '',
       ));
     } catch (_) {
       return QrDecodeResult.failure(

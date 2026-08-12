@@ -1,10 +1,31 @@
 // invoice_provider.dart
 // lib/providers/invoice_provider.dart
+//
+// PUSH ALERTS (this pass): every mutation that can change whether an
+// invoice is overdue-eligible or a draft now calls into
+// DocumentAlertScheduler right after persisting, mirroring the pattern
+// ReminderProvider already uses for custom reminders. Specifically:
+//  - saveCurrentInvoice / addConvertedInvoice / updateSavedInvoice: sync
+//    both the overdue alert and the draft nudge (a save can change either
+//    condition — a newly-added due date, a completed field pushing
+//    completionPercent to 100, etc).
+//  - updateSavedInvoiceStatus: sync just the overdue alert (status is the
+//    only thing that changes here, but a status flip can also affect
+//    invoiceIsDraft() if your app ever ties completion to status — sync's
+//    included defensively, it's a cheap no-op cancel+reschedule if nothing
+//    changed).
+//  - deleteInvoice: cancel everything scheduled for that id so a deleted
+//    invoice can never still push a notification later.
+// All calls are fire-and-forget (unawaited) — scheduling a local
+// notification should never block the UI or fail loudly; failures are
+// already swallowed/logged inside NotificationService.
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/invoice_data.dart';
+import '../alerts/notifications/document_alert_scheduler.dart';
 
 const String _kSavedInvoicesKey = 'saved_invoices_v1';
 
@@ -47,6 +68,22 @@ class InvoiceProvider extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+      // Re-arms every saved invoice's overdue/draft push notifications
+      // against the OS scheduler on every launch — same "repair itself on
+      // open" safety net ReminderProvider.resyncScheduledNotifications()
+      // uses, in case an OEM battery manager killed the scheduled alarms.
+      unawaited(_resyncDocumentAlerts());
+    }
+  }
+
+  Future<void> _resyncDocumentAlerts() async {
+    for (final inv in _savedInvoices) {
+      try {
+        await DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv);
+        await DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv);
+      } catch (_) {
+        // Best-effort — one bad invoice shouldn't stop the rest resyncing.
+      }
     }
   }
 
@@ -100,6 +137,8 @@ class InvoiceProvider extends ChangeNotifier {
     _activeInvoiceId = inv.id;
     _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
+    unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     return inv;
   }
 
@@ -126,6 +165,8 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices.insert(0, inv);
     _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
+    unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     return inv;
   }
 
@@ -139,6 +180,9 @@ class InvoiceProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
+    final updated = _savedInvoices[index];
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
   void renameInvoice(String id, String newTitle) {
@@ -149,6 +193,11 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices[index] = _savedInvoices[index].copyWith(title: trimmed);
     _persist();
     notifyListeners();
+    // Title changed -> re-sync so a pending notification's body text
+    // (which embeds the title) doesn't go stale.
+    final updated = _savedInvoices[index];
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
   void deleteInvoice(String id) {
@@ -156,6 +205,7 @@ class InvoiceProvider extends ChangeNotifier {
     if (_activeInvoiceId == id) _activeInvoiceId = null;
     _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.cancelAllForInvoice(id));
   }
 
   SavedInvoice? getInvoiceById(String id) {
@@ -207,6 +257,10 @@ class InvoiceProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
+    // A status flip is exactly the case that most needs a resync — e.g.
+    // marking paid must cancel a pending overdue push immediately, not
+    // wait for the next app launch's resync pass.
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(_savedInvoices[index]));
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────

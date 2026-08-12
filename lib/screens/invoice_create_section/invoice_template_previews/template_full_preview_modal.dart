@@ -6,6 +6,18 @@
 // buildInvoicePreview, sampleInvoiceData) - the older version of this file
 // (from the CV-builder era, using TemplateCardInfo / individual Preview*
 // classes) is not compatible and lives only in git history now.
+//
+// SCROLL FIX (this pass): the preview widget renders each design at real
+// document scale (not scaled down like the card thumbnail), so for any
+// design taller than ~78% of screen height the old fixed-height Container
+// clipped content and threw a RenderFlex overflow (seen with Nordic:
+// "BOTTOM OVERFLOWED BY 204 PIXELS"). The document sheet is now wrapped in
+// a SingleChildScrollView inside the same maxHeight container, so tall
+// designs scroll instead of overflowing. A lingering ~6-7px *horizontal*
+// overflow on Nordic's issue-date row is inside nordic_template.dart
+// itself (a Row that doesn't leave quite enough width for "26 Jul 2026"
+// next to its label) - not something this modal can fix; needs a tweak in
+// that template file directly.
 
 import 'package:flutter/material.dart';
 import 'preview_registry.dart';
@@ -117,6 +129,10 @@ class _FullPreviewModal extends StatelessWidget {
               const SizedBox(height: 12),
 
               // -- Document preview sheet -------------------------------------
+              // SingleChildScrollView here (new) is what actually fixes the
+              // overflow - the design renders at full document scale, which
+              // is routinely taller than screenH * 0.78, so it needs to
+              // scroll inside the fixed-height frame rather than clip.
               Flexible(
                 child: Container(
                   width: screenW - 32,
@@ -133,19 +149,22 @@ class _FullPreviewModal extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: DefaultTextStyle(
-                      style: const TextStyle(
-                        decoration: TextDecoration.none,
-                        decorationColor: Colors.transparent,
-                        color: Color(0xFF111111),
+                    child: SingleChildScrollView(
+                      child: DefaultTextStyle(
+                        style: const TextStyle(
+                          decoration: TextDecoration.none,
+                          decorationColor: Colors.transparent,
+                          color: Color(0xFF111111),
+                        ),
+                        child: preview ??
+                            Container(
+                              height: 200,
+                              color: const Color(0xFFF3F4F6),
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.hourglass_empty_rounded,
+                                  color: Color(0xFFB0B7C3), size: 32),
+                            ),
                       ),
-                      child: preview ??
-                          Container(
-                            color: const Color(0xFFF3F4F6),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.hourglass_empty_rounded,
-                                color: Color(0xFFB0B7C3), size: 32),
-                          ),
                     ),
                   ),
                 ),

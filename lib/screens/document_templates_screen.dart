@@ -2,97 +2,101 @@
 // lib/screens/document_templates_screen.dart
 //
 // Grid of document template cards, reachable from the "Templates" button on
-// the home screen hero banner. Now wired to real template data and real
-// scaled previews (InvoiceStepChooserScaledPreview / QuoteStepChooserScaledPreview)
-// instead of dummy icon placeholders.
+// the home screen hero banner.
 //
-// Receipts: no receipt template registry exists yet (no kReceiptTemplates,
-// no receipt preview builder) — the Receipts filter intentionally shows the
-// empty state below rather than fake data. Wire it in once receipt layouts
-// exist, following the same pattern as the invoice/quote branches.
+// DEDUPE (earlier pass): kInvoiceTemplates and kQuoteTemplates describe the
+// exact same 10 designs (same ids, names, tags, accent colors) — each
+// design is already built once via DocTemplateAdapter and rendered
+// per-doc-type through invoiceToAdapter()/quoteToAdapter()/
+// receiptToAdapter(). The gallery sources from a single list
+// (kInvoiceTemplates — quote's list is identical) and shows each design
+// once. Confirmed fixed on-device: cards now read "Nordic · Minimal" etc,
+// not the old doubled "Invoice · Nordic" / "Quote · Nordic" pairs.
+//
+// FILTERS REMOVED (this pass): the All/Invoices/Quotes/Receipts chip row
+// is gone per request — this screen now just shows the 10 designs, full
+// stop. Since there's no more chip to pre-select a doc type, tapping any
+// card always opens the small "use as Invoice/Quote/Receipt" sheet
+// (previously only shown under "All"). Card thumbnails always render via
+// the invoice-flavored preview widget now that there's no chip to switch
+// them to quote's.
+//
+// LONG-PRESS FULL PREVIEW: _TemplateCard wires showTemplateFullPreview()
+// (invoice_template_previews/template_full_preview_modal.dart) onto
+// onLongPress. That modal renders via buildInvoicePreview()/
+// sampleInvoiceData() regardless of doc type — same simplification as the
+// card thumbnail. _GalleryEntry carries the original InvoiceTemplateInfo
+// so the modal has what it needs without a second registry lookup.
+//
+// RECEIPTS: routable — CreateReceiptScreen accepts layoutTemplateId the
+// same way EditorScreen/QuoteEditorScreen do, and every template file
+// already exports a <Name>ReceiptPreview wrapper via receiptToAdapter().
 
 import 'package:flutter/material.dart';
+import '../create_receipt/create_receipt_screen.dart';
 import 'invoice_create_section/editor_screen.dart';
 import 'invoice_create_section/invoice_step_template_chooser_registry.dart'
     show InvoiceStepChooserScaledPreview;
 import 'invoice_create_section/invoice_template_previews/preview_registry.dart'
     show InvoiceTemplateInfo, kInvoiceTemplates;
+import 'invoice_create_section/invoice_template_previews/template_full_preview_modal.dart'
+    show showTemplateFullPreview;
 import 'quote_editor_screen.dart';
-import 'create_quote_section/quote_step_template_chooser_registry.dart'
-    show QuoteStepChooserScaledPreview;
-import 'create_quote_section/quote_template_chooser_01/preview_registry.dart'
-    show QuoteTemplateInfo, kQuoteTemplates;
 
 enum _TemplateType { invoice, quote, receipt }
 
-// Unified wrapper so invoice + quote entries can share one grid/list,
-// while still carrying enough type info to render the right preview
-// widget and navigate to the right editor.
+extension on _TemplateType {
+  String get label => switch (this) {
+        _TemplateType.invoice => 'Invoice',
+        _TemplateType.quote => 'Quote',
+        _TemplateType.receipt => 'Receipt',
+      };
+
+  IconData get icon => switch (this) {
+        _TemplateType.invoice => Icons.receipt_long_rounded,
+        _TemplateType.quote => Icons.description_rounded,
+        _TemplateType.receipt => Icons.receipt_rounded,
+      };
+}
+
+// One design == one entry, regardless of which doc type it's used for.
 class _GalleryEntry {
-  final _TemplateType type;
   final int id;
   final String name;
   final String tag;
   final Color accentColor;
   final bool available;
   final bool isPremium;
+  // Kept around so long-press preview doesn't need a second registry
+  // lookup — same object InvoiceStepChooserScaledPreview/showTemplateFullPreview expect.
+  final InvoiceTemplateInfo original;
 
   const _GalleryEntry({
-    required this.type,
     required this.id,
     required this.name,
     required this.tag,
     required this.accentColor,
     required this.available,
     required this.isPremium,
+    required this.original,
   });
 
   factory _GalleryEntry.fromInvoice(InvoiceTemplateInfo info) => _GalleryEntry(
-        type: _TemplateType.invoice,
         id: info.id,
         name: info.name,
         tag: info.tag,
         accentColor: info.accentColor,
         available: info.available,
         isPremium: info.isPremium,
+        original: info,
       );
-
-  factory _GalleryEntry.fromQuote(QuoteTemplateInfo info) => _GalleryEntry(
-        type: _TemplateType.quote,
-        id: info.id,
-        name: info.name,
-        tag: info.tag,
-        accentColor: info.accentColor,
-        available: info.available,
-        isPremium: info.isPremium,
-      );
-
-  String get styleLabel {
-    switch (type) {
-      case _TemplateType.invoice:
-        return 'Invoice · $tag';
-      case _TemplateType.quote:
-        return 'Quote · $tag';
-      case _TemplateType.receipt:
-        return 'Receipt · $tag';
-    }
-  }
 }
 
-final List<_GalleryEntry> _kGalleryEntries = [
-  ...kInvoiceTemplates.map(_GalleryEntry.fromInvoice),
-  ...kQuoteTemplates.map(_GalleryEntry.fromQuote),
-];
+final List<_GalleryEntry> _kGalleryEntries =
+    kInvoiceTemplates.map(_GalleryEntry.fromInvoice).toList();
 
-class DocumentTemplatesScreen extends StatefulWidget {
+class DocumentTemplatesScreen extends StatelessWidget {
   const DocumentTemplatesScreen({super.key});
-
-  @override
-  State<DocumentTemplatesScreen> createState() => _DocumentTemplatesScreenState();
-}
-
-class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
-  _TemplateType? _selectedType; // null == All
 
   void _select(BuildContext context, _GalleryEntry entry) {
     if (!entry.available) {
@@ -105,152 +109,114 @@ class _DocumentTemplatesScreenState extends State<DocumentTemplatesScreen> {
       return;
     }
 
-    switch (entry.type) {
+    _showTypeSheet(context, entry);
+  }
+
+  void _navigateTo(BuildContext context, _TemplateType type, _GalleryEntry entry) {
+    switch (type) {
       case _TemplateType.invoice:
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => EditorScreen(layoutTemplateId: entry.id),
-          ),
+          MaterialPageRoute(builder: (_) => EditorScreen(layoutTemplateId: entry.id)),
         );
         return;
       case _TemplateType.quote:
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => QuoteEditorScreen(layoutTemplateId: entry.id),
-          ),
+          MaterialPageRoute(builder: (_) => QuoteEditorScreen(layoutTemplateId: entry.id)),
         );
         return;
       case _TemplateType.receipt:
-        // No receipt template registry yet — nothing to route to.
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CreateReceiptScreen(layoutTemplateId: entry.id)),
+        );
         return;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final filtered = _selectedType == null
-        ? _kGalleryEntries
-        : _kGalleryEntries.where((t) => t.type == _selectedType).toList();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Document Templates')),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 38,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: [
-                _TypeChip(
-                  label: 'All',
-                  isSelected: _selectedType == null,
-                  onTap: () => setState(() => _selectedType = null),
-                ),
-                const SizedBox(width: 8),
-                _TypeChip(
-                  label: 'Invoices',
-                  isSelected: _selectedType == _TemplateType.invoice,
-                  onTap: () => setState(() => _selectedType = _TemplateType.invoice),
-                ),
-                const SizedBox(width: 8),
-                _TypeChip(
-                  label: 'Quotes',
-                  isSelected: _selectedType == _TemplateType.quote,
-                  onTap: () => setState(() => _selectedType = _TemplateType.quote),
-                ),
-                const SizedBox(width: 8),
-                _TypeChip(
-                  label: 'Receipts',
-                  isSelected: _selectedType == _TemplateType.receipt,
-                  onTap: () => setState(() => _selectedType = _TemplateType.receipt),
-                ),
-              ],
-            ),
+  void _showTypeSheet(BuildContext context, _GalleryEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).scaffoldBackgroundColor,
+            borderRadius: BorderRadius.circular(18),
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Text(
-                        _selectedType == _TemplateType.receipt
-                            ? 'Receipt templates are coming soon'
-                            : 'No templates in this category yet',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                        ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: entry.accentColor,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    itemCount: filtered.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.78,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${entry.name} — use as',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    itemBuilder: (context, i) => _TemplateCard(
-                      entry: filtered[i],
-                      onTap: () => _select(context, filtered[i]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              for (final type in _TemplateType.values)
+                ListTile(
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: entry.accentColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: Icon(type.icon, color: entry.accentColor, size: 19),
                   ),
+                  title: Text(type.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _navigateTo(context, type, entry);
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
-}
-
-// -----------------------------------------------------------------------------
-// _TypeChip
-// -----------------------------------------------------------------------------
-
-class _TypeChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _TypeChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isSelected
-        ? const Color(0xFF1A1A2E)
-        : (isDark ? cs.surfaceContainerHighest : const Color(0xFFF5F5F5));
-    final fg = isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.55);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(19),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Document Templates')),
+      body: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        itemCount: _kGalleryEntries.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 14,
+          childAspectRatio: 0.78,
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: fg,
+        itemBuilder: (context, i) => _TemplateCard(
+          entry: _kGalleryEntries[i],
+          onTap: () => _select(context, _kGalleryEntries[i]),
+          onLongPress: () => showTemplateFullPreview(
+            context,
+            info: _kGalleryEntries[i].original,
           ),
         ),
       ),
@@ -265,8 +231,13 @@ class _TypeChip extends StatelessWidget {
 class _TemplateCard extends StatelessWidget {
   final _GalleryEntry entry;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
-  const _TemplateCard({required this.entry, required this.onTap});
+  const _TemplateCard({
+    required this.entry,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +246,7 @@ class _TemplateCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
@@ -299,9 +271,7 @@ class _TemplateCard extends StatelessWidget {
                   Container(color: Colors.white),
                   Opacity(
                     opacity: entry.available ? 1.0 : 0.45,
-                    child: entry.type == _TemplateType.invoice
-                        ? InvoiceStepChooserScaledPreview(templateId: entry.id)
-                        : QuoteStepChooserScaledPreview(templateId: entry.id),
+                    child: InvoiceStepChooserScaledPreview(templateId: entry.id),
                   ),
                   if (entry.isPremium && entry.available)
                     Positioned(
@@ -379,7 +349,7 @@ class _TemplateCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    entry.styleLabel,
+                    entry.tag,
                     style: TextStyle(
                       fontSize: 11,
                       color: entry.available

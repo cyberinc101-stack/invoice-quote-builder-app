@@ -11,6 +11,7 @@
 // is handled per type, returning const [] where a filter doesn't apply to
 // that doc type).
 
+import '../models/expense_data.dart';
 import '../models/invoice_data.dart';
 import '../models/quote_data.dart';
 import '../models/receipt_data.dart';
@@ -207,6 +208,18 @@ List<SavedReceipt> searchReceipts(List<SavedReceipt> items, String query) {
       .toList();
 }
 
+// NEW: expenses have no client/document-number field — search matches
+// vendor and notes instead.
+List<ExpenseEntry> searchExpenses(List<ExpenseEntry> items, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return items;
+  return items
+      .where((e) =>
+          e.vendor.toLowerCase().contains(q) ||
+          e.notes.toLowerCase().contains(q))
+      .toList();
+}
+
 // ── Date range ──────────────────────────────────────────────────────────
 
 List<SavedInvoice> filterInvoicesByDateRange(
@@ -248,6 +261,22 @@ List<SavedReceipt> filterReceiptsByDateRange(
       .toList();
 }
 
+// NEW: same lastEditedAt-based windowing as the three document types
+// above, kept consistent so "Date & Sort" behaves identically no matter
+// which type pill is selected.
+List<ExpenseEntry> filterExpensesByDateRange(
+  List<ExpenseEntry> items,
+  DateRangePreset preset, {
+  DateTime? customStart,
+  DateTime? customEnd,
+}) {
+  if (preset == DateRangePreset.all) return items;
+  return items
+      .where((e) => isInDateRange(e.lastEditedAt, preset,
+          customStart: customStart, customEnd: customEnd))
+      .toList();
+}
+
 // ── Amount range ────────────────────────────────────────────────────────
 
 List<SavedInvoice> filterInvoicesByAmountRange(
@@ -280,12 +309,30 @@ List<SavedReceipt> filterReceiptsByAmountRange(
   }).toList();
 }
 
+// NEW: expenses have no min/max-relevant "amount" naming collision with
+// the doc types (all four use plain double amount fields already), so
+// this mirrors filterInvoicesByAmountRange/etc. exactly against
+// ExpenseEntry.amount.
+List<ExpenseEntry> filterExpensesByAmountRange(
+    List<ExpenseEntry> items, double? min, double? max) {
+  return items.where((e) {
+    final amt = e.amount;
+    if (min != null && amt < min) return false;
+    if (max != null && amt > max) return false;
+    return true;
+  }).toList();
+}
+
 // ── Folders ─────────────────────────────────────────────────────────────
 
+// `expenses` defaults to an empty list so existing call sites (e.g.
+// folders_overview_screen.dart, if it doesn't pass expenses) keep
+// compiling and behaving exactly as before this pass.
 List<String> collectFolderNames({
   required List<SavedInvoice> invoices,
   required List<SavedQuote> quotes,
   required List<SavedReceipt> receipts,
+  List<ExpenseEntry> expenses = const [],
 }) {
   final names = <String>{};
   for (final i in invoices) {
@@ -296,6 +343,9 @@ List<String> collectFolderNames({
   }
   for (final r in receipts) {
     if (r.folderName != null && r.folderName!.isNotEmpty) names.add(r.folderName!);
+  }
+  for (final e in expenses) {
+    if (e.folderName != null && e.folderName!.isNotEmpty) names.add(e.folderName!);
   }
   final list = names.toList();
   list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
@@ -315,6 +365,11 @@ List<SavedQuote> filterQuotesByFolder(List<SavedQuote> items, String? folder) {
 List<SavedReceipt> filterReceiptsByFolder(List<SavedReceipt> items, String? folder) {
   if (folder == null) return items;
   return items.where((r) => r.folderName == folder).toList();
+}
+
+List<ExpenseEntry> filterExpensesByFolder(List<ExpenseEntry> items, String? folder) {
+  if (folder == null) return items;
+  return items.where((e) => e.folderName == folder).toList();
 }
 
 // ── Sort ────────────────────────────────────────────────────────────────
@@ -380,6 +435,30 @@ List<SavedReceipt> sortReceipts(List<SavedReceipt> items, SortOption sort) {
       break;
     case SortOption.amountLowHigh:
       sorted.sort((a, b) => a.data.amountPaid.compareTo(b.data.amountPaid));
+      break;
+  }
+  return sorted;
+}
+
+// NEW: expenses have no `title` — vendor stands in for the alphabetical
+// sort, and `amount` stands in for grandTotal/amountPaid.
+List<ExpenseEntry> sortExpenses(List<ExpenseEntry> items, SortOption sort) {
+  final sorted = List<ExpenseEntry>.from(items);
+  switch (sort) {
+    case SortOption.recentFirst:
+      sorted.sort((a, b) => b.lastEditedAt.compareTo(a.lastEditedAt));
+      break;
+    case SortOption.oldestFirst:
+      sorted.sort((a, b) => a.lastEditedAt.compareTo(b.lastEditedAt));
+      break;
+    case SortOption.alphabetical:
+      sorted.sort((a, b) => a.vendor.toLowerCase().compareTo(b.vendor.toLowerCase()));
+      break;
+    case SortOption.amountHighLow:
+      sorted.sort((a, b) => b.amount.compareTo(a.amount));
+      break;
+    case SortOption.amountLowHigh:
+      sorted.sort((a, b) => a.amount.compareTo(b.amount));
       break;
   }
   return sorted;

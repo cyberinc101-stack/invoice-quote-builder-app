@@ -1,10 +1,22 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
+//
+// PUSH ALERTS (this pass): closes the last gap in DocumentAlertScheduler
+// coverage — receipts now get real push notifications for stale drafts,
+// the same way InvoiceProvider/QuoteProvider already do. Receipts have no
+// overdue/expiring concept (they're already-settled records — see
+// filter_logic.dart's comment on applyQuickFilterToReceipts), so drafts
+// are the only category that applies here. Uses filter_logic.dart's
+// receiptIsDraft() predicate directly, same single-source-of-truth
+// pattern as the other two providers.
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/receipt_data.dart';
+import '../filters/filter_logic.dart' show receiptIsDraft;
+import '../alerts/notifications/document_alert_scheduler.dart';
 
 class ReceiptProvider extends ChangeNotifier {
   static const _storageKey = 'saved_receipts';
@@ -45,6 +57,14 @@ class ReceiptProvider extends ChangeNotifier {
     return ((filled / fields.length) * 100).round();
   }
 
+  Future<void> _syncDraftNudge(SavedReceipt receipt) {
+    return DocumentAlertScheduler.instance.syncReceiptDraftNudge(
+      receiptId: receipt.id,
+      title: receipt.title,
+      isDraft: receiptIsDraft(receipt),
+    );
+  }
+
   // -- Save current draft as a SavedReceipt ----------------------------------
 
   Future<void> saveCurrentReceipt({
@@ -66,6 +86,7 @@ class ReceiptProvider extends ChangeNotifier {
         );
         await _persist();
         notifyListeners();
+        unawaited(_syncDraftNudge(_savedReceipts[index]));
         return;
       }
     }
@@ -86,6 +107,7 @@ class ReceiptProvider extends ChangeNotifier {
 
     await _persist();
     notifyListeners();
+    unawaited(_syncDraftNudge(saved));
   }
 
   // Saves a converted ReceiptData (e.g. built from an invoice via
@@ -113,6 +135,7 @@ class ReceiptProvider extends ChangeNotifier {
     _savedReceipts.insert(0, saved);
     await _persist();
     notifyListeners();
+    unawaited(_syncDraftNudge(saved));
     return saved;
   }
 
@@ -138,6 +161,9 @@ class ReceiptProvider extends ChangeNotifier {
     _savedReceipts[index] = _savedReceipts[index].copyWith(title: trimmed);
     await _persist();
     notifyListeners();
+    // Title changed -> re-sync so a pending draft nudge's body text (which
+    // embeds the title) doesn't go stale.
+    unawaited(_syncDraftNudge(_savedReceipts[index]));
   }
 
   // -- Status ------------------------------------------------------------
@@ -194,6 +220,11 @@ class ReceiptProvider extends ChangeNotifier {
     }
     await _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.syncReceiptDraftNudge(
+      receiptId: id,
+      title: '',
+      isDraft: false, // deleted -> always cancel, regardless of last-known draft state
+    ));
   }
 
   // -- Persistence --------------------------------------------------------
@@ -212,6 +243,21 @@ class ReceiptProvider extends ChangeNotifier {
         ));
     } catch (e) {
       debugPrint('ReceiptProvider: failed to load persisted receipts: $e');
+    } finally {
+      // Re-arms every saved receipt's draft-nudge push against the OS
+      // scheduler on every launch — same safety net InvoiceProvider/
+      // QuoteProvider/ReminderProvider use.
+      unawaited(_resyncDocumentAlerts());
+    }
+  }
+
+  Future<void> _resyncDocumentAlerts() async {
+    for (final r in _savedReceipts) {
+      try {
+        await _syncDraftNudge(r);
+      } catch (_) {
+        // Best-effort — one bad receipt shouldn't stop the rest resyncing.
+      }
     }
   }
 

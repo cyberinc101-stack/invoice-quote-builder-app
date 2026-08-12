@@ -2,34 +2,45 @@
 // lib/alerts/notifications/notification_service.dart
 //
 // Wraps flutter_local_notifications + timezone for scheduling custom
-// reminders as real push notifications.
+// reminders AND document alerts (overdue invoice / quote expiring /
+// draft nudge, via DocumentAlertScheduler) as real push notifications.
 //
-// TAP-THROUGH (earlier pass): notifications now carry the reminder's id as
-// their payload, and the plugin's onDidReceiveNotificationResponse callback
-// routes taps back into the app via onReminderTapped — set once by
-// main.dart with a callback that pushes RemindersScreen(highlightReminderId:
-// ...). Two paths are covered: (1) the app is already running (foreground/
-// background) — the plugin's callback fires directly; (2) the app was
-// fully terminated and got launched BY tapping the notification —
-// getNotificationAppLaunchDetails() catches that on the next init() and the
-// payload is stashed until flushPendingLaunchTap() is called once the
+// TAP-THROUGH (earlier pass): notifications carry a payload, and the
+// plugin's onDidReceiveNotificationResponse callback routes taps back
+// into the app. Two paths are covered: (1) the app is already running
+// (foreground/background) — the plugin's callback fires directly; (2) the
+// app was fully terminated and got launched BY tapping the notification —
+// getNotificationAppLaunchDetails() catches that on the next init() and
+// the payload is stashed until flushPendingLaunchTap() is called once the
 // Navigator exists (main.dart does this in a post-frame callback right
 // after runApp()).
+//
+// PAYLOAD ROUTING (this pass): DocumentAlertScheduler now schedules
+// notifications too, using payloads shaped "doc:<category>:<docId>"
+// (e.g. "doc:overdueInvoice:abc123") instead of a bare reminder id. This
+// service used to assume every payload WAS a reminder id and always
+// routed through onReminderTapped -> RemindersScreen, which would have
+// sent a tapped invoice-overdue notification to the wrong screen. _handleTap
+// now branches on the "doc:" prefix: reminder payloads still go through
+// onReminderTapped(reminderId) exactly as before (main.dart's existing
+// wiring needs no changes), and doc payloads go through the new
+// onDocumentAlertTapped(category, docId) — set this in main.dart to push
+// the right invoice/quote detail screen. If onDocumentAlertTapped isn't
+// set, a doc tap is a silent no-op rather than crashing or being
+// misrouted to Reminders.
 //
 // PERMISSION VISIBILITY (earlier pass): added notificationsEnabled, so the
 // Add Reminder sheet can warn the user up front if push notifications are
 // blocked at the OS level, instead of silently scheduling something that
 // will never fire.
 //
-// TIMEZONE FIX (this pass): DateTime.now().timeZoneName returns a platform
-// abbreviation like "NZST" or "PST", not an IANA identifier — passing that
-// straight into tz.getLocation() throws on virtually every real device,
-// which was silently caught and fell back to UTC every single time. That
-// meant every scheduled reminder fired at the wrong wall-clock time for
-// any user not in UTC (e.g. a "3pm" reminder actually firing at 3pm UTC,
-// which is the middle of the night in NZ). Fixed by using the
-// flutter_timezone package to get the device's real IANA timezone
-// (e.g. "Pacific/Auckland") instead of guessing from timeZoneName.
+// TIMEZONE FIX (earlier pass): DateTime.now().timeZoneName returns a
+// platform abbreviation like "NZST" or "PST", not an IANA identifier —
+// passing that straight into tz.getLocation() throws on virtually every
+// real device, which was silently caught and fell back to UTC every
+// single time. Fixed by using the flutter_timezone package to get the
+// device's real IANA timezone (e.g. "Pacific/Auckland") instead of
+// guessing from timeZoneName.
 //
 // Requires: flutter pub add flutter_timezone
 
@@ -48,8 +59,17 @@ class NotificationService {
   bool _initialized = false;
 
   /// Set by main.dart once the root Navigator exists. Called with the
-  /// tapped notification's payload (the reminder's id).
+  /// tapped notification's payload for a CUSTOM REMINDER (the reminder's
+  /// id) — unchanged from before this pass.
   void Function(String reminderId)? onReminderTapped;
+
+  /// Set by main.dart once the root Navigator exists. Called when a
+  /// DOCUMENT ALERT notification (overdue invoice / quote expiring /
+  /// draft nudge) is tapped. [category] is the raw DocAlertCategory.name
+  /// string (e.g. "overdueInvoice", "quoteExpiring", "draftInvoice"),
+  /// [docId] is the invoice/quote/receipt id — use these to push the
+  /// right detail screen.
+  void Function(String category, String docId)? onDocumentAlertTapped;
 
   String? _pendingLaunchPayload;
 
@@ -111,12 +131,29 @@ class NotificationService {
     }
   }
 
-  void _handleTap(String reminderId) {
+  /// Parses a raw payload and routes it. Doc alerts are shaped
+  /// "doc:<category>:<docId>"; anything else is treated as a legacy bare
+  /// reminder id, unchanged from before this pass.
+  void _handleTap(String payload) {
+    if (payload.startsWith('doc:')) {
+      final parts = payload.split(':');
+      if (parts.length < 3) return; // malformed, ignore rather than crash
+      final category = parts[1];
+      final docId = parts.sublist(2).join(':'); // docId itself could theoretically contain ':'
+      if (onDocumentAlertTapped != null) {
+        onDocumentAlertTapped!(category, docId);
+      } else {
+        _pendingLaunchPayload = payload;
+      }
+      return;
+    }
+
+    // Legacy path: bare reminder id.
     if (onReminderTapped != null) {
-      onReminderTapped!(reminderId);
+      onReminderTapped!(payload);
     } else {
       // Navigator isn't wired up yet — stash it for flushPendingLaunchTap().
-      _pendingLaunchPayload = reminderId;
+      _pendingLaunchPayload = payload;
     }
   }
 
@@ -124,10 +161,9 @@ class NotificationService {
   /// calls this once, in a post-frame callback right after runApp().
   void flushPendingLaunchTap() {
     final payload = _pendingLaunchPayload;
-    if (payload != null && onReminderTapped != null) {
-      _pendingLaunchPayload = null;
-      onReminderTapped!(payload);
-    }
+    if (payload == null) return;
+    _pendingLaunchPayload = null;
+    _handleTap(payload);
   }
 
   Future<void> requestPermissions() async {
@@ -170,7 +206,7 @@ class NotificationService {
     const androidDetails = AndroidNotificationDetails(
       'reminders_channel',
       'Reminders',
-      channelDescription: 'Custom reminders you set in the app',
+      channelDescription: 'Custom reminders and document alerts you get from the app',
       importance: Importance.high,
       priority: Priority.high,
     );

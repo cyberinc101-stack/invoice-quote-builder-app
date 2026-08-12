@@ -1,79 +1,6 @@
-// saved_documents_section.dart
-// lib/widgets/saved_documents/saved_documents_section.dart
-//
-// Entry point for the saved-documents section. This file owns the
-// SavedDocumentsSection widget + its State: filtering, selection mode,
-// bulk delete/export, the per-document 3-dot menu wiring (status radios,
-// rename, move-to-folder, delete), and the top-level build()/_buildEntries()
-// that picks which card layout to render.
-//
-// NEW (this pass): tapping the Folders quick-chip in DocumentFilterBar no
-// longer navigates to a separate FoldersOverviewScreen — it now flips
-// _browsingFolders to true, which swaps the filter bar for a small "←
-// Folders" header and swaps the document list for FoldersGridView
-// (lib/widgets/folders_grid_view.dart), all inline on this same screen.
-// Tapping a folder tile sets _selectedFolder and flips _browsingFolders
-// back to false in one go, landing on the normal filtered document view
-// with the existing "Folder: X ✕" banner. This mirrors how selectionMode
-// already swaps out the filter bar for its own toolbar — browsingFolders,
-// selectionMode, and the normal filter bar are three mutually exclusive
-// states for the top control row.
-//
-// NEW (earlier pass): SavedDocumentsSection accepts an optional
-// `initialFolder` — seeded into _selectedFolder in initState() — so callers
-// (e.g. FoldersOverviewScreen's standalone entry point) can push straight
-// into this widget already filtered to one folder. When _selectedFolder is
-// set, a small "Folder: X ✕" banner renders above the filter bar /
-// selection toolbar, with the ✕ clearing the filter via setState.
-//
-// FIX (earlier pass): _DocCompactGridCard's GridView delegate had
-// mainAxisExtent: 124, which clipped the last ~8px of its Column (the
-// Due/Paid/Expires row) — bumped to 134. Only the compact-grid layout uses
-// this delegate, so the other three card layouts are unaffected.
-//
-// NEW (earlier pass): one-time SnackBar hint telling users that long-pressing
-// a document enters selection mode, which is how they discover the
-// "Move to Folder" action. Shown once ever, gated behind a SharedPreferences
-// flag (_kFolderHintShownKey) so it doesn't nag on every visit. Fires from
-// initState() via a post-frame callback so ScaffoldMessenger.of(context) is
-// safe to call (the widget tree is fully laid out by then).
-//
-// FIX (earlier pass): _DocEntry now carries secondaryDateLabel/secondaryDateValue
-// — the type-relevant date (Due for invoices, or Paid once an invoice is
-// marked paid; Expires for quotes; Paid for receipts) — alongside the
-// existing `date` field (last edited, relative). Card widgets in
-// doc_cards.dart display both. Added a local _formatShortDate() helper for
-// rendering InvoiceData.paidDate (a real DateTime) the same way the other
-// date fields (plain Strings the user typed) already read.
-//
-// FIX (earlier pass, cont'd): _openExportSheet's handleExport() used `context`
-// after an `await` guarded only by `this.mounted` (the State's own
-// lifecycle), but the context actually used post-await is `sheetContext`
-// (the bottom sheet's own, narrower-lived context, captured before the
-// async gap). The State being mounted doesn't guarantee the sheet is still
-// on screen — it can be dismissed independently. Both the success path and
-// the catch block now also check `sheetContext.mounted` before touching
-// anything tied to the sheet.
-//
-// Split out of the original single-file saved_documents_section.dart into
-// this folder using Dart `part`/`part of` directives, so all the
-// underscore-prefixed private classes (_DocCard, _DocEntry, etc.) keep
-// working across files exactly as before — same library, just organized
-// into smaller files:
-//   - doc_layout_mode.dart   → DocLayoutMode enum + _LayoutToggleButton
-//   - doc_card_shared.dart   → _SectionHeader, _SelectionBadge, _ThreeDotIcon, _positiveDot()
-//   - doc_cards.dart         → _DocCard, _DocGridCard, _DocCompactGridCard, _DocCompactRow
-//   - doc_kanban.dart        → _DocKanbanBoard, _DocKanbanColumn, _DocKanbanCard
-//
-// NOTE ON IMPORT PATHS: this file now lives one directory deeper than the
-// original (lib/widgets/ -> lib/widgets/saved_documents/), so relative
-// imports that used to be `../providers/...` are now `../../providers/...`,
-// and former same-folder imports like `document_filter_bar.dart` are now
-// `../document_filter_bar.dart`. Double check these against your actual
-// folder layout before building.
-
 library saved_documents_section;
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -82,28 +9,80 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/quote_provider.dart';
 import '../../providers/receipt_provider.dart';
+import '../../providers/expense_provider.dart';
+import '../../providers/category_provider.dart';
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
+import '../../models/expense_data.dart';
 import '../../filters/filter_types.dart';
 import '../../filters/filter_logic.dart';
 import '../../export/bulk_document_export_service.dart';
 import '../../screens/saved_invoice_details_section/saved_document_detail_screen.dart';
+import '../../screens/expense_detail_screen.dart';
+import '../../screens/expense_screen.dart';
 import '../document_filter_bar.dart';
 import '../document_status_menu.dart';
 import '../folders_grid_view.dart';
+import '../shared_logo_picker.dart';
+import '../expenses/expense_card_shared.dart';
+import '../expenses/expense_cards.dart';
+import 'card_display_prefs.dart';
+import 'display_options_button.dart';
 
 part 'doc_layout_mode.dart';
 part 'doc_card_shared.dart';
 part 'doc_cards.dart';
 part 'doc_kanban.dart';
 
-// -----------------------------------------------------------------------------
-// Status → (label, color) mappings. Kept local/private to this library (same
-// pattern already used in saved_documents_containers.dart and
-// saved_document_detail_screen.dart) so the 3-dot menu's radio options and
-// the green-dot logic don't need a cross-file dependency.
-// -----------------------------------------------------------------------------
+// DISPLAY OPTIONS PASS (this update): _SectionHeader now gets a third
+// control — displayOptionsToggle — passed for the Invoices/Quotes/Receipts
+// sections, rendered right next to the existing layoutToggle. It opens
+// DisplayOptionsButton's sheet (display_options_button.dart), which reads/
+// writes CardDisplayPrefs (card_display_prefs.dart) — a persisted,
+// app-wide set of switches for which stats show on the cards themselves
+// (secondary date, created date + item count, progress bar, status chip,
+// amount). doc_cards.dart's four card widgets watch CardDisplayPrefs
+// directly, so flipping a switch in the sheet updates every visible card
+// immediately, across whichever DocLayoutMode is currently active. The
+// Expenses section intentionally keeps its own ExpenseSortToggleButton
+// pairing as before — it doesn't get a displayOptionsToggle in this pass.
+//
+// EXPENSES SECTION PASS (earlier): a new "My Expenses" section now
+// renders right after "My Receipts" whenever the All pill (or the new
+// Expenses pill) is selected — closing the last gap where expenses lived
+// entirely on their own screen with no presence on Home. Rather than
+// build a parallel _DocEntry-compatible card family for expenses, this
+// section reuses ExpenseCardEntry + ExpenseListCard/ExpenseGridCard/
+// ExpenseCompactGridCard/ExpenseCompactRow directly from
+// lib/widgets/expenses/ — the exact same widgets the Expenses screen
+// itself renders, so the two screens stay visually identical by
+// construction rather than by kept-in-sync duplication.
+//
+// Filtering for expenses routes through the same filter_logic.dart
+// helpers expense_screen.dart already uses (searchExpenses,
+// filterExpensesByDateRange/AmountRange/Folder, sortExpenses) so the
+// Home search box, date range, amount range, folder filter, and sort all
+// apply to the expenses section too, composing with the existing
+// invoice/quote/receipt filtering above it. Expenses have no quick-filter
+// concept (needsAction/overdue/drafts don't apply), so quick filters are
+// left untouched for them, matching how the Expenses screen itself has no
+// quick-filter row either.
+//
+// Selection mode is shared across all four sections: an expense card's
+// key is 'expense:<id>', following the same 'type:id' convention the
+// other three types use, so _confirmDelete/_confirmDeleteSingle/
+// _openFolderSheet's per-key switches just needed one more case each to
+// support bulk delete and bulk move-to-folder on expense selections too.
+// Bulk CSV export stays invoice/quote/receipt-only (expenses have their
+// own export format via expense_export_service.dart) — selecting an
+// expense card and exporting simply leaves it out of the CSV, same as
+// before this pass.
+//
+// Layout: expenses map DocLayoutMode -> the nearest ExpenseLayoutMode
+// (list/grid/compactGrid/compact); DocLayoutMode.kanban has no expense
+// equivalent (expenses have no status field to build columns from), so it
+// falls back to the expense list layout when kanban is the active mode.
 
 ({String label, Color color}) _paymentStatusInfo(PaymentStatus s) {
   switch (s) {
@@ -142,10 +121,6 @@ part 'doc_kanban.dart';
   }
 }
 
-// NEW: formats a real DateTime (currently only InvoiceData.paidDate) the
-// same way the rest of this library's plain-String date fields read —
-// e.g. "6 Aug 2026". Kept local since doc_cards.dart (a `part of` this
-// library) needs it too.
 String _formatShortDate(DateTime dt) {
   const months = [
     'Jan','Feb','Mar','Apr','May','Jun',
@@ -154,16 +129,12 @@ String _formatShortDate(DateTime dt) {
   return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
 }
 
-// -----------------------------------------------------------------------------
-// _DocEntry — carries `key`, used for selection state and to dispatch
-// deletion/folder-assignment to the right provider ("invoice:<id>" /
-// "quote:<id>" / "receipt:<id>"). onShowMenu opens the 3-dot sheet for that
-// one document; isPositiveStatus drives the green dot.
-//
-// secondaryDateLabel/secondaryDateValue carry the type-relevant date shown
-// alongside `date` (last edited): Due (or Paid, once marked paid) for
-// invoices, Expires for quotes, Paid for receipts.
-// -----------------------------------------------------------------------------
+// Shared currency formatter for the amount stat shown on every card layout.
+// Kept as a single top-level function (rather than repeating NumberFormat
+// calls in doc_cards.dart / doc_kanban.dart) so the format only needs to
+// change in one place later if a currency-symbol setting gets added.
+final NumberFormat _cardAmountFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+String _formatCardAmount(double v) => _cardAmountFormat.format(v);
 
 class _DocEntry {
   final String key;
@@ -179,6 +150,15 @@ class _DocEntry {
   final VoidCallback onShowMenu;
   final bool isPositiveStatus;
 
+  // Business logo (for the card avatar, falls back to initials/icon),
+  // created date (distinct from last-edited `date` above), line-item count,
+  // and the document's final total (grandTotal / amountPaid).
+  final String? logoPath;
+  final String businessName;
+  final String createdLabel;
+  final int itemCount;
+  final double totalAmount;
+
   const _DocEntry({
     required this.key,
     required this.title,
@@ -192,18 +172,15 @@ class _DocEntry {
     required this.onTap,
     required this.onShowMenu,
     required this.isPositiveStatus,
+    required this.logoPath,
+    required this.businessName,
+    required this.createdLabel,
+    required this.itemCount,
+    required this.totalAmount,
   });
 }
 
-// -----------------------------------------------------------------------------
-// SavedDocumentsSection
-// -----------------------------------------------------------------------------
-
 class SavedDocumentsSection extends StatefulWidget {
-  /// When set, seeds _selectedFolder in initState so this section opens
-  /// already filtered to one folder (used by FoldersOverviewScreen's
-  /// standalone entry point). Leave null for the normal, unfiltered entry
-  /// point (e.g. from home_screen.dart).
   final String? initialFolder;
 
   const SavedDocumentsSection({super.key, this.initialFolder});
@@ -228,31 +205,22 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   double?          _maxAmount;
   String?          _selectedFolder;
 
-  // ── Folder browsing (inline) ────────────────────────────────────────
-  //
-  // NEW: when true, the filter bar and document list are swapped out for
-  // a "← Folders" header + FoldersGridView, right here on this same
-  // screen. Picking a tile sets _selectedFolder and flips this back to
-  // false in one setState call. Mutually exclusive with _selectionMode —
-  // entering one doesn't need to explicitly clear the other since neither
-  // UI affordance to enter one is visible while the other is active.
   bool _browsingFolders = false;
 
-  // ── Selection mode ──────────────────────────────────────────────────
+  String _foldersSearchQuery = '';
+
+  FolderSortOption _foldersSortOption = FolderSortOption.nameAsc;
+
+  FolderLayoutMode _foldersLayoutMode = FolderLayoutMode.grid;
+
+  DocTypeFilter _foldersTypeFilter = DocTypeFilter.all;
+
   bool _selectionMode = false;
   final Set<String> _selectedKeys = {};
 
-  // ── Export ───────────────────────────────────────────────────────────
   final BulkDocumentExportService _exportService = BulkDocumentExportService();
   bool _exporting = false;
 
-  // ── One-time "long-press to select" discovery hint ──────────────────
-  //
-  // Shown once ever (persisted via SharedPreferences) the first time this
-  // section is built, so first-time users learn that long-pressing a
-  // document enters selection mode — which is the only way to discover
-  // "Move to Folder" and "Export as CSV", since neither is exposed via a
-  // visible always-on button.
   static const String _kFolderHintShownKey = 'seen_folder_longpress_hint_v1';
 
   @override
@@ -269,8 +237,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
       if (alreadyShown) return;
       if (!mounted) return;
 
-      // Post-frame so the Scaffold/ScaffoldMessenger above this widget is
-      // guaranteed to be laid out before we try to show a SnackBar on it.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -343,6 +309,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     final invoiceProvider = context.read<InvoiceProvider>();
     final quoteProvider   = context.read<QuoteProvider>();
     final receiptProvider = context.read<ReceiptProvider>();
+    final expenseProvider = context.read<ExpenseProvider>();
 
     for (final key in _selectedKeys) {
       final sepIndex = key.indexOf(':');
@@ -359,6 +326,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         case 'receipt':
           receiptProvider.deleteSavedReceipt(id);
           break;
+        case 'expense':
+          expenseProvider.deleteExpense(id);
+          break;
       }
     }
 
@@ -368,8 +338,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     });
   }
 
-  // Single-document delete, used by the 3-dot menu. Same confirm-dialog
-  // pattern as _confirmDelete() above, but doesn't touch selection state.
   Future<void> _confirmDeleteSingle(String key, String title) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -405,12 +373,12 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
       case 'receipt':
         context.read<ReceiptProvider>().deleteSavedReceipt(id);
         break;
+      case 'expense':
+        context.read<ExpenseProvider>().deleteExpense(id);
+        break;
     }
   }
 
-  // Single-document rename, used by the 3-dot menu. Same dialog pattern
-  // used in saved_document_detail_screen.dart, generalized across all
-  // three doc types via a `type` string.
   Future<void> _showRenameDialogFor({
     required String type,
     required String id,
@@ -472,19 +440,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     }
   }
 
-  // ── Folder flow ──────────────────────────────────────────────────────
-  //
-  // "Move to Folder" — opens a sheet where the user either taps an existing
-  // folder chip or types a new name inline. Both paths call the matching
-  // provider's updateXFolder(id, folderName) for every key in `keys`
-  // (either the multi-select set, or a single overrideKeys set passed in
-  // from the 3-dot menu). Tapping "Remove from Folder" clears it (null).
-  //
-  // overrideKeys lets the 3-dot menu reuse this same sheet for a single
-  // document without entering/clearing multi-select state — only the
-  // plain multi-select call (overrideKeys == null) touches
-  // _selectionMode/_selectedKeys.
-
   void _openFolderSheet({required List<String> availableFolders, Set<String>? overrideKeys}) {
     final keys = overrideKeys ?? _selectedKeys;
     if (keys.isEmpty) return;
@@ -507,6 +462,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
               final invoiceProvider = context.read<InvoiceProvider>();
               final quoteProvider   = context.read<QuoteProvider>();
               final receiptProvider = context.read<ReceiptProvider>();
+              final expenseProvider = context.read<ExpenseProvider>();
 
               for (final key in keys) {
                 final sepIndex = key.indexOf(':');
@@ -522,6 +478,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                     break;
                   case 'receipt':
                     receiptProvider.updateReceiptFolder(id, finalFolder);
+                    break;
+                  case 'expense':
+                    expenseProvider.updateExpensesFolder([id], finalFolder);
                     break;
                 }
               }
@@ -705,15 +664,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     );
   }
 
-  // ── 3-dot menu wiring (per doc type) ────────────────────────────────
-  //
-  // Each of these opens showDocumentOptionsMenu() with:
-  //  - one StatusOption per enum value for that doc type, wired straight to
-  //    the matching provider's updateSavedXStatus() (already exists —
-  //    powers the tappable status chip on the detail screen too)
-  //  - Rename / Move to Folder / Delete wired to the single-document
-  //    helpers above.
-
   void _showInvoiceMenu(SavedInvoice inv, List<String> folders) {
     final provider = context.read<InvoiceProvider>();
     showDocumentOptionsMenu(
@@ -795,11 +745,61 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     );
   }
 
-  // ── Export flow ──────────────────────────────────────────────────────
-  //
-  // Resolves the current selection against the FULL (unfiltered) provider
-  // lists — not the filtered view — so a selection made before changing a
-  // filter still resolves correctly, then opens the naming sheet.
+  // Expenses have no status enum (only excludeFromReports), so this is a
+  // plain ListTile sheet rather than showDocumentOptionsMenu — mirrors
+  // expense_screen.dart's own _showItemMenu (Edit/Move to Folder/
+  // Exclude-Include/Delete), reusing openExpenseFormSheet and
+  // openExpenseFolderSheet (both public in expense_screen.dart) so the
+  // exact same sheets open here as on the Expenses screen itself.
+  void _showExpenseMenu(ExpenseEntry e) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_rounded, color: kExpenseAccent),
+              title: const Text('Edit'),
+              onTap: () {
+                Navigator.pop(context);
+                openExpenseFormSheet(context, existing: e);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_outlined, color: kExpenseAccent),
+              title: const Text('Move to Folder'),
+              onTap: () {
+                Navigator.pop(context);
+                openExpenseFolderSheet(context, ids: {e.id});
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                e.excludeFromReports ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                color: kExpenseAccent,
+              ),
+              title: Text(e.excludeFromReports ? 'Include in reports' : 'Exclude from reports'),
+              onTap: () {
+                Navigator.pop(context);
+                context.read<ExpenseProvider>().updateExpenseExcludeFromReports(e.id, !e.excludeFromReports);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded, color: kExpenseAccent),
+              title: const Text('Delete'),
+              onTap: () async {
+                Navigator.pop(context);
+                await context.read<ExpenseProvider>().deleteExpenses([e.id]);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _openExportSheet({
     required List<SavedInvoice> allInvoices,
@@ -826,6 +826,10 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         case 'receipt':
           selectedReceiptIds.add(id);
           break;
+        // 'expense' keys are intentionally not handled here — expenses
+        // export via their own format (expense_export_service.dart), so
+        // an expense selected alongside documents just doesn't appear in
+        // this CSV, same as before this pass.
       }
     }
 
@@ -1045,11 +1049,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Consumer3<InvoiceProvider, QuoteProvider, ReceiptProvider>(
-      builder: (context, invoiceProvider, quoteProvider, receiptProvider, _) {
+    return Consumer4<InvoiceProvider, QuoteProvider, ReceiptProvider, ExpenseProvider>(
+      builder: (context, invoiceProvider, quoteProvider, receiptProvider, expenseProvider, _) {
+        final categories = context.watch<CategoryProvider>();
+
         final allInvoices = invoiceProvider.savedInvoices;
         final allQuotes   = quoteProvider.savedQuotes;
         final allReceipts = receiptProvider.savedReceipts;
+        final allExpenses = expenseProvider.expenses;
 
         final needsActionCount = countNeedsAction(invoices: allInvoices, quotes: allQuotes);
         final overdueCount     = countOverdue(allInvoices);
@@ -1058,26 +1065,88 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
           quotes:   allQuotes,
           receipts: allReceipts,
         );
-        final allFolderNames = collectFolderNames(
-          invoices: allInvoices,
-          quotes:   allQuotes,
-          receipts: allReceipts,
-        );
+        // Union in expense folder names too — collectFolderNames() (from
+        // filter_logic.dart) only knows about invoices/quotes/receipts,
+        // so expenses' own folder assignments are merged in here rather
+        // than touching that helper's signature.
+        final allFolderNames = <String>{
+          ...collectFolderNames(
+            invoices: allInvoices,
+            quotes:   allQuotes,
+            receipts: allReceipts,
+          ),
+          ...expenseProvider.folderNames,
+        }.toList()
+          ..sort();
+
+        final invoiceFolderNames = allInvoices
+            .where((i) => i.folderName != null && i.folderName!.trim().isNotEmpty)
+            .map((i) => i.folderName!)
+            .toSet();
+        final quoteFolderNames = allQuotes
+            .where((q) => q.folderName != null && q.folderName!.trim().isNotEmpty)
+            .map((q) => q.folderName!)
+            .toSet();
+        final receiptFolderNames = allReceipts
+            .where((r) => r.folderName != null && r.folderName!.trim().isNotEmpty)
+            .map((r) => r.folderName!)
+            .toSet();
+        final expenseFolderNames = allExpenses
+            .where((e) => e.folderName != null && e.folderName!.trim().isNotEmpty)
+            .map((e) => e.folderName!)
+            .toSet();
+
+        var visibleFolderNames = allFolderNames;
+        switch (_foldersTypeFilter) {
+          case DocTypeFilter.all:
+            break;
+          case DocTypeFilter.invoices:
+            visibleFolderNames =
+                visibleFolderNames.where(invoiceFolderNames.contains).toList();
+            break;
+          case DocTypeFilter.quotes:
+            visibleFolderNames =
+                visibleFolderNames.where(quoteFolderNames.contains).toList();
+            break;
+          case DocTypeFilter.receipts:
+            visibleFolderNames =
+                visibleFolderNames.where(receiptFolderNames.contains).toList();
+            break;
+          case DocTypeFilter.expenses:
+            visibleFolderNames =
+                visibleFolderNames.where(expenseFolderNames.contains).toList();
+            break;
+        }
+        final trimmedFoldersQuery = _foldersSearchQuery.trim().toLowerCase();
+        if (trimmedFoldersQuery.isNotEmpty) {
+          visibleFolderNames = visibleFolderNames
+              .where((n) => n.toLowerCase().contains(trimmedFoldersQuery))
+              .toList();
+        }
 
         var filteredInvoices = allInvoices;
         var filteredQuotes   = allQuotes;
         var filteredReceipts = allReceipts;
+        var filteredExpenses = allExpenses;
 
         if (_selectedType == DocTypeFilter.invoices) {
           filteredQuotes   = const [];
           filteredReceipts = const [];
+          filteredExpenses = const [];
         } else if (_selectedType == DocTypeFilter.quotes) {
           filteredInvoices = const [];
           filteredReceipts = const [];
+          filteredExpenses = const [];
         } else if (_selectedType == DocTypeFilter.receipts) {
           filteredInvoices = const [];
           filteredQuotes   = const [];
+          filteredExpenses = const [];
+        } else if (_selectedType == DocTypeFilter.expenses) {
+          filteredInvoices = const [];
+          filteredQuotes   = const [];
+          filteredReceipts = const [];
         }
+        // DocTypeFilter.all: every list stays as-is.
 
         if (_selectedPaymentStatus != null) {
           filteredInvoices = filteredInvoices
@@ -1098,10 +1167,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         filteredInvoices = applyQuickFilterToInvoices(filteredInvoices, _selectedQuickFilter);
         filteredQuotes   = applyQuickFilterToQuotes(filteredQuotes, _selectedQuickFilter);
         filteredReceipts = applyQuickFilterToReceipts(filteredReceipts, _selectedQuickFilter);
+        // No quick-filter concept for expenses (needsAction/overdue/
+        // drafts don't apply) — left untouched, same as on the Expenses
+        // screen itself.
 
         filteredInvoices = searchInvoices(filteredInvoices, _searchQuery);
         filteredQuotes   = searchQuotes(filteredQuotes, _searchQuery);
         filteredReceipts = searchReceipts(filteredReceipts, _searchQuery);
+        filteredExpenses = searchExpenses(filteredExpenses, _searchQuery);
 
         filteredInvoices = filterInvoicesByDateRange(filteredInvoices, _selectedDateRange,
             customStart: _customRangeStart, customEnd: _customRangeEnd);
@@ -1109,22 +1182,28 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             customStart: _customRangeStart, customEnd: _customRangeEnd);
         filteredReceipts = filterReceiptsByDateRange(filteredReceipts, _selectedDateRange,
             customStart: _customRangeStart, customEnd: _customRangeEnd);
+        filteredExpenses = filterExpensesByDateRange(filteredExpenses, _selectedDateRange,
+            customStart: _customRangeStart, customEnd: _customRangeEnd);
 
         filteredInvoices = filterInvoicesByAmountRange(filteredInvoices, _minAmount, _maxAmount);
         filteredQuotes   = filterQuotesByAmountRange(filteredQuotes, _minAmount, _maxAmount);
         filteredReceipts = filterReceiptsByAmountRange(filteredReceipts, _minAmount, _maxAmount);
+        filteredExpenses = filterExpensesByAmountRange(filteredExpenses, _minAmount, _maxAmount);
 
         filteredInvoices = filterInvoicesByFolder(filteredInvoices, _selectedFolder);
         filteredQuotes   = filterQuotesByFolder(filteredQuotes, _selectedFolder);
         filteredReceipts = filterReceiptsByFolder(filteredReceipts, _selectedFolder);
+        filteredExpenses = filterExpensesByFolder(filteredExpenses, _selectedFolder);
 
         filteredInvoices = sortInvoices(filteredInvoices, _selectedSort);
         filteredQuotes   = sortQuotes(filteredQuotes, _selectedSort);
         filteredReceipts = sortReceipts(filteredReceipts, _selectedSort);
+        filteredExpenses = sortExpenses(filteredExpenses, _selectedSort);
 
         final hasResults = filteredInvoices.isNotEmpty ||
             filteredQuotes.isNotEmpty ||
-            filteredReceipts.isNotEmpty;
+            filteredReceipts.isNotEmpty ||
+            filteredExpenses.isNotEmpty;
 
         final invoiceEntries = filteredInvoices
             .map((inv) => _DocEntry(
@@ -1150,6 +1229,11 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                   onShowMenu: () => _showInvoiceMenu(inv, allFolderNames),
                   isPositiveStatus: inv.data.paymentStatus == PaymentStatus.paid,
+                  logoPath: inv.data.businessLogoPath,
+                  businessName: inv.data.businessName,
+                  createdLabel: _formatShortDate(inv.createdAt),
+                  itemCount: inv.data.lineItems.length,
+                  totalAmount: inv.data.grandTotal,
                 ))
             .toList();
 
@@ -1173,6 +1257,11 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                   onShowMenu: () => _showQuoteMenu(q, allFolderNames),
                   isPositiveStatus: q.data.quoteStatus == QuoteStatus.accepted,
+                  logoPath: q.data.businessLogoPath,
+                  businessName: q.data.businessName,
+                  createdLabel: _formatShortDate(q.createdAt),
+                  itemCount: q.data.lineItems.length,
+                  totalAmount: q.data.grandTotal,
                 ))
             .toList();
 
@@ -1196,25 +1285,49 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                   onShowMenu: () => _showReceiptMenu(r, allFolderNames),
                   isPositiveStatus: r.data.status == ReceiptStatus.issued,
+                  logoPath: r.data.businessLogoPath,
+                  businessName: r.data.businessName,
+                  createdLabel: _formatShortDate(r.createdAt),
+                  itemCount: r.data.lineItems.length,
+                  totalAmount: r.data.amountPaid,
+                ))
+            .toList();
+
+        // Expenses render via the same ExpenseCardEntry + card widgets the
+        // Expenses screen itself uses (see expense_card_shared.dart /
+        // expense_cards.dart) rather than a parallel _DocEntry-shaped
+        // family — visual parity by sharing the widgets, not by keeping
+        // two implementations in sync.
+        final expenseEntries = filteredExpenses
+            .map((e) => ExpenseCardEntry(
+                  key: 'expense:${e.id}',
+                  expense: e,
+                  category: categories.byId(e.categoryId),
+                  editedLabel: formatExpenseRelativeTime(e.lastEditedAt),
+                  dateLabel: formatExpenseShortDate(e.date),
+                  createdLabel: formatExpenseShortDate(e.createdAt),
+                  logoPath: e.logoPath,
+                  logoOffset: Offset(e.logoOffsetDx, e.logoOffsetDy),
+                  logoScale: e.logoScale,
+                  logoShape: logoShapeFromString(e.logoShape),
+                  folderName: e.folderName,
+                  referenceNumber: e.referenceNumber,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ExpenseDetailScreen(expenseId: e.id)),
+                  ),
+                  onShowMenu: () => _showExpenseMenu(e),
                 ))
             .toList();
 
         final showToggleOnInvoices = invoiceEntries.isNotEmpty;
         final showToggleOnQuotes   = !showToggleOnInvoices && quoteEntries.isNotEmpty;
         final showToggleOnReceipts = !showToggleOnInvoices && !showToggleOnQuotes && receiptEntries.isNotEmpty;
+        final showToggleOnExpenses = !showToggleOnInvoices && !showToggleOnQuotes && !showToggleOnReceipts && expenseEntries.isNotEmpty;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // "Folder: X ✕" banner — shown whenever _selectedFolder is set
-            // (either via the Filters sheet's dropdown, via
-            // widget.initialFolder, or via picking a tile while browsing
-            // folders below). Tapping ✕ just clears the filter; it doesn't
-            // navigate back. Suppressed while _browsingFolders is true —
-            // the two shouldn't ever be true at once in practice (picking
-            // a tile clears _browsingFolders in the same setState that
-            // sets this), but the guard keeps the header from doubling up
-            // if that ever changes.
             if (_selectedFolder != null && !_browsingFolders)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -1246,8 +1359,6 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 ),
               ),
 
-            // ── Top control row: selection toolbar, folder-browsing
-            // header, or the normal filter bar — mutually exclusive.
             if (_selectionMode)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1313,35 +1424,18 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   ),
                 ),
               )
-            else if (_browsingFolders)
-              // NEW: replaces the filter bar while browsing folders inline.
-              // Back arrow just flips _browsingFolders back off — it
-              // doesn't touch any other filter state, so returning lands
-              // exactly where the user left the document list.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => setState(() => _browsingFolders = false),
-                      child: Icon(Icons.arrow_back_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.75)),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Folders',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.onSurface),
-                    ),
-                  ],
-                ),
-              )
             else
               DocumentFilterBar(
-                selectedType: _selectedType,
+                selectedType: _browsingFolders ? _foldersTypeFilter : _selectedType,
                 onTypeChanged: (t) => setState(() {
-                  _selectedType          = t;
-                  _selectedPaymentStatus = null;
-                  _selectedQuoteStatus   = null;
-                  _selectedReceiptStatus = null;
+                  if (_browsingFolders) {
+                    _foldersTypeFilter = t;
+                  } else {
+                    _selectedType          = t;
+                    _selectedPaymentStatus = null;
+                    _selectedQuoteStatus   = null;
+                    _selectedReceiptStatus = null;
+                  }
                 }),
                 selectedPaymentStatus: _selectedPaymentStatus,
                 onPaymentStatusChanged: (s) =>
@@ -1352,13 +1446,23 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 selectedReceiptStatus: _selectedReceiptStatus,
                 onReceiptStatusChanged: (s) =>
                     setState(() => _selectedReceiptStatus = s),
-                invoiceCount: allInvoices.length,
-                quoteCount:   allQuotes.length,
-                receiptCount: allReceipts.length,
-                selectedQuickFilter: _selectedQuickFilter,
-                onQuickFilterChanged: (f) => setState(() => _selectedQuickFilter = f),
-                searchQuery: _searchQuery,
-                onSearchChanged: (v) => setState(() => _searchQuery = v),
+                invoiceCount: _browsingFolders ? invoiceFolderNames.length : allInvoices.length,
+                quoteCount:   _browsingFolders ? quoteFolderNames.length : allQuotes.length,
+                receiptCount: _browsingFolders ? receiptFolderNames.length : allReceipts.length,
+                expensesCount: _browsingFolders ? expenseFolderNames.length : allExpenses.length,
+                selectedQuickFilter: _browsingFolders ? QuickFilter.none : _selectedQuickFilter,
+                onQuickFilterChanged: (f) => setState(() {
+                  if (!_browsingFolders) _selectedQuickFilter = f;
+                }),
+                searchQuery: _browsingFolders ? _foldersSearchQuery : _searchQuery,
+                onSearchChanged: (v) => setState(() {
+                  if (_browsingFolders) {
+                    _foldersSearchQuery = v;
+                  } else {
+                    _searchQuery = v;
+                  }
+                }),
+                searchHint: _browsingFolders ? 'Search folders' : null,
                 selectedDateRange: _selectedDateRange,
                 onDateRangeChanged: (p) => setState(() => _selectedDateRange = p),
                 customRangeStart: _customRangeStart,
@@ -1378,8 +1482,13 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 selectedFolder: _selectedFolder,
                 onFolderChanged: (f) => setState(() => _selectedFolder = f),
                 availableFolders: allFolderNames,
-                // NEW: shows the folder grid inline instead of navigating.
-                onFoldersChipTap: () => setState(() => _browsingFolders = true),
+                onFoldersChipTap: () => setState(() {
+                  _browsingFolders = !_browsingFolders;
+                  if (!_browsingFolders) {
+                    _foldersSearchQuery = '';
+                  }
+                }),
+                isBrowsingFolders: _browsingFolders,
                 needsActionCount: needsActionCount,
                 overdueCount: overdueCount,
                 draftsCount: draftsCount,
@@ -1389,89 +1498,179 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
               ),
             const SizedBox(height: 16),
 
-            // ── Content area: folder grid, "no results", or document list.
-            if (_browsingFolders)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: FoldersGridView(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  onFolderTap: (name) => setState(() {
-                    _selectedFolder   = name;
-                    _browsingFolders  = false;
-                  }),
-                ),
-              )
-            else if (!hasResults)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                child: Center(
-                  child: Text(
-                    'No documents match this filter',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                    ),
-                  ),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (invoiceEntries.isNotEmpty) ...[
-                      _SectionHeader(
-                        label: 'My Invoices',
-                        count: invoiceEntries.length,
-                        accentColor: const Color(0xFF1565C0),
-                        layoutToggle: showToggleOnInvoices
-                            ? _LayoutToggleButton(
-                                selected: _selectedLayout,
-                                onChanged: (m) => setState(() => _selectedLayout = m),
-                              )
-                            : null,
+            // The folder-browsing grid and the document list/empty-state
+            // sit inside a single AnimatedSize with distinct ValueKeys per
+            // branch, so switching between them (e.g. the first tap on the
+            // "Folders" quick-access pill) animates the height change
+            // instead of snapping.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              clipBehavior: Clip.hardEdge,
+              child: _browsingFolders
+                  ? Padding(
+                      key: const ValueKey('folders'),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '${visibleFolderNames.length} folder${visibleFolderNames.length == 1 ? '' : 's'}',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.7)),
+                              ),
+                              const Spacer(),
+                              _FolderSortToggleButton(
+                                selected: _foldersSortOption,
+                                onChanged: (o) => setState(() => _foldersSortOption = o),
+                              ),
+                              const SizedBox(width: 8),
+                              _FolderLayoutToggleButton(
+                                selected: _foldersLayoutMode,
+                                onChanged: (m) => setState(() => _foldersLayoutMode = m),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          FoldersGridView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.zero,
+                            searchQuery: _foldersSearchQuery,
+                            sortOption: _foldersSortOption,
+                            layoutMode: _foldersLayoutMode,
+                            typeFilter: _foldersTypeFilter,
+                            onFolderTap: (name) => setState(() {
+                              _selectedFolder      = name;
+                              _browsingFolders     = false;
+                              _foldersSearchQuery  = '';
+                            }),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-                      _buildEntries(invoiceEntries),
-                      const SizedBox(height: 20),
-                    ],
-                    if (quoteEntries.isNotEmpty) ...[
-                      _SectionHeader(
-                        label: 'My Quotes',
-                        count: quoteEntries.length,
-                        accentColor: const Color(0xFF7B1FA2),
-                        layoutToggle: showToggleOnQuotes
-                            ? _LayoutToggleButton(
-                                selected: _selectedLayout,
-                                onChanged: (m) => setState(() => _selectedLayout = m),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                      _buildEntries(quoteEntries),
-                      const SizedBox(height: 20),
-                    ],
-                    if (receiptEntries.isNotEmpty) ...[
-                      _SectionHeader(
-                        label: 'My Receipts',
-                        count: receiptEntries.length,
-                        accentColor: const Color(0xFF2E7D32),
-                        layoutToggle: showToggleOnReceipts
-                            ? _LayoutToggleButton(
-                                selected: _selectedLayout,
-                                onChanged: (m) => setState(() => _selectedLayout = m),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                      _buildEntries(receiptEntries),
-                    ],
-                  ],
-                ),
-              ),
+                    )
+                  : (!hasResults
+                      ? Padding(
+                          key: const ValueKey('empty'),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No documents match this filter',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Padding(
+                          key: const ValueKey('documents'),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (invoiceEntries.isNotEmpty) ...[
+                                _SectionHeader(
+                                  label: 'My Invoices',
+                                  count: invoiceEntries.length,
+                                  accentColor: const Color(0xFF1565C0),
+                                  sortToggle: showToggleOnInvoices
+                                      ? _SortToggleButton(
+                                          selected: _selectedSort,
+                                          onChanged: (s) => setState(() => _selectedSort = s),
+                                        )
+                                      : null,
+                                  layoutToggle: showToggleOnInvoices
+                                      ? _LayoutToggleButton(
+                                          selected: _selectedLayout,
+                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                        )
+                                      : null,
+                                  displayOptionsToggle: showToggleOnInvoices
+                                      ? const DisplayOptionsButton()
+                                      : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildEntries(invoiceEntries),
+                                const SizedBox(height: 20),
+                              ],
+                              if (quoteEntries.isNotEmpty) ...[
+                                _SectionHeader(
+                                  label: 'My Quotes',
+                                  count: quoteEntries.length,
+                                  accentColor: const Color(0xFF7B1FA2),
+                                  sortToggle: showToggleOnQuotes
+                                      ? _SortToggleButton(
+                                          selected: _selectedSort,
+                                          onChanged: (s) => setState(() => _selectedSort = s),
+                                        )
+                                      : null,
+                                  layoutToggle: showToggleOnQuotes
+                                      ? _LayoutToggleButton(
+                                          selected: _selectedLayout,
+                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                        )
+                                      : null,
+                                  displayOptionsToggle: showToggleOnQuotes
+                                      ? const DisplayOptionsButton()
+                                      : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildEntries(quoteEntries),
+                                const SizedBox(height: 20),
+                              ],
+                              if (receiptEntries.isNotEmpty) ...[
+                                _SectionHeader(
+                                  label: 'My Receipts',
+                                  count: receiptEntries.length,
+                                  accentColor: const Color(0xFF2E7D32),
+                                  sortToggle: showToggleOnReceipts
+                                      ? _SortToggleButton(
+                                          selected: _selectedSort,
+                                          onChanged: (s) => setState(() => _selectedSort = s),
+                                        )
+                                      : null,
+                                  layoutToggle: showToggleOnReceipts
+                                      ? _LayoutToggleButton(
+                                          selected: _selectedLayout,
+                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                        )
+                                      : null,
+                                  displayOptionsToggle: showToggleOnReceipts
+                                      ? const DisplayOptionsButton()
+                                      : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildEntries(receiptEntries),
+                                if (expenseEntries.isNotEmpty) const SizedBox(height: 20),
+                              ],
+                              if (expenseEntries.isNotEmpty) ...[
+                                _SectionHeader(
+                                  label: 'My Expenses',
+                                  count: expenseEntries.length,
+                                  accentColor: kExpenseAccent,
+                                  sortToggle: showToggleOnExpenses
+                                      ? ExpenseSortToggleButton(
+                                          selected: _selectedSort,
+                                          onChanged: (s) => setState(() => _selectedSort = s),
+                                        )
+                                      : null,
+                                  layoutToggle: showToggleOnExpenses
+                                      ? _LayoutToggleButton(
+                                          selected: _selectedLayout,
+                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildExpenseEntries(expenseEntries),
+                              ],
+                            ],
+                          ),
+                        )),
+            ),
           ],
         );
       },
@@ -1500,7 +1699,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            mainAxisExtent: 178,
+            mainAxisExtent: 186,
           ),
           children: entries
               .map((e) => _DocGridCard(
@@ -1517,10 +1716,10 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            mainAxisExtent: 134,
+            crossAxisCount: 4,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            mainAxisExtent: 120,
           ),
           children: entries
               .map((e) => _DocCompactGridCard(
@@ -1546,6 +1745,73 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         );
       case DocLayoutMode.kanban:
         return _DocKanbanBoard(entries: entries);
+    }
+  }
+
+  // Expenses map DocLayoutMode -> the nearest ExpenseLayoutMode. There's
+  // no expense-kanban equivalent (no status field to build columns from),
+  // so kanban falls back to the expense list layout.
+  Widget _buildExpenseEntries(List<ExpenseCardEntry> entries) {
+    switch (_selectedLayout) {
+      case DocLayoutMode.list:
+      case DocLayoutMode.kanban:
+        return Column(
+          children: entries
+              .map((e) => ExpenseListCard(
+                    entry: e,
+                    selectionMode: _selectionMode,
+                    selected: _selectedKeys.contains(e.key),
+                    onToggleSelect: _toggleSelection,
+                    onEnterSelection: _enterSelectionMode,
+                  ))
+              .toList(),
+        );
+      case DocLayoutMode.grid:
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, mainAxisExtent: 175,
+          ),
+          children: entries
+              .map((e) => ExpenseGridCard(
+                    entry: e,
+                    selectionMode: _selectionMode,
+                    selected: _selectedKeys.contains(e.key),
+                    onToggleSelect: _toggleSelection,
+                    onEnterSelection: _enterSelectionMode,
+                  ))
+              .toList(),
+        );
+      case DocLayoutMode.compactGrid:
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 118,
+          ),
+          children: entries
+              .map((e) => ExpenseCompactGridCard(
+                    entry: e,
+                    selectionMode: _selectionMode,
+                    selected: _selectedKeys.contains(e.key),
+                    onToggleSelect: _toggleSelection,
+                    onEnterSelection: _enterSelectionMode,
+                  ))
+              .toList(),
+        );
+      case DocLayoutMode.compact:
+        return Column(
+          children: entries
+              .map((e) => ExpenseCompactRow(
+                    entry: e,
+                    selectionMode: _selectionMode,
+                    selected: _selectedKeys.contains(e.key),
+                    onToggleSelect: _toggleSelection,
+                    onEnterSelection: _enterSelectionMode,
+                  ))
+              .toList(),
+        );
     }
   }
 }

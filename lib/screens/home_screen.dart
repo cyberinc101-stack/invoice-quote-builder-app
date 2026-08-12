@@ -1,4 +1,4 @@
-// home_screen.dart
+﻿// home_screen.dart
 // lib/screens/home_screen.dart
 //
 // SLIMMED (earlier pass): _SavedDocumentsSection and every List/Grid/
@@ -16,6 +16,12 @@
 // the master switch. Now the badge, the Alerts screen, and any other
 // future consumer of buildAlerts() all read from the exact same four
 // flags on AlertPrefs, so they can never disagree.
+//
+// ICON ALIGNMENT FIX (this pass): the Templates CTA button was passing
+// iconSize: 28 while Create Invoice / Create Quote / Create Receipt all
+// use the default 22. That made the Templates icon visibly larger and
+// threw off the row's visual alignment. Removed the override so all
+// four CTA icons render at the same 22px size.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -258,7 +264,6 @@ class HomeScreen extends StatelessWidget {
                         child: _CtaButton(
                           label: 'Templates',
                           icon: Icons.grid_view_rounded,
-                          iconSize: 28,
                           singleLine: true,
                           gradient: const LinearGradient(
                             colors: [Color(0xFF78909C), Color(0xFF546E7A)],

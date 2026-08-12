@@ -5,6 +5,11 @@
 // clientName, lineItems, subtotal/discountAmount/taxAmount/grandTotal
 // getters, QuoteColor scheme) — no dispatcher/layout switch since quotes
 // only have one layout so far.
+//
+// NEW (this pass): generatePdfBytes() — same purpose as the identically-named
+// method added to InvoicePdfService: raw bytes for FolderDownloadService's
+// ZIP bundling, no file written. generateAndDownloadPDF/generateAndSharePDF
+// below are unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -38,6 +43,11 @@ class QuotePdfService {
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: 'Quote ${quote.data.quoteNumber}',
     );
+  }
+
+  /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService.
+  Future<Uint8List> generatePdfBytes(SavedQuote quote) {
+    return _buildPdf(quote);
   }
 
   // ── PDF builder ──────────────────────────────────────────────────────────

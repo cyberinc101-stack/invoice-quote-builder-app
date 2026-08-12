@@ -1,11 +1,19 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
+//
+// PUSH ALERTS (this pass): same treatment as InvoiceProvider — every
+// mutation that can change whether a quote is expiring-eligible or a
+// draft now calls into DocumentAlertScheduler right after persisting.
+// See invoice_provider.dart's header comment for the full rationale; the
+// pattern here is identical, just for quotes.
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/quote_data.dart';
 import '../models/invoice_data.dart' show LineItem;
+import '../alerts/notifications/document_alert_scheduler.dart';
 
 const String _kSavedQuotesKey = 'saved_quotes_v1';
 
@@ -48,6 +56,21 @@ class QuoteProvider extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+      // Re-arms every saved quote's expiring/draft push notifications
+      // against the OS scheduler on every launch — same safety net
+      // InvoiceProvider._resyncDocumentAlerts() / ReminderProvider use.
+      unawaited(_resyncDocumentAlerts());
+    }
+  }
+
+  Future<void> _resyncDocumentAlerts() async {
+    for (final q in _savedQuotes) {
+      try {
+        await DocumentAlertScheduler.instance.syncQuoteExpiringAlert(q);
+        await DocumentAlertScheduler.instance.syncQuoteDraftNudge(q);
+      } catch (_) {
+        // Best-effort — one bad quote shouldn't stop the rest resyncing.
+      }
     }
   }
 
@@ -101,6 +124,8 @@ class QuoteProvider extends ChangeNotifier {
     _activeQuoteId = quote.id;
     _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(quote));
+    unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(quote));
     return quote;
   }
 
@@ -114,6 +139,9 @@ class QuoteProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
+    final updated = _savedQuotes[index];
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
   void renameQuote(String id, String newTitle) {
@@ -124,6 +152,11 @@ class QuoteProvider extends ChangeNotifier {
     _savedQuotes[index] = _savedQuotes[index].copyWith(title: trimmed);
     _persist();
     notifyListeners();
+    // Title changed -> re-sync so a pending notification's body text
+    // (which embeds the title) doesn't go stale.
+    final updated = _savedQuotes[index];
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
   void deleteQuote(String id) {
@@ -131,6 +164,7 @@ class QuoteProvider extends ChangeNotifier {
     if (_activeQuoteId == id) _activeQuoteId = null;
     _persist();
     notifyListeners();
+    unawaited(DocumentAlertScheduler.instance.cancelAllForQuote(id));
   }
 
   SavedQuote? getQuoteById(String id) {
@@ -155,6 +189,10 @@ class QuoteProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
+    // A status flip is exactly the case that most needs a resync — e.g.
+    // moving to accepted/declined must cancel a pending expiring-soon push
+    // immediately, and moving to sent is what makes one eligible at all.
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(_savedQuotes[index]));
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────
