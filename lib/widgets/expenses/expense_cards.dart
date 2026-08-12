@@ -1,23 +1,28 @@
 // expense_cards.dart
 // lib/widgets/expenses/expense_cards.dart
 //
-// DOC-CARD STYLE PASS (this update): all four layouts — list, grid,
-// compactGrid, compact — now visually match
-// lib/widgets/saved_documents_containers.dart's _DocCard: the
-// ExpenseGradientAvatar icon box (two-tone gradient + accent-tinted
-// shadow, see expense_card_shared.dart), a border/shadow tinted to the
-// expense's own category colour instead of a flat neutral outline, and
-// the icon+label "Excluded" chip in the same trailing position _DocCard
-// uses for its status chip. The reference-number row (new field on
-// ExpenseCardEntry) shows on the list layout only, right under the
-// folder tag, when the expense has one set.
+// DISPLAY OPTIONS PASS (this update): all four layouts now watch
+// CardDisplayPrefs (lib/widgets/saved_documents/card_display_prefs.dart —
+// the same instance the Saved Documents and Reports cards read from) and
+// conditionally render: logo, amount, date row, and the "Excluded" chip
+// slot follows the status-chip toggle. This is the same provider Home's
+// Invoices/Quotes/Receipts sections use, so one set of switches controls
+// every card family in the app.
 //
-// Selection mode (long-press to enter, tap to toggle), the 3-dot options
-// menu, folder tags, and the logo/photo system are all unchanged in
-// behaviour — only the visual skin changed.
+// LOGO FIX (this update): ExpenseListCard now wraps its Row in
+// IntrinsicHeight + CrossAxisAlignment.stretch and passes
+// height: double.infinity to ExpenseGradientAvatar, so the logo/photo
+// fills the card's full height edge-to-edge instead of a small square.
+// Grid/compactGrid/compact stay square — not enough room at those sizes.
+//
+// Selection mode, the 3-dot options menu, folder tags, and the logo/photo
+// system are all unchanged in behaviour — only what renders (per prefs)
+// and the List avatar's fill behaviour changed.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../saved_documents/card_display_prefs.dart';
 import 'expense_card_shared.dart';
 
 // -----------------------------------------------------------------------------
@@ -44,6 +49,7 @@ class ExpenseListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final prefs = context.watch<CardDisplayPrefs>();
     final accent = entry.category.color;
     final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
     final borderColor = isDark ? accent.withValues(alpha: 0.18) : const Color(0xFFF0F0F0);
@@ -71,100 +77,124 @@ class ExpenseListCard extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    ExpenseGradientAvatar(
-                      logoPath: entry.logoPath,
-                      logoOffset: entry.logoOffset,
-                      logoScale: entry.logoScale,
-                      logoShape: entry.logoShape,
-                      category: entry.category,
-                      size: 52,
-                      iconSize: 24,
-                      borderRadius: 14,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(entry.title,
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 3),
-                          Row(
+                padding: const EdgeInsets.all(14),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: prefs.showLogo
+                        ? CrossAxisAlignment.stretch
+                        : CrossAxisAlignment.center,
+                    children: [
+                      if (prefs.showLogo) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: ExpenseGradientAvatar(
+                            logoPath: entry.logoPath,
+                            logoOffset: entry.logoOffset,
+                            logoScale: entry.logoScale,
+                            logoShape: entry.logoShape,
+                            category: entry.category,
+                            size: 64,
+                            width: 64,
+                            height: double.infinity,
+                            iconSize: 26,
+                            borderRadius: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                      ],
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.label_rounded, size: 12, color: accent),
-                              const SizedBox(width: 4),
-                              Text(entry.category.name,
-                                  style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600),
+                              Text(entry.title,
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
                                   maxLines: 1, overflow: TextOverflow.ellipsis),
-                              const SizedBox(width: 8),
-                              Icon(Icons.access_time_rounded, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
-                              const SizedBox(width: 3),
-                              Expanded(
-                                child: Text('Edited ${entry.editedLabel}',
-                                    style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.35)),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Icon(Icons.label_rounded, size: 12, color: accent),
+                                  const SizedBox(width: 4),
+                                  Text(entry.category.name,
+                                      style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(width: 8),
+                                  Icon(Icons.access_time_rounded, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
+                                  const SizedBox(width: 3),
+                                  Expanded(
+                                    child: Text('Edited ${entry.editedLabel}',
+                                        style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.35)),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Icon(Icons.event_rounded, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
-                              const SizedBox(width: 3),
-                              Text('Date: ${entry.dateLabel}',
-                                  style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                          if (entry.folderName != null && entry.folderName!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Row(
-                              children: [
-                                Icon(Icons.folder_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(entry.folderName!,
-                                      style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
-                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                              if (prefs.showSecondaryDate) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Icon(Icons.event_rounded, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
+                                    const SizedBox(width: 3),
+                                    Text('Date: ${entry.dateLabel}',
+                                        style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ],
-                          if (entry.referenceNumber != null && entry.referenceNumber!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Row(
-                              children: [
-                                Icon(Icons.confirmation_number_outlined, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text('Ref: ${entry.referenceNumber}',
-                                      style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
-                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                              if (prefs.showCreatedAndItems &&
+                                  entry.folderName != null &&
+                                  entry.folderName!.trim().isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Icon(Icons.folder_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(entry.folderName!,
+                                          style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          Text(entry.amountLabel, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                              if (prefs.showCreatedAndItems &&
+                                  entry.referenceNumber != null &&
+                                  entry.referenceNumber!.trim().isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Icon(Icons.confirmation_number_outlined, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text('Ref: ${entry.referenceNumber}',
+                                          style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (prefs.showAmount) ...[
+                                const SizedBox(height: 8),
+                                Text(entry.amountLabel, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (entry.excluded && prefs.showStatusChip) excludedChip(),
+                          if (entry.excluded && prefs.showStatusChip && !selectionMode) const SizedBox(height: 8),
+                          if (!selectionMode) ExpenseThreeDotIcon(onTap: entry.onShowMenu),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (entry.excluded) excludedChip(),
-                        if (entry.excluded && !selectionMode) const SizedBox(height: 8),
-                        if (!selectionMode) ExpenseThreeDotIcon(onTap: entry.onShowMenu),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               if (selectionMode)
@@ -201,6 +231,7 @@ class ExpenseGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final prefs = context.watch<CardDisplayPrefs>();
     final accent = entry.category.color;
     final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
     final borderColor = isDark ? accent.withValues(alpha: 0.18) : const Color(0xFFF0F0F0);
@@ -231,17 +262,19 @@ class ExpenseGridCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ExpenseGradientAvatar(
-                    logoPath: entry.logoPath,
-                    logoOffset: entry.logoOffset,
-                    logoScale: entry.logoScale,
-                    logoShape: entry.logoShape,
-                    category: entry.category,
-                    size: 36,
-                    iconSize: 18,
-                    borderRadius: 11,
-                  ),
-                  const SizedBox(height: 8),
+                  if (prefs.showLogo) ...[
+                    ExpenseGradientAvatar(
+                      logoPath: entry.logoPath,
+                      logoOffset: entry.logoOffset,
+                      logoScale: entry.logoScale,
+                      logoShape: entry.logoShape,
+                      category: entry.category,
+                      size: 36,
+                      iconSize: 18,
+                      borderRadius: 11,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   Text(entry.title,
                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface),
                       maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -257,20 +290,23 @@ class ExpenseGridCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Text('Date: ${entry.dateLabel}',
-                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (prefs.showSecondaryDate) ...[
+                    const SizedBox(height: 3),
+                    Text('Date: ${entry.dateLabel}',
+                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      if (entry.excluded) excludedChipCompact() else const SizedBox.shrink(),
+                      if (entry.excluded && prefs.showStatusChip) excludedChipCompact() else const SizedBox.shrink(),
                       const Spacer(),
-                      Flexible(
-                        child: Text(entry.amountLabel,
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: cs.onSurface),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
+                      if (prefs.showAmount)
+                        Flexible(
+                          child: Text(entry.amountLabel,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: cs.onSurface),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
                     ],
                   ),
                 ],
@@ -311,6 +347,7 @@ class ExpenseCompactGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final prefs = context.watch<CardDisplayPrefs>();
     final accent = entry.category.color;
     final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
     final borderColor = isDark ? accent.withValues(alpha: 0.16) : const Color(0xFFF0F0F0);
@@ -339,30 +376,36 @@ class ExpenseCompactGridCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ExpenseGradientAvatar(
-                    logoPath: entry.logoPath,
-                    logoOffset: entry.logoOffset,
-                    logoScale: entry.logoScale,
-                    logoShape: entry.logoShape,
-                    category: entry.category,
-                    size: 26,
-                    iconSize: 13,
-                    borderRadius: 8,
-                  ),
-                  const SizedBox(height: 6),
+                  if (prefs.showLogo) ...[
+                    ExpenseGradientAvatar(
+                      logoPath: entry.logoPath,
+                      logoOffset: entry.logoOffset,
+                      logoScale: entry.logoScale,
+                      logoShape: entry.logoShape,
+                      category: entry.category,
+                      size: 26,
+                      iconSize: 13,
+                      borderRadius: 8,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Text(entry.title,
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurface),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 3),
-                  Text('Date: ${entry.dateLabel}',
-                      style: TextStyle(fontSize: 8.5, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(entry.amountLabel,
-                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (prefs.showSecondaryDate) ...[
+                    const SizedBox(height: 3),
+                    Text('Date: ${entry.dateLabel}',
+                        style: TextStyle(fontSize: 8.5, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                  if (prefs.showAmount) ...[
+                    const SizedBox(height: 2),
+                    Text(entry.amountLabel,
+                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
                   const Spacer(),
-                  if (entry.excluded) excludedChipCompact(),
+                  if (entry.excluded && prefs.showStatusChip) excludedChipCompact(),
                 ],
               ),
               if (selectionMode)
@@ -401,6 +444,7 @@ class ExpenseCompactRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final prefs = context.watch<CardDisplayPrefs>();
     final accent = entry.category.color;
     final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
     final borderColor = isDark ? accent.withValues(alpha: 0.14) : const Color(0xFFF0F0F0);
@@ -430,17 +474,19 @@ class ExpenseCompactRow extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  ExpenseGradientAvatar(
-                    logoPath: entry.logoPath,
-                    logoOffset: entry.logoOffset,
-                    logoScale: entry.logoScale,
-                    logoShape: entry.logoShape,
-                    category: entry.category,
-                    size: 30,
-                    iconSize: 15,
-                    borderRadius: 9,
-                  ),
-                  const SizedBox(width: 10),
+                  if (prefs.showLogo) ...[
+                    ExpenseGradientAvatar(
+                      logoPath: entry.logoPath,
+                      logoOffset: entry.logoOffset,
+                      logoScale: entry.logoScale,
+                      logoShape: entry.logoShape,
+                      category: entry.category,
+                      size: 30,
+                      iconSize: 15,
+                      borderRadius: 9,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
                     child: Text(entry.title,
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
@@ -451,15 +497,17 @@ class ExpenseCompactRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(entry.amountLabel,
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Text(entry.dateLabel,
-                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (prefs.showAmount)
+                        Text(entry.amountLabel,
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (prefs.showSecondaryDate)
+                        Text(entry.dateLabel,
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
                     ],
                   ),
-                  if (entry.excluded) ...[
+                  if (entry.excluded && prefs.showStatusChip) ...[
                     const SizedBox(width: 8),
                     excludedChipCompact(),
                   ],

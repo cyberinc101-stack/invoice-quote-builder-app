@@ -6,16 +6,24 @@
 // 3-dot options icon, the green "positive status" dot, and the business
 // logo avatar.
 //
-// NEW (this pass): _DocLogoAvatar — renders the document's business logo
-// (from _DocEntry.logoPath) as a rounded avatar in place of the old plain
-// document-type icon. Falls back gracefully in two steps: if there's no
-// logo path, or the file at that path no longer exists on disk (deleted,
-// moved, or the doc predates logos being wired up), it shows the business
-// name's first initial as a colored monogram; if the business name is
-// also blank, it falls back to the original description icon so no card
-// is ever left with an empty avatar slot. Uses File.existsSync() (sync,
-// not async) since this check needs to happen inline during build() for
-// dozens of cards in a grid — avoids FutureBuilder flicker on every scroll.
+// LOGO FIX (this pass): _DocLogoAvatar now supports independent width/
+// height instead of a single forced-square `size`. Previously every call
+// site passed one `size` value used for both dimensions, so the logo
+// always rendered as a small square icon-box regardless of how much
+// vertical room the card actually had — on the List layout in particular
+// this looked cramped and unprofessional next to a full row of text.
+// `width`/`height` now default to `size` for callers that still want a
+// square (grid/compactGrid/compact, which are genuinely tight on space),
+// but the List layout passes an explicit `height: double.infinity` inside
+// an IntrinsicHeight + CrossAxisAlignment.stretch row (see doc_cards.dart)
+// so the logo image fills the card's full available height edge-to-edge,
+// with BoxFit.cover, instead of sitting in a little padded square.
+//
+// Three-tier fallback unchanged: logo file exists -> real image; no logo
+// but a business name -> colored initial monogram; neither -> generic
+// document icon. Uses File.existsSync() (sync, not async) since this
+// check needs to happen inline during build() for dozens of cards in a
+// grid — avoids FutureBuilder flicker on every scroll.
 
 part of 'saved_documents_section.dart';
 
@@ -25,6 +33,7 @@ class _SectionHeader extends StatelessWidget {
   final Color  accentColor;
   final Widget? sortToggle;
   final Widget? layoutToggle;
+  final Widget? displayOptionsToggle;
 
   const _SectionHeader({
     required this.label,
@@ -32,6 +41,7 @@ class _SectionHeader extends StatelessWidget {
     required this.accentColor,
     this.sortToggle,
     this.layoutToggle,
+    this.displayOptionsToggle,
   });
 
   @override
@@ -54,6 +64,10 @@ class _SectionHeader extends StatelessWidget {
         ],
         if (layoutToggle != null) ...[
           layoutToggle!,
+          const SizedBox(width: 8),
+        ],
+        if (displayOptionsToggle != null) ...[
+          displayOptionsToggle!,
           const SizedBox(width: 10),
         ],
         Text(
@@ -131,13 +145,18 @@ Widget _positiveDot() => Container(
 //   1. logoPath set AND file still exists on disk  -> the actual logo image
 //   2. logoPath missing/stale, businessName present -> colored initial monogram
 //   3. neither available                            -> generic document icon
-// size/iconSize/borderRadius are passed per-layout so list, grid,
-// compactGrid, compact-row, and kanban can each size it to fit.
+//
+// width/height default to `size` (a square) for layouts that are tight on
+// space. Pass them independently (e.g. width: 64, height: double.infinity
+// inside an IntrinsicHeight row) to have the logo fill the card's full
+// height edge-to-edge instead of sitting in a small square.
 class _DocLogoAvatar extends StatelessWidget {
   final String? logoPath;
   final String businessName;
   final Color accentColor;
   final double size;
+  final double? width;
+  final double? height;
   final double iconSize;
   final double borderRadius;
 
@@ -146,12 +165,16 @@ class _DocLogoAvatar extends StatelessWidget {
     required this.businessName,
     required this.accentColor,
     required this.size,
+    this.width,
+    this.height,
     this.iconSize = 24,
     this.borderRadius = 12,
   });
 
   @override
   Widget build(BuildContext context) {
+    final w = width ?? size;
+    final h = height ?? size;
     final path = logoPath;
     if (path != null && path.isNotEmpty) {
       final file = File(path);
@@ -160,23 +183,23 @@ class _DocLogoAvatar extends StatelessWidget {
           borderRadius: BorderRadius.circular(borderRadius),
           child: Image.file(
             file,
-            width: size,
-            height: size,
+            width: w,
+            height: h,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _fallback(),
+            errorBuilder: (_, __, ___) => _fallback(w, h),
           ),
         );
       }
     }
-    return _fallback();
+    return _fallback(w, h);
   }
 
-  Widget _fallback() {
+  Widget _fallback(double w, double h) {
     final trimmedName = businessName.trim();
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : null;
     return Container(
-      width: size,
-      height: size,
+      width: w,
+      height: h,
       decoration: BoxDecoration(
         color: accentColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(borderRadius),

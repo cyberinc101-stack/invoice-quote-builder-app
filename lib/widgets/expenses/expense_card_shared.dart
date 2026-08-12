@@ -1,46 +1,28 @@
 // expense_card_shared.dart
 // lib/widgets/expenses/expense_card_shared.dart
 //
-// SORT TOGGLE FIX (this pass): expense_screen.dart's count row calls
-// ExpenseSortToggleButton(selected: _selectedSort, onChanged: ...) — that
-// widget didn't exist anywhere in this file, so the build was broken.
-// Added it here, mirroring ExpenseLayoutToggleButton's popup-menu shape
-// but driven by SortOption (from filter_types.dart) instead of
-// ExpenseLayoutMode, since expense_screen.dart's _selectedSort is a
-// SortOption (routed through filter_logic.dart's sortExpenses(), the same
-// helper the home screen's documents use).
+// LOGO FIX (this pass): ExpenseGradientAvatar now supports independent
+// width/height (defaulting to `size`, same pattern as _DocLogoAvatar in
+// doc_card_shared.dart) instead of always forcing a square. The List
+// layout (ExpenseListCard) now passes height: double.infinity inside an
+// IntrinsicHeight + CrossAxisAlignment.stretch row so the logo/photo
+// fills the card's full height edge-to-edge instead of a small square.
+// Grid/compactGrid/compact stay square — not enough room at those sizes.
+//
+// SORT TOGGLE (earlier pass): ExpenseSortToggleButton, driven by
+// SortOption (from filter_types.dart) instead of ExpenseLayoutMode, used
+// by expense_screen.dart's count row and Home's "My Expenses" header.
 //
 // DOC-CARD STYLE PASS (earlier): the expense card system visually matches
 // lib/widgets/saved_documents_containers.dart's _DocCard — a two-tone
-// gradient icon box with an accent-tinted drop shadow (instead of a flat
-// colour-on-tint square), and an icon+label status chip (instead of a
-// plain text pill). Since expenses don't have a single fixed accent
-// colour the way invoices/quotes/receipts do (blue/purple/green), each
-// expense's own category colour stands in as its "accent" — so the
-// gradient, the shadow tint, and the border tint all key off
-// entry.category.color instead of a shared constant.
-// ExpenseGradientAvatar is the new equivalent of doc_cards.dart's icon
-// box: renders the expense's logo/photo when one is set (same as the
-// previous ExpenseLogoAvatar did), otherwise a gradient box in the
-// category's colour with a white icon and a matching tinted shadow — the
-// same recipe _DocCard uses for its icon container. The old
-// ExpenseLogoAvatar/ExpenseCategoryAvatar are kept (unused by the new
-// cards, but not deleted) in case other screens still reference them.
-// excludedChip()/excludedChipCompact() gained a small icon in front of
-// the label, matching _DocCard's status chip shape (icon + text, not
-// text alone).
-//
-// REFERENCE NUMBER (earlier): ExpenseCardEntry carries referenceNumber
-// now, so the list layout can show a small "Ref: ..." row when one is
-// set — same local-only field described in expense_data.dart, no
-// database involved.
+// gradient icon box with an accent-tinted drop shadow, and an icon+label
+// status chip. Each expense's own category colour stands in as its
+// "accent" since expenses don't have a single fixed accent colour the way
+// invoices/quotes/receipts do.
 //
 // Everything else — selection mode, the 3-dot menu, folder tags, logo
-// fields — is unchanged in shape; only the visual skin changed.
-//
-// ExpenseLayoutMode intentionally skips `kanban` — home's kanban view
-// groups documents by pipeline status (draft/sent/paid etc.), and
-// expenses have no such pipeline to lay out columns for.
+// fields, reference number — is unchanged in shape; only the visual skin
+// and the avatar sizing changed.
 
 import 'dart:io';
 
@@ -54,9 +36,6 @@ import '../shared_logo_picker.dart' show LogoShape, LogoShapeX, SharedLogoThumbn
 const Color kExpenseAccent = Color(0xFFE53935);
 
 // ── Pre-computed per-card view model ──────────────────────────────────────
-// Built once per expense in expense_screen.dart's/saved_documents_section.
-// dart's build(), so every card layout just renders fields instead of
-// re-deriving category/date labels.
 
 class ExpenseCardEntry {
   final String key;
@@ -68,16 +47,12 @@ class ExpenseCardEntry {
   final VoidCallback onTap;
   final VoidCallback onShowMenu;
 
-  // Logo/photo — mirrors the fields ExpenseEntry gained this pass.
   final String? logoPath;
   final Offset logoOffset;
   final double logoScale;
   final LogoShape logoShape;
 
-  // Folder assignment — shown as a small tag on the list/compact layouts.
   final String? folderName;
-
-  // Reference number — plain local field, shown on the list layout when set.
   final String? referenceNumber;
 
   const ExpenseCardEntry({
@@ -110,10 +85,6 @@ const _shortMonths = [
 
 String formatExpenseShortDate(DateTime dt) => '${dt.day} ${_shortMonths[dt.month - 1]} ${dt.year}';
 
-/// "37m ago" / "2d ago" style relative label, matching the format Saved
-/// Documents cards already use for their "Edited ..." line. Falls back to
-/// an absolute short date once it's a week or older — a relative label
-/// stops being useful ("14d ago" is harder to read than the actual date).
 String formatExpenseRelativeTime(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inMinutes < 1) return 'just now';
@@ -213,12 +184,7 @@ class ExpenseLayoutToggleButton extends StatelessWidget {
   }
 }
 
-// ── Sort toggle — same popup-menu shape as ExpenseLayoutToggleButton
-// above, driven by SortOption instead. Used by expense_screen.dart's
-// count row and (via saved_documents_section.dart) the Home screen's
-// "My Expenses" section header, matching the pairing
-// _SortToggleButton + _LayoutToggleButton already used for the other
-// three document types there. ──────────────────────────────────────────
+// ── Sort toggle ──────────────────────────────────────────────────────────
 
 class ExpenseSortToggleButton extends StatelessWidget {
   final SortOption selected;
@@ -321,8 +287,7 @@ class ExpenseThreeDotIcon extends StatelessWidget {
   }
 }
 
-// ── Category avatar (flat, legacy) — kept for any other call sites, but
-// the new cards below use ExpenseGradientAvatar instead. ─────────────────
+// ── Category avatar (flat, legacy) — kept for any other call sites. ─────
 
 class ExpenseCategoryAvatar extends StatelessWidget {
   final DocumentCategory category;
@@ -410,13 +375,12 @@ class ExpenseLogoAvatar extends StatelessWidget {
 }
 
 // ── Gradient avatar — the doc-card-style icon box. Renders the expense's
-// uploaded photo/logo when one is set (same behaviour ExpenseLogoAvatar
-// had), otherwise a two-tone gradient box in the category's colour with a
-// white icon and a colour-tinted drop shadow — exactly the recipe
-// saved_documents_containers.dart's _DocCard uses for its icon container
-// (`gradient: [accent, accent.withValues(alpha: 0.72)]`, shadow tinted to
-// the same accent). Every expense card layout renders this instead of the
-// flat ExpenseLogoAvatar. ─────────────────────────────────────────────────
+// uploaded photo/logo when one is set, otherwise a two-tone gradient box
+// in the category's colour with a white icon and a colour-tinted drop
+// shadow. width/height now default to `size` (a square) but can be set
+// independently — the List layout passes height: double.infinity inside
+// an IntrinsicHeight row so the avatar fills the card's full height
+// edge-to-edge instead of sitting in a small square. ─────────────────────
 
 class ExpenseGradientAvatar extends StatelessWidget {
   final String? logoPath;
@@ -425,6 +389,8 @@ class ExpenseGradientAvatar extends StatelessWidget {
   final LogoShape logoShape;
   final DocumentCategory category;
   final double size;
+  final double? width;
+  final double? height;
   final double iconSize;
   final double borderRadius;
 
@@ -436,6 +402,8 @@ class ExpenseGradientAvatar extends StatelessWidget {
     required this.logoShape,
     required this.category,
     required this.size,
+    this.width,
+    this.height,
     this.iconSize = 24,
     this.borderRadius = 14,
   });
@@ -445,13 +413,16 @@ class ExpenseGradientAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = width ?? size;
+    final h = height ?? size;
+
     if (_hasLogo) {
       return Container(
-        width: size,
-        height: size,
+        width: w,
+        height: h,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          borderRadius: logoShape.radiusFor(size),
+          borderRadius: BorderRadius.circular(borderRadius),
           boxShadow: [
             BoxShadow(color: category.color.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3)),
           ],
@@ -461,13 +432,13 @@ class ExpenseGradientAvatar extends StatelessWidget {
           logoOffset: logoOffset,
           logoScale: logoScale,
           logoShape: logoShape,
-          boxSize: size,
+          boxSize: w,
         ),
       );
     }
     return Container(
-      width: size,
-      height: size,
+      width: w,
+      height: h,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [category.color, category.color.withValues(alpha: 0.72)],
@@ -484,9 +455,7 @@ class ExpenseGradientAvatar extends StatelessWidget {
   }
 }
 
-// ── "Excluded" chip — icon + label, matching _DocCard's status chip shape
-// (previously text-only). Only rendered when an expense is excluded from
-// reports; there's no other status vocabulary for a plain expense. ──────
+// ── "Excluded" chip ───────────────────────────────────────────────────────
 
 Widget excludedChip() => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -42,11 +42,13 @@ part 'doc_kanban.dart';
 // writes CardDisplayPrefs (card_display_prefs.dart) — a persisted,
 // app-wide set of switches for which stats show on the cards themselves
 // (secondary date, created date + item count, progress bar, status chip,
-// amount). doc_cards.dart's four card widgets watch CardDisplayPrefs
+// amount, logo). doc_cards.dart's four card widgets watch CardDisplayPrefs
 // directly, so flipping a switch in the sheet updates every visible card
 // immediately, across whichever DocLayoutMode is currently active. The
-// Expenses section intentionally keeps its own ExpenseSortToggleButton
-// pairing as before — it doesn't get a displayOptionsToggle in this pass.
+// Expenses section gets the same displayOptionsToggle now too, paired
+// with its existing ExpenseSortToggleButton, since expense_cards.dart's
+// four layouts watch the exact same CardDisplayPrefs instance — one set
+// of switches controls Invoices/Quotes/Receipts/Expenses together.
 //
 // EXPENSES SECTION PASS (earlier): a new "My Expenses" section now
 // renders right after "My Receipts" whenever the All pill (or the new
@@ -1662,6 +1664,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                           selected: _selectedLayout,
                                           onChanged: (m) => setState(() => _selectedLayout = m),
                                         )
+                                      : null,
+                                  displayOptionsToggle: showToggleOnExpenses
+                                      ? const DisplayOptionsButton()
                                       : null,
                                 ),
                                 const SizedBox(height: 10),

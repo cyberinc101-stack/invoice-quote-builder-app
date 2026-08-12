@@ -1,104 +1,55 @@
 // reports_document_list.dart
 // lib/screens/reports/reports_document_list.dart
 //
-// EXPENSES-MERGED PASS (this update): ReportsDocType gained a fourth case
-// — expense — so the "Documents in this period" section is now the single
-// unified ledger for all four saved-document types, matching how real
-// bookkeeping tools (and Home's own DocTypeFilter) treat "type" as a
-// filter on one list rather than four separate silos. The old, plainer
-// "Expenses in this period" section (reports_item_list.dart's
-// ReportsListItem/ReportsItemSection) is retired from reports_screen.dart
-// in this same pass — expenses now render with these exact same rich
-// cards, just adapted where an expense genuinely has no equivalent:
-//   - No completion percent -> the progress bar is skipped entirely for
-//     expense items (an "always 100%" bar conveys nothing real).
-//   - No payment/quote/receipt-style status -> the status chip only shows
-//     for expenses when excludeFromReports is true ("Excluded"); a
-//     non-excluded expense shows no chip, since the include/exclude
-//     checkbox already communicates that state.
-//   - No line items -> the "N items" segment is replaced by an optional
-//     `referenceLabel` ("Ref: 12345") when the expense has a manually-
-//     entered reference number, or omitted entirely when it doesn't.
-//   - `templateName` carries the expense's category name instead (still
-//     rendered in the accent color, same visual slot).
-//   - `secondaryDateLabel`/`secondaryDateValue` become "Date" / the
-//     expense's date, replacing Due/Expires/Paid.
-// All of this is driven by `item.docType == ReportsDocType.expense` checks
-// inside the three card widgets below — no new widget types, so list,
-// grid, and compact layouts all support expenses automatically.
+// DISPLAY OPTIONS PASS (this update): the List/Grid/Compact cards here now
+// watch CardDisplayPrefs (lib/widgets/saved_documents/card_display_prefs.
+// dart) — the same instance Home's Invoices/Quotes/Receipts/Expenses
+// sections read from — and conditionally render logo, amount, secondary
+// date, created+ref row, progress bar, and status chip. One set of
+// switches (DisplayOptionsButton, opened from Home) now controls every
+// card family in the app, including this one.
 //
-// ── Everything below this point (except the docType/referenceLabel
-// additions and the conditional rendering noted above) is unchanged from
-// the previous pass — see original header comments preserved below. ──
+// LOGO FIX (this update): _ReportsLogoAvatar gained independent width/
+// height (defaulting to `size`), and the List card (_ReportsDocCard) now
+// wraps its Row in IntrinsicHeight + CrossAxisAlignment.stretch, passing
+// height: double.infinity so the logo fills the card's full height
+// edge-to-edge instead of a small square. Grid/compact stay square.
 //
-// THIS PASS (earlier):
-//  - FIX: the "Created X · N items" and template/edited-date rows had no
-//    Flexible/ellipsis wrapping and overflowed once the text got long
-//    enough (RenderFlex overflow banner on real data). Every row that
-//    combines a fixed icon + variable-length text is now wrapped so it
-//    truncates with an ellipsis instead of overflowing.
-//  - The hidden long-press toggle is gone. Every card now shows the same
-//    visible ReportsIncludeCheckbox used by reports_item_list.dart's
-//    expense cards (imported from there — one control, one behavior,
-//    both card families).
-//  - ReportsDocumentItem grew `docType` (ReportsDocType) and `sortDate` so
-//    ReportsDocumentSection can offer the same category filter chips
-//    (All/Invoices/Quotes/Receipts, with counts) and sort dropdown (Most
-//    Recent/Oldest First/Alphabetical/Amount High-Low/Low-High) that Home's
-//    "My Invoices"-style lists already have (SortOption, reused directly
-//    from lib/filters/filter_types.dart — same enum Home's own sort
-//    dropdown drives, so "Most Recent" means the same thing in both
-//    places). ReportsDocumentSection is now a StatefulWidget holding its
-//    own filter/sort selection, mirroring how
-//    SavedDocumentsContainers/_SavedDocumentsContainersState owns that
-//    same state on the home screen — it's a "how do I want to browse this
-//    list" concern, independent of the accounting include/exclude
-//    checkbox and independent of the Invoices/Quotes/Receipts
-//    DataSourceToggleRow above it (that one controls what counts toward
-//    Income; this one only controls what's currently visible here).
+// ── Everything below this point is unchanged from the previous pass
+// except the CardDisplayPrefs gating and the List-avatar fill fix noted
+// above. See original header comments preserved below. ──
+//
+// EXPENSES-MERGED PASS (earlier): ReportsDocType gained a fourth case —
+// expense — so the "Documents in this period" section is the single
+// unified ledger for all four saved-document types. Expenses skip the
+// completion bar entirely (no real completion concept), only show a
+// status chip when excludeFromReports is true, and the "N items" segment
+// becomes an optional "Ref: ..." (referenceLabel) instead.
 //
 // Rich document cards for ReportsScreen's "Documents in this period"
 // section, visually matching the Saved Documents cards (doc_cards.dart /
 // doc_card_shared.dart in lib/widgets/saved_documents/) — same logo
 // avatar, title + positive-status dot, template/edited-date subtitle,
 // secondary date row, created+item-count row, completion progress bar,
-// amount, and status chip.
-//
-// Not a literal reuse of those widgets: they're `part of
-// 'saved_documents_section.dart'` (private to that library) and their
-// long-press already means "enter multi-select," which conflicts with
-// what Reports needs. Replicating the visual language here, with Reports'
-// own controls, gets an identical look without fighting that library
-// boundary or changing what long-press does on the Saved Documents screen
-// itself.
-//
-// Grid/compact layouts intentionally skip a couple of the list layout's
-// detail rows (created date, item count) — same reasoning doc_cards.dart
-// gives for doing the same at those sizes: not enough room without
-// forcing overflow or unreadable text.
+// amount, and status chip. Not a literal reuse of those widgets (they're
+// `part of` a different library with different long-press semantics) —
+// replicated here with Reports' own controls.
 //
 // Reuses ReportsLayoutMode / ReportsLayoutToggleButton / ReportsIncludeCheckbox
 // from reports_item_list.dart so the Documents and Expenses sections share
-// one layout-dropdown control and one accounting-toggle control, even
-// though their cards look different.
+// one layout-dropdown control and one accounting-toggle control.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../filters/filter_types.dart' show SortOption, sortOptionLabel;
+import '../../widgets/saved_documents/card_display_prefs.dart';
 import 'reports_item_list.dart'
     show ReportsLayoutMode, ReportsLayoutToggleButton, ReportsIncludeCheckbox;
 
 enum ReportsDocType { invoice, quote, receipt, expense }
 
-// Local copies of the accent colors reports_screen.dart uses for
-// _kDocsInvoiceAccent/_kDocsQuoteAccent/_kDocsReceiptAccent, plus the
-// Expenses screen's own accent (kExpenseAccent in expense_card_shared.
-// dart) — needed here so the filter chips have a color to show even for a
-// category with zero items in the current period (where no
-// ReportsDocumentItem exists to borrow a color from). Keep these in sync
-// with reports_screen.dart / expense_card_shared.dart if those ever
-// change.
 const Color _kFilterInvoiceAccent = Color(0xFF1565C0);
 const Color _kFilterQuoteAccent = Color(0xFF7B1FA2);
 const Color _kFilterReceiptAccent = Color(0xFF2E7D32);
@@ -148,25 +99,22 @@ class ReportsDocumentItem {
   final ReportsDocType docType;
   final String title;
   final String templateName;
-  final String editedLabel; // e.g. "8 Aug 2026" — rendered as "· Edited 8 Aug 2026"
-  final String secondaryDateLabel; // "Due" / "Expires" / "Paid" / "Date"
+  final String editedLabel;
+  final String secondaryDateLabel;
   final String secondaryDateValue;
   final String createdLabel;
   final int itemCount;
   final int completionPercent;
   final double amount;
-  final String statusLabel; // empty string = no status chip rendered
+  final String statusLabel;
   final Color statusColor;
   final Color accentColor;
   final String? logoPath;
   final String businessName;
   final bool isPositiveStatus;
-  final bool excludedFromReports; // manual flag — checkbox flips this
-  final bool countsTowardReports; // actual current reportable state (drives badge/dim)
-  final DateTime sortDate; // last-edited date — powers Most Recent/Oldest First
-  // Expense-only: replaces the "N items" segment with e.g. "Ref: 12345"
-  // when set. Null/omitted for invoices/quotes/receipts, and for
-  // expenses with no reference number entered.
+  final bool excludedFromReports;
+  final bool countsTowardReports;
+  final DateTime sortDate;
   final String? referenceLabel;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggleExclude;
@@ -197,9 +145,6 @@ class ReportsDocumentItem {
     this.referenceLabel,
   });
 
-  // Expenses have no completion concept — an "always 100%" bar would be
-  // pure decoration, so it's skipped entirely rather than shown as a
-  // meaningless full bar.
   bool get _showCompletion => docType != ReportsDocType.expense;
 }
 
@@ -212,13 +157,17 @@ Widget _positiveDot() => Container(
       decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4CAF50)),
     );
 
-// Same three-tier fallback as _DocLogoAvatar in doc_card_shared.dart:
-// logo file -> initials monogram -> generic icon.
+// Three-tier fallback: logo file -> initials monogram -> generic icon.
+// width/height default to `size`; pass them independently (e.g.
+// width: 64, height: double.infinity inside an IntrinsicHeight row) to
+// have the logo fill the card's full height edge-to-edge.
 class _ReportsLogoAvatar extends StatelessWidget {
   final String? logoPath;
   final String businessName;
   final Color accentColor;
   final double size;
+  final double? width;
+  final double? height;
   final double iconSize;
   final double borderRadius;
 
@@ -227,12 +176,16 @@ class _ReportsLogoAvatar extends StatelessWidget {
     required this.businessName,
     required this.accentColor,
     required this.size,
+    this.width,
+    this.height,
     this.iconSize = 24,
     this.borderRadius = 12,
   });
 
   @override
   Widget build(BuildContext context) {
+    final w = width ?? size;
+    final h = height ?? size;
     final path = logoPath;
     if (path != null && path.isNotEmpty) {
       final file = File(path);
@@ -241,23 +194,23 @@ class _ReportsLogoAvatar extends StatelessWidget {
           borderRadius: BorderRadius.circular(borderRadius),
           child: Image.file(
             file,
-            width: size,
-            height: size,
+            width: w,
+            height: h,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _fallback(),
+            errorBuilder: (_, __, ___) => _fallback(w, h),
           ),
         );
       }
     }
-    return _fallback();
+    return _fallback(w, h);
   }
 
-  Widget _fallback() {
+  Widget _fallback(double w, double h) {
     final trimmedName = businessName.trim();
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : null;
     return Container(
-      width: size,
-      height: size,
+      width: w,
+      height: h,
       decoration: BoxDecoration(
         color: accentColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(borderRadius),
@@ -273,9 +226,7 @@ class _ReportsLogoAvatar extends StatelessWidget {
   }
 }
 
-// ── Sort dropdown — same visual as ReportsLayoutToggleButton, reusing the
-// SortOption enum Home's own dropdown already drives (filter_types.dart)
-// so "Most Recent" etc. mean exactly the same thing in both places. ──────
+// ── Sort dropdown ──────────────────────────────────────────────────────
 
 extension _ReportsSortIconX on SortOption {
   IconData get _icon {
@@ -352,11 +303,10 @@ class _ReportsSortToggleButton extends StatelessWidget {
   }
 }
 
-// ── Category filter chips — same "All · N / Invoices · N / ..." bar as
-// Home's unified document view, now including Expenses as a fourth chip. ─
+// ── Category filter chips ─────────────────────────────────────────────
 
 class _ReportsDocFilterBar extends StatelessWidget {
-  final ReportsDocType? selected; // null = All
+  final ReportsDocType? selected;
   final ValueChanged<ReportsDocType?> onChanged;
   final Map<ReportsDocType, int> counts;
 
@@ -422,9 +372,7 @@ class _ReportsDocFilterBar extends StatelessWidget {
   }
 }
 
-// ── Section wrapper — header (title + sort + layout + count), filter
-// chips, then cards. Owns its own filter/sort selection (StatefulWidget),
-// same as Home's SavedDocumentsContainers owns its filter state. ─────────
+// ── Section wrapper ─────────────────────────────────────────────────────
 
 class ReportsDocumentSection extends StatefulWidget {
   final String title;
@@ -449,7 +397,7 @@ class ReportsDocumentSection extends StatefulWidget {
 }
 
 class _ReportsDocumentSectionState extends State<ReportsDocumentSection> {
-  ReportsDocType? _selectedFilter; // null = All
+  ReportsDocType? _selectedFilter;
   SortOption _sortOption = SortOption.recentFirst;
 
   List<ReportsDocumentItem> _filtered() {
@@ -554,9 +502,8 @@ class _ReportsDocCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final prefs = context.watch<CardDisplayPrefs>();
     final isExpense = item.docType == ReportsDocType.expense;
-    // Expense-only: "N items" becomes "Ref: 12345" when set, or the whole
-    // trailing segment (icon + separator + text) is simply omitted.
     final trailingLabel = isExpense
         ? item.referenceLabel
         : '${item.itemCount} item${item.itemCount == 1 ? '' : 's'}';
@@ -568,7 +515,7 @@ class _ReportsDocCard extends StatelessWidget {
         opacity: item.countsTowardReports ? 1.0 : 0.55,
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E2235) : Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -577,113 +524,132 @@ class _ReportsDocCard extends StatelessWidget {
               BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
             ],
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ReportsLogoAvatar(
-                logoPath: item.logoPath,
-                businessName: item.businessName,
-                accentColor: item.accentColor,
-                size: 48,
-                iconSize: 24,
-                borderRadius: 12,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: prefs.showLogo ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+              children: [
+                if (prefs.showLogo) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _ReportsLogoAvatar(
+                      logoPath: item.logoPath,
+                      businessName: item.businessName,
+                      accentColor: item.accentColor,
+                      size: 64,
+                      width: 64,
+                      height: double.infinity,
+                      iconSize: 26,
+                      borderRadius: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                ],
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Flexible(
-                          child: Text(item.title,
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(item.title,
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                            if (item.isPositiveStatus) _positiveDot(),
+                          ],
                         ),
-                        if (item.isPositiveStatus) _positiveDot(),
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          Text(item.templateName,
+                              style: TextStyle(fontSize: 12, color: item.accentColor, fontWeight: FontWeight.w600),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text('· Edited ${item.editedLabel}',
+                                style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4)),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                        ]),
+                        if (prefs.showSecondaryDate) ...[
+                          const SizedBox(height: 3),
+                          Row(children: [
+                            Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.35)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
+                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                          ]),
+                        ],
+                        if (prefs.showCreatedAndItems) ...[
+                          const SizedBox(height: 3),
+                          Row(children: [
+                            Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text('Created ${item.createdLabel}',
+                                  style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                            if (trailingLabel != null && trailingLabel.isNotEmpty) ...[
+                              const SizedBox(width: 10),
+                              Icon(trailingIcon, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(trailingLabel,
+                                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                              ),
+                            ],
+                          ]),
+                        ],
+                        if (prefs.showProgress && item._showCompletion) ...[
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: item.completionPercent / 100,
+                              backgroundColor: cs.outline.withValues(alpha: 0.15),
+                              valueColor: AlwaysStoppedAnimation<Color>(item.accentColor),
+                              minHeight: 4,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Row(children: [
-                      Text(item.templateName,
-                          style: TextStyle(fontSize: 12, color: item.accentColor, fontWeight: FontWeight.w600),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text('· Edited ${item.editedLabel}',
-                            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4)),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ]),
-                    const SizedBox(height: 3),
-                    Row(children: [
-                      Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.35)),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
-                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ]),
-                    const SizedBox(height: 3),
-                    Row(children: [
-                      Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text('Created ${item.createdLabel}',
-                            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                      if (trailingLabel != null && trailingLabel.isNotEmpty) ...[
-                        const SizedBox(width: 10),
-                        Icon(trailingIcon, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(trailingLabel,
-                              style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                      ],
-                    ]),
-                    if (item._showCompletion) ...[
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: item.completionPercent / 100,
-                          backgroundColor: cs.outline.withValues(alpha: 0.15),
-                          valueColor: AlwaysStoppedAnimation<Color>(item.accentColor),
-                          minHeight: 4,
-                        ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (prefs.showAmount)
+                      Text(_fmtAmount(item.amount), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                    if (prefs.showStatusChip && item.statusLabel.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: item.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Text(item.statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: item.statusColor)),
                       ),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(_fmtAmount(item.amount), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
-                  if (item.statusLabel.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: item.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Text(item.statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: item.statusColor)),
+                    ReportsIncludeCheckbox(
+                      included: !item.excludedFromReports,
+                      countsTowardReports: item.countsTowardReports,
+                      itemTitle: item.title,
+                      onToggleExclude: item.onToggleExclude,
                     ),
                   ],
-                  const SizedBox(height: 6),
-                  ReportsIncludeCheckbox(
-                    included: !item.excludedFromReports,
-                    countsTowardReports: item.countsTowardReports,
-                    itemTitle: item.title,
-                    onToggleExclude: item.onToggleExclude,
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -701,6 +667,7 @@ class _ReportsDocGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final prefs = context.watch<CardDisplayPrefs>();
     return GestureDetector(
       onTap: item.onTap,
       child: Opacity(
@@ -721,14 +688,15 @@ class _ReportsDocGridCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _ReportsLogoAvatar(
-                    logoPath: item.logoPath,
-                    businessName: item.businessName,
-                    accentColor: item.accentColor,
-                    size: 32,
-                    iconSize: 16,
-                    borderRadius: 9,
-                  ),
+                  if (prefs.showLogo)
+                    _ReportsLogoAvatar(
+                      logoPath: item.logoPath,
+                      businessName: item.businessName,
+                      accentColor: item.accentColor,
+                      size: 32,
+                      iconSize: 16,
+                      borderRadius: 9,
+                    ),
                   const Spacer(),
                   Icon(_docTypeIcon(item.docType), size: 13, color: item.accentColor),
                 ],
@@ -748,14 +716,16 @@ class _ReportsDocGridCard extends StatelessWidget {
               Text(item.templateName,
                   style: TextStyle(fontSize: 9.5, color: item.accentColor, fontWeight: FontWeight.w600),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
-                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (prefs.showSecondaryDate) ...[
+                const SizedBox(height: 2),
+                Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
+                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
               const Spacer(),
               Row(
                 children: [
-                  if (item.statusLabel.isNotEmpty)
+                  if (prefs.showStatusChip && item.statusLabel.isNotEmpty)
                     Flexible(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -766,11 +736,12 @@ class _ReportsDocGridCard extends StatelessWidget {
                       ),
                     ),
                   const Spacer(),
-                  Flexible(
-                    child: Text(_fmtAmount(item.amount),
-                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
+                  if (prefs.showAmount)
+                    Flexible(
+                      child: Text(_fmtAmount(item.amount),
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -801,6 +772,7 @@ class _ReportsDocCompactRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final prefs = context.watch<CardDisplayPrefs>();
     return GestureDetector(
       onTap: item.onTap,
       child: Opacity(
@@ -815,15 +787,17 @@ class _ReportsDocCompactRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _ReportsLogoAvatar(
-                logoPath: item.logoPath,
-                businessName: item.businessName,
-                accentColor: item.accentColor,
-                size: 28,
-                iconSize: 15,
-                borderRadius: 8,
-              ),
-              const SizedBox(width: 10),
+              if (prefs.showLogo) ...[
+                _ReportsLogoAvatar(
+                  logoPath: item.logoPath,
+                  businessName: item.businessName,
+                  accentColor: item.accentColor,
+                  size: 28,
+                  iconSize: 15,
+                  borderRadius: 8,
+                ),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: Row(
                   children: [
@@ -841,12 +815,14 @@ class _ReportsDocCompactRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_fmtAmount(item.amount),
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('${item.secondaryDateLabel} ${item.secondaryDateValue}',
-                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (prefs.showAmount)
+                    Text(_fmtAmount(item.amount),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (prefs.showSecondaryDate)
+                    Text('${item.secondaryDateLabel} ${item.secondaryDateValue}',
+                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
               const SizedBox(width: 8),
