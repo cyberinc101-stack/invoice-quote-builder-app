@@ -1,8 +1,78 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// NEW (this pass): custom date-range filtering. When a range is picked via
-// month_picker_sheet.dart's new range mode, Income/Expenses/Net/quote-
+// EXPENSES-MERGED PASS (this update): expenses are now folded directly
+// into `docItems` as ReportsDocumentItem entries (ReportsDocType.expense
+// — see reports_document_list.dart) and rendered by the same
+// ReportsDocumentSection as invoices/quotes/receipts, with its own
+// filter pill and using category color as accent. The old, separate
+// "Expenses in this period" section (ReportsListItem/ReportsItemSection
+// from reports_item_list.dart) is retired — this was the last place
+// expenses looked visually different from the other three document
+// types, both here and versus Home's own unified list. _expensesLayoutMode
+// is gone too; there's now one layout control for the whole merged
+// section (_docsLayoutMode). "Expenses by category" and its underlying
+// byCategory rollup are UNCHANGED — that's a genuinely different view
+// (category totals, not individual transactions) and stays as its own
+// section further down the screen.
+//
+// Accounting accuracy note: the gating rules that decide what counts
+// toward Income/Expenses/Net are unchanged by this pass. A document only
+// counts when it's 100% complete AND not manually excluded (see
+// _isReportable()); an expense counts when it's not manually excluded
+// (expenses have no completion concept). Merging the display doesn't
+// change what's counted — only how it's browsed.
+//
+// ── Everything below this point is unchanged from the previous pass,
+// except the docItems construction and the section list near the bottom
+// — see original header comments preserved below. ──
+//
+// THIS PASS (earlier): wired ReportsPrefs.includeExpenses through —
+// periodExpenses, expensesThisMonth, the "Expenses by category"
+// breakdown, the trend strip's expense bars, and (at the time) the
+// "Expenses in this period" list were all gated behind it, same as
+// includeInvoices/includeQuotes/includeReceipts already gate the other
+// three sources. Added the includeExpenses/onExpensesChanged params to
+// the DataSourceToggleRow call so the 4th chip in reports_widgets.dart is
+// wired up. That gating still applies — periodExpenses stays empty
+// (so no expense docItems get built) whenever includeExpenses is off.
+//
+// "Documents in this period" renders with the same rich card visual
+// language as the Saved Documents section on the home screen (logo
+// avatar, template + edited-date line, secondary due/expires/paid line,
+// created + item-count row, completion bar, amount, status chip) via
+// ReportsDocumentSection/ReportsDocumentItem (reports_document_list.dart).
+//
+// _reportsInvoiceStatusInfo/_reportsQuoteStatusInfo/_reportsReceiptStatusInfo
+// below mirror the status label/color/positive-dot mapping used elsewhere
+// in the app (saved_documents_containers.dart) so a document reads the
+// same color and "positive" state whether you're looking at it from Saved
+// Documents or from Reports.
+//
+// ReportsDocumentSection uses ReportsItemSection's ReportsIncludeCheckbox
+// (reports_item_list.dart): tapping it flips that item's
+// excludeFromReports flag via the same provider methods the Saved
+// Documents section already uses (updateInvoiceExcludeFromReports etc.,
+// plus updateExpenseExcludeFromReports on ExpenseProvider), and the
+// section carries its own list/grid/compact layout dropdown
+// (ReportsLayoutToggleButton), independent of the Saved Documents
+// section's own layout state.
+//
+// Tapping a document card opens SavedDocumentDetailScreen, same as
+// everywhere else in the app. Tapping an expense card is currently a
+// no-op — there's no expense detail/edit screen wired in from here yet.
+//
+// docItems is built directly off periodInvoices/periodQuotes/
+// periodReceipts/periodExpenses, so it automatically respects the active
+// month/range, folder scope, and data-source toggles already computed
+// above it — no separate filtering logic needed.
+//
+// hasAnyDataThisMonth checks periodQuotes/docItems/periodExpenses so the
+// section (and the empty state) agree about whether there's anything to
+// show for the period.
+//
+// Custom date-range filtering. When a range is picked via
+// month_picker_sheet.dart's range mode, Income/Expenses/Net/quote-
 // pipeline/invoice-status/category-breakdown all total against the exact
 // range instead of the single selected month. The 6-month trend strip
 // intentionally still shows monthly cadence around _month regardless — a
@@ -15,23 +85,37 @@
 // filters the raw lists directly since a range is a one-off scan, not
 // something computed 6-8 times per render like the month lookups are.
 //
-// ALSO NEW (this pass): tax set-aside estimate card, right under Net —
-// net for the active period × prefs.taxRatePercent, adjustable inline.
+// Tax set-aside estimate card, right under Net — net for the active
+// period × prefs.taxRatePercent, adjustable inline.
 //
-// ALSO NEW (this pass): completion + exclude-from-reports gating. A saved
-// document only counts toward Income, the invoice-status breakdown, the
-// accepted-quote pipeline total, and Top Clients when it is 100% complete
-// AND the user hasn't manually excluded it (InvoiceData/QuoteData/
-// ReceiptData.excludeFromReports). See _isReportable(). This does NOT gate
-// Expenses (expenses have no completion/exclude concept) or the 6-month
-// trend strip's month lookups beyond what _sumIncome already gates.
+// Completion + exclude-from-reports gating. A saved document only counts
+// toward Income, the invoice-status breakdown, the accepted-quote
+// pipeline total, and Top Clients when it is 100% complete AND the user
+// hasn't manually excluded it (InvoiceData/QuoteData/
+// ReceiptData.excludeFromReports). See _isReportable(). Expenses have
+// their own excludeFromReports gate, applied inside ExpenseProvider's
+// totalForMonth/byCategoryForMonth/totalForRange/byCategoryForRange
+// rather than here.
 //
-// ALSO NEW (this pass): Top Clients card — paid invoices + issued receipts
-// for the active period, gated the same way, summed per client, top 5.
+// Top Clients card — paid invoices + issued receipts for the active
+// period, gated the same way, summed per client, top 5.
+//
+// Folder scope. A "Folder" selector sits next to the data-source toggle
+// row, sourced from the same folderName field the "Move to Folder" action
+// already writes on SavedInvoice/SavedQuote/SavedReceipt (see
+// folders_grid_view.dart) — no new data model needed. Picking a folder
+// narrows Income/Expenses(invoices/quotes/receipts side)/Net/trend/
+// status-breakdown/Top Clients/the document list to only documents
+// carrying that folder name; picking "All folders" (the default) is a
+// no-op that reproduces prior behavior exactly. Expenses are NOT
+// folder-filtered — expenses have no folderName field, same reasoning as
+// why they're not gated by completion/exclude either (aside from the
+// manual excludeFromReports flag, which is independent of folders).
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/expense_data.dart';
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
@@ -40,17 +124,80 @@ import '../../providers/expense_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/quote_provider.dart';
 import '../../providers/receipt_provider.dart';
+import '../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'month_picker_sheet.dart';
 import 'reports_charts.dart';
+import 'reports_document_list.dart';
+import 'reports_item_list.dart';
 import 'reports_prefs.dart';
 import 'reports_widgets.dart';
 
 const Color kReportsAccent = Color(0xFF00897B);
 
+// Accent colors for the "Documents in this period" cards — match the
+// accents _showInvoiceMenu/_showQuoteMenu/_showReceiptMenu already use in
+// saved_documents_section.dart, so a document reads the same color
+// whether you're looking at it from Saved Documents or from Reports.
+// Expenses use each entry's own category color instead of a single fixed
+// accent (same reasoning the Expenses screen/Home's "My Expenses" section
+// use), so there's no _kDocsExpenseAccent constant here.
+const Color _kDocsInvoiceAccent = Color(0xFF1565C0);
+const Color _kDocsQuoteAccent = Color(0xFF7B1FA2);
+const Color _kDocsReceiptAccent = Color(0xFF2E7D32);
+
+const _shortMonths = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+String _formatShortDate(DateTime dt) => '${dt.day} ${_shortMonths[dt.month - 1]} ${dt.year}';
+String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
 // Shared gating rule: a saved document counts toward reporting totals only
 // when it's fully filled out AND the user hasn't manually excluded it.
 bool _isReportable(int completionPercent, bool excludeFromReports) =>
     completionPercent == 100 && !excludeFromReports;
+
+// ── Status mapping for the rich "Documents in this period" cards ─────────
+// Mirrors the label/color/positive-dot mapping used elsewhere in the app
+// (saved_documents_containers.dart's _invoiceStatusInfo/_quoteStatusInfo/
+// _receiptStatusInfo) so a document reads the same color and "positive"
+// state whether viewed from Saved Documents or from Reports.
+
+({String label, Color color, bool isPositive}) _reportsInvoiceStatusInfo(PaymentStatus s) {
+  switch (s) {
+    case PaymentStatus.paid:
+      return (label: 'Paid', color: const Color(0xFF4CAF50), isPositive: true);
+    case PaymentStatus.partial:
+      return (label: 'Partial', color: const Color(0xFF2196F3), isPositive: false);
+    case PaymentStatus.overdue:
+      return (label: 'Overdue', color: const Color(0xFFE53935), isPositive: false);
+    case PaymentStatus.unpaid:
+      return (label: 'Unpaid', color: const Color(0xFFFF9800), isPositive: false);
+  }
+}
+
+({String label, Color color, bool isPositive}) _reportsQuoteStatusInfo(QuoteStatus s) {
+  switch (s) {
+    case QuoteStatus.accepted:
+      return (label: 'Accepted', color: const Color(0xFF4CAF50), isPositive: true);
+    case QuoteStatus.sent:
+      return (label: 'Sent', color: const Color(0xFF2196F3), isPositive: false);
+    case QuoteStatus.declined:
+      return (label: 'Declined', color: const Color(0xFFE53935), isPositive: false);
+    case QuoteStatus.expired:
+      return (label: 'Expired', color: const Color(0xFF9E9E9E), isPositive: false);
+    case QuoteStatus.draft:
+      return (label: 'Draft', color: const Color(0xFFFF9800), isPositive: false);
+  }
+}
+
+({String label, Color color, bool isPositive}) _reportsReceiptStatusInfo(ReceiptStatus s) {
+  switch (s) {
+    case ReceiptStatus.issued:
+      return (label: 'Issued', color: const Color(0xFF4CAF50), isPositive: true);
+    case ReceiptStatus.refunded:
+      return (label: 'Refunded', color: const Color(0xFFE53935), isPositive: false);
+  }
+}
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -62,11 +209,20 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
 
-  // NEW: custom range state. Both non-null = range mode active, and it
-  // takes priority over _month for the stat cards / breakdown / pipeline.
+  // Custom range state. Both non-null = range mode active, and it takes
+  // priority over _month for the stat cards / breakdown / pipeline.
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
   bool get _isRangeActive => _rangeStart != null && _rangeEnd != null;
+
+  // Folder scope. null = "All folders" (no filtering, prior behavior).
+  // Non-null narrows every document list to that folder before any
+  // month/range bucketing happens.
+  String? _selectedFolder;
+
+  // Single layout state for the merged Documents section (invoices,
+  // quotes, receipts, and now expenses all render through it).
+  ReportsLayoutMode _docsLayoutMode = ReportsLayoutMode.list;
 
   static const _monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -116,6 +272,86 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
   }
 
+  // Folder picker sheet — lists "All folders" plus every folder name
+  // currently in use across invoices/quotes/receipts (folderNames is
+  // computed fresh in build() from live provider data, then passed in
+  // here). Mirrors the style of the existing rename/delete sheets used
+  // elsewhere in the app.
+  Future<void> _openFolderPicker(List<String> folderNames) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final picked = await showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: colorScheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text(
+                      'Report scope',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.dashboard_customize_rounded, color: kReportsAccent),
+                      title: const Text('All folders', style: TextStyle(fontWeight: FontWeight.w700)),
+                      trailing: _selectedFolder == null ? Icon(Icons.check_rounded, color: kReportsAccent) : null,
+                      onTap: () => Navigator.pop(ctx, ''),
+                    ),
+                    if (folderNames.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                        child: Text(
+                          'No folders yet. Create one from a document\'s ⋮ menu → "Move to Folder".',
+                          style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                        ),
+                      )
+                    else
+                      for (final name in folderNames)
+                        ListTile(
+                          leading: Icon(Icons.folder_rounded, color: isDark ? colorScheme.onSurface.withValues(alpha: 0.6) : const Color(0xFF1565C0)),
+                          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          trailing: _selectedFolder == name ? Icon(Icons.check_rounded, color: kReportsAccent) : null,
+                          onTap: () => Navigator.pop(ctx, name),
+                        ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (picked == null) return; // dismissed without choosing
+    setState(() => _selectedFolder = picked.isEmpty ? null : picked);
+  }
+
   // ── One-time grouping helper (single-month mode + trend strip) ─────────
 
   Map<String, List<T>> _groupByMonth<T>(List<T> items, DateTime Function(T) dateOf) {
@@ -128,8 +364,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return map;
   }
 
-  // NEW: exact-bounds range filter — used only when a custom range is
-  // active, so it's fine that this is a plain O(n) scan rather than a
+  // Exact-bounds range filter — used only when a custom range is active,
+  // so it's fine that this is a plain O(n) scan rather than a
   // precomputed map.
   List<T> _filterByRange<T>(List<T> items, DateTime Function(T) dateOf, DateTime start, DateTime end) {
     final rangeStart = DateTime(start.year, start.month, start.day);
@@ -182,10 +418,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // NEW: client name -> total, gated the same way as _sumIncome (paid
-  // invoices + issued receipts, 100% complete, not excluded). Kept
-  // separate from _sumIncome rather than reusing its fold so each client
-  // name can be tracked individually instead of collapsed into one sum.
+  // Client name -> total, gated the same way as _sumIncome (paid invoices
+  // + issued receipts, 100% complete, not excluded). Kept separate from
+  // _sumIncome rather than reusing its fold so each client name can be
+  // tracked individually instead of collapsed into one sum.
   Map<String, double> _topClientsTotals({
     required List<SavedInvoice> invoices,
     required List<SavedReceipt> receipts,
@@ -215,9 +451,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final invoices = context.watch<InvoiceProvider>().savedInvoices;
-    final quotes = context.watch<QuoteProvider>().savedQuotes;
-    final receipts = context.watch<ReceiptProvider>().savedReceipts;
+    final invoicesAll = context.watch<InvoiceProvider>().savedInvoices;
+    final quotesAll = context.watch<QuoteProvider>().savedQuotes;
+    final receiptsAll = context.watch<ReceiptProvider>().savedReceipts;
     final expenseProvider = context.watch<ExpenseProvider>();
     final categories = context.watch<CategoryProvider>();
     final prefs = context.watch<ReportsPrefs>();
@@ -228,15 +464,56 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    // Every folder name currently in use across all three document types,
+    // for the folder picker sheet. Computed fresh each build from live
+    // provider data — cheap (folders are a handful, not thousands) and
+    // guarantees the picker never shows a stale/deleted folder name.
+    final folderNames = <String>{
+      for (final i in invoicesAll)
+        if ((i.folderName ?? '').trim().isNotEmpty) i.folderName!.trim(),
+      for (final q in quotesAll)
+        if ((q.folderName ?? '').trim().isNotEmpty) q.folderName!.trim(),
+      for (final r in receiptsAll)
+        if ((r.folderName ?? '').trim().isNotEmpty) r.folderName!.trim(),
+    }.toList()
+      ..sort();
+
+    // If the previously-selected folder no longer exists (renamed/deleted
+    // elsewhere in the app), fall back to "All folders" rather than
+    // silently reporting on an empty, invisible scope.
+    if (_selectedFolder != null && !folderNames.contains(_selectedFolder)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _selectedFolder = null);
+      });
+    }
+
+    // Folder scope applied here, before any month/range bucketing —
+    // everything below this point (invoicesByMonth, range filtering, the
+    // trend strip's per-month lookups) operates on these already-narrowed
+    // lists, so the folder scope composes automatically with both
+    // single-month and custom-range mode without touching that logic.
+    final invoices = _selectedFolder == null
+        ? invoicesAll
+        : invoicesAll.where((i) => i.folderName == _selectedFolder).toList();
+    final quotes = _selectedFolder == null
+        ? quotesAll
+        : quotesAll.where((q) => q.folderName == _selectedFolder).toList();
+    final receipts = _selectedFolder == null
+        ? receiptsAll
+        : receiptsAll.where((r) => r.folderName == _selectedFolder).toList();
+
     final invoicesByMonth = _groupByMonth<SavedInvoice>(invoices, (i) => i.createdAt);
     final receiptsByMonth = _groupByMonth<SavedReceipt>(receipts, (r) => r.createdAt);
     final quotesByMonth = _groupByMonth<SavedQuote>(quotes, (q) => q.createdAt);
 
     // ── Current period figures — either the active custom range, or the
-    // single selected month (unchanged behavior). ──────────────────────
+    // single selected month (unchanged behavior). periodExpenses/
+    // expensesThisMonth respect prefs.includeExpenses, same pattern as
+    // includeInvoices/includeQuotes gating income above. ─────────────
     late final List<SavedInvoice> periodInvoices;
     late final List<SavedReceipt> periodReceipts;
     late final List<SavedQuote> periodQuotes;
+    late final List<ExpenseEntry> periodExpenses;
     late final double income;
     late final double expensesThisMonth;
 
@@ -244,15 +521,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
       periodInvoices = _filterByRange(invoices, (i) => i.createdAt, _rangeStart!, _rangeEnd!);
       periodReceipts = _filterByRange(receipts, (r) => r.createdAt, _rangeStart!, _rangeEnd!);
       periodQuotes = _filterByRange(quotes, (q) => q.createdAt, _rangeStart!, _rangeEnd!);
+      periodExpenses = prefs.includeExpenses
+          ? expenseProvider.forRange(_rangeStart!, _rangeEnd!)
+          : const <ExpenseEntry>[];
       income = _sumIncome(invoices: periodInvoices, receipts: periodReceipts, prefs: prefs);
-      expensesThisMonth = expenseProvider.totalForRange(_rangeStart!, _rangeEnd!);
+      expensesThisMonth = prefs.includeExpenses
+          ? expenseProvider.totalForRange(_rangeStart!, _rangeEnd!)
+          : 0.0;
     } else {
       final monthKey = _monthKey(_month);
       periodInvoices = invoicesByMonth[monthKey] ?? const <SavedInvoice>[];
       periodReceipts = receiptsByMonth[monthKey] ?? const <SavedReceipt>[];
       periodQuotes = quotesByMonth[monthKey] ?? const <SavedQuote>[];
+      periodExpenses = prefs.includeExpenses ? expenseProvider.forMonth(_month) : const <ExpenseEntry>[];
       income = _incomeForMonth(_month, invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs);
-      expensesThisMonth = expenseProvider.totalForMonth(_month);
+      expensesThisMonth = prefs.includeExpenses ? expenseProvider.totalForMonth(_month) : 0.0;
     }
 
     // Gated: only 100%-complete, non-excluded accepted quotes count toward
@@ -268,14 +551,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     final net = income - expensesThisMonth;
 
-    final byCategory = _isRangeActive
-        ? expenseProvider.byCategoryForRange(_rangeStart!, _rangeEnd!)
-        : expenseProvider.byCategoryForMonth(_month);
+    // Category breakdown respects the Expenses toggle too — off means an
+    // empty breakdown, consistent with the $0 Expenses stat card.
+    final byCategory = !prefs.includeExpenses
+        ? const <String, double>{}
+        : (_isRangeActive
+            ? expenseProvider.byCategoryForRange(_rangeStart!, _rangeEnd!)
+            : expenseProvider.byCategoryForMonth(_month));
     final sortedCategoryEntries = byCategory.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxCategoryAmount = sortedCategoryEntries.isEmpty ? 1.0 : sortedCategoryEntries.first.value;
 
-    // NEW: Top Clients — gated the same way as income, top 5 by total.
+    // Top Clients — gated the same way as income, top 5 by total.
     final topClientsEntries = _topClientsTotals(
       invoices: periodInvoices,
       receipts: periodReceipts,
@@ -291,7 +578,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!_isRangeActive) {
       final prevMonth = _monthsBefore(_month, 1);
       final prevIncome = _incomeForMonth(prevMonth, invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs);
-      final prevExpenses = expenseProvider.totalForMonth(prevMonth);
+      final prevExpenses = prefs.includeExpenses ? expenseProvider.totalForMonth(prevMonth) : 0.0;
       final prevNet = prevIncome - prevExpenses;
       if (prevNet != 0) {
         netChangePercent = ((net - prevNet) / prevNet.abs()) * 100;
@@ -301,13 +588,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     // ── 6-month trend strip — always anchored on _month regardless of an
-    // active range (see file header comment). ──────────────────────────
+    // active range (see file header comment). Expenses bar respects
+    // prefs.includeExpenses too, so a disabled Expenses source reads as
+    // $0 consistently everywhere in the screen. ─────────────────────────
     final trendPoints = <MonthTrendPoint>[
       for (int i = 5; i >= 0; i--)
         MonthTrendPoint(
           month: _monthsBefore(_month, i),
           income: _incomeForMonth(_monthsBefore(_month, i), invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs),
-          expenses: expenseProvider.totalForMonth(_monthsBefore(_month, i)),
+          expenses: prefs.includeExpenses ? expenseProvider.totalForMonth(_monthsBefore(_month, i)) : 0.0,
         ),
     ];
 
@@ -325,13 +614,167 @@ class _ReportsScreenState extends State<ReportsScreen> {
         .toList()
       ..sort((a, b) => b.amount.compareTo(a.amount));
 
+    // ── "Documents in this period" — one ReportsDocumentItem per
+    // invoice/quote/receipt/expense in the current period, respecting the
+    // existing data-source toggles, all rendered with the same rich card
+    // visual language as the Saved Documents section on the home screen
+    // via a single filterable, sortable ReportsDocumentSection below.
+    // Sorted biggest-first so the numbers that move the totals the most
+    // are easiest to spot and toggle. ───────────────────────────────────
+    final List<ReportsDocumentItem> docItems = [];
+
+    if (prefs.includeInvoices) {
+      for (final inv in periodInvoices) {
+        final info = _reportsInvoiceStatusInfo(inv.data.paymentStatus);
+        final isPaid = inv.data.paymentStatus == PaymentStatus.paid;
+        docItems.add(ReportsDocumentItem(
+          key: 'invoice:${inv.id}',
+          docType: ReportsDocType.invoice,
+          title: inv.title,
+          templateName: inv.templateName,
+          editedLabel: _formatShortDate(inv.lastEditedAt),
+          secondaryDateLabel: isPaid ? 'Paid' : 'Due',
+          secondaryDateValue: isPaid
+              ? (inv.data.paidDate != null ? _formatShortDate(inv.data.paidDate!) : '—')
+              : (inv.data.dueDate.isEmpty ? '—' : inv.data.dueDate),
+          createdLabel: _formatShortDate(inv.createdAt),
+          itemCount: inv.data.lineItems.length,
+          completionPercent: inv.completionPercent,
+          amount: inv.data.grandTotal,
+          statusLabel: info.label,
+          statusColor: info.color,
+          accentColor: _kDocsInvoiceAccent,
+          logoPath: inv.data.businessLogoPath,
+          businessName: inv.data.businessName,
+          isPositiveStatus: info.isPositive,
+          excludedFromReports: inv.data.excludeFromReports,
+          countsTowardReports: _isReportable(inv.completionPercent, inv.data.excludeFromReports),
+          sortDate: inv.lastEditedAt,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SavedDocumentDetailScreen.invoice(inv)),
+          ),
+          onToggleExclude: (v) =>
+              context.read<InvoiceProvider>().updateInvoiceExcludeFromReports(inv.id, v),
+        ));
+      }
+    }
+    if (prefs.includeQuotes) {
+      for (final q in periodQuotes) {
+        final info = _reportsQuoteStatusInfo(q.data.quoteStatus);
+        docItems.add(ReportsDocumentItem(
+          key: 'quote:${q.id}',
+          docType: ReportsDocType.quote,
+          title: q.title,
+          templateName: q.templateName,
+          editedLabel: _formatShortDate(q.lastEditedAt),
+          secondaryDateLabel: 'Expires',
+          secondaryDateValue: q.data.expiryDate.isEmpty ? '—' : q.data.expiryDate,
+          createdLabel: _formatShortDate(q.createdAt),
+          itemCount: q.data.lineItems.length,
+          completionPercent: q.completionPercent,
+          amount: q.data.grandTotal,
+          statusLabel: info.label,
+          statusColor: info.color,
+          accentColor: _kDocsQuoteAccent,
+          logoPath: q.data.businessLogoPath,
+          businessName: q.data.businessName,
+          isPositiveStatus: info.isPositive,
+          excludedFromReports: q.data.excludeFromReports,
+          countsTowardReports: _isReportable(q.completionPercent, q.data.excludeFromReports),
+          sortDate: q.lastEditedAt,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SavedDocumentDetailScreen.quote(q)),
+          ),
+          onToggleExclude: (v) =>
+              context.read<QuoteProvider>().updateQuoteExcludeFromReports(q.id, v),
+        ));
+      }
+    }
+    if (prefs.includeReceipts) {
+      for (final r in periodReceipts) {
+        final info = _reportsReceiptStatusInfo(r.data.status);
+        docItems.add(ReportsDocumentItem(
+          key: 'receipt:${r.id}',
+          docType: ReportsDocType.receipt,
+          title: r.title,
+          templateName: r.templateName,
+          editedLabel: _formatShortDate(r.lastEditedAt),
+          secondaryDateLabel: 'Paid',
+          secondaryDateValue: r.data.paymentDate.isEmpty ? '—' : r.data.paymentDate,
+          createdLabel: _formatShortDate(r.createdAt),
+          itemCount: r.data.lineItems.length,
+          completionPercent: r.completionPercent,
+          amount: r.data.amountPaid,
+          statusLabel: info.label,
+          statusColor: info.color,
+          accentColor: _kDocsReceiptAccent,
+          logoPath: r.data.businessLogoPath,
+          businessName: r.data.businessName,
+          isPositiveStatus: info.isPositive,
+          excludedFromReports: r.data.excludeFromReports,
+          countsTowardReports: _isReportable(r.completionPercent, r.data.excludeFromReports),
+          sortDate: r.lastEditedAt,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SavedDocumentDetailScreen.receipt(r)),
+          ),
+          onToggleExclude: (v) =>
+              context.read<ReceiptProvider>().updateReceiptExcludeFromReports(r.id, v),
+        ));
+      }
+    }
+    // Expenses — merged into the same unified list. No completion concept
+    // (countsTowardReports is simply !excludeFromReports), no payment-
+    // style status (statusLabel is empty unless excluded, which shows an
+    // "Excluded" chip — see reports_document_list.dart), category color
+    // stands in as the per-item accent, and the manually-entered
+    // reference number (if any) shows in place of an item count via
+    // referenceLabel. periodExpenses is already empty when
+    // prefs.includeExpenses is false, so this loop naturally contributes
+    // nothing in that case.
+    for (final e in periodExpenses) {
+      final category = categories.byId(e.categoryId);
+      final ref = e.referenceNumber?.trim() ?? '';
+      docItems.add(ReportsDocumentItem(
+        key: 'expense:${e.id}',
+        docType: ReportsDocType.expense,
+        title: e.vendor.trim().isEmpty ? 'Expense' : e.vendor.trim(),
+        templateName: category.name,
+        editedLabel: _formatShortDate(e.lastEditedAt),
+        secondaryDateLabel: 'Date',
+        secondaryDateValue: _formatShortDate(e.date),
+        createdLabel: _formatShortDate(e.createdAt),
+        itemCount: 0,
+        completionPercent: 100,
+        amount: e.amount,
+        statusLabel: e.excludeFromReports ? 'Excluded' : '',
+        statusColor: const Color(0xFFE53935),
+        accentColor: category.color,
+        logoPath: e.logoPath,
+        businessName: e.vendor,
+        isPositiveStatus: false,
+        excludedFromReports: e.excludeFromReports,
+        countsTowardReports: !e.excludeFromReports,
+        sortDate: e.lastEditedAt,
+        referenceLabel: ref.isEmpty ? null : 'Ref: $ref',
+        onTap: () {},
+        onToggleExclude: (v) =>
+            context.read<ExpenseProvider>().updateExpenseExcludeFromReports(e.id, v),
+      ));
+    }
+    docItems.sort((a, b) => b.amount.compareTo(a.amount));
+
     final hasAnyDataThisMonth = periodInvoices.isNotEmpty ||
         periodReceipts.isNotEmpty ||
+        periodQuotes.isNotEmpty ||
+        periodExpenses.isNotEmpty ||
         acceptedQuotesThisPeriod.isNotEmpty ||
         sortedCategoryEntries.isNotEmpty;
 
     final animationSignature =
-        '${_isRangeActive}-${_rangeStart}-${_rangeEnd}-${_month.year}-${_month.month}-${prefs.includeInvoices}-${prefs.includeQuotes}-${prefs.includeReceipts}';
+        '${_isRangeActive}-${_rangeStart}-${_rangeEnd}-${_month.year}-${_month.month}-${prefs.includeInvoices}-${prefs.includeQuotes}-${prefs.includeReceipts}-${prefs.includeExpenses}-$_selectedFolder';
 
     return Scaffold(
       appBar: AppBar(
@@ -414,16 +857,69 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ],
             ),
+          const SizedBox(height: 10),
+
+          // Folder scope selector — sits right under the period selector,
+          // above the data-source toggle row.
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _openFolderPicker(folderNames),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: _selectedFolder != null
+                      ? kReportsAccent.withValues(alpha: 0.1)
+                      : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
+                  borderRadius: BorderRadius.circular(10),
+                  border: _selectedFolder != null
+                      ? Border.all(color: kReportsAccent.withValues(alpha: 0.4), width: 1.2)
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_rounded,
+                      size: 15,
+                      color: _selectedFolder != null ? kReportsAccent : colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedFolder ?? 'All folders',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _selectedFolder != null ? kReportsAccent : colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_selectedFolder != null)
+                      GestureDetector(
+                        onTap: () => setState(() => _selectedFolder = null),
+                        child: Icon(Icons.close_rounded, size: 16, color: kReportsAccent),
+                      )
+                    else
+                      Icon(Icons.expand_more_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
 
           DataSourceToggleRow(
             includeInvoices: prefs.includeInvoices,
             includeQuotes: prefs.includeQuotes,
             includeReceipts: prefs.includeReceipts,
+            includeExpenses: prefs.includeExpenses,
             accent: kReportsAccent,
             onInvoicesChanged: (v) => prefs.setIncludeInvoices(v),
             onQuotesChanged: (v) => prefs.setIncludeQuotes(v),
             onReceiptsChanged: (v) => prefs.setIncludeReceipts(v),
+            onExpensesChanged: (v) => prefs.setIncludeExpenses(v),
           ),
           const SizedBox(height: 16),
 
@@ -465,7 +961,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 12),
 
-            // NEW: tax set-aside estimate, right under Net.
             TaxSetAsideCard(
               net: net,
               taxRatePercent: prefs.taxRatePercent,
@@ -498,6 +993,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             const SizedBox(height: 24),
 
+            // The saved documents (invoices, quotes, receipts, AND
+            // expenses now) behind Income/Expenses/the status breakdown/
+            // the quote pipeline, all rendered with the same card visuals
+            // as the Saved Documents section on the home screen, with a
+            // visible include/exclude checkbox and its own filter/sort/
+            // layout controls.
+            ReportsDocumentSection(
+              title: 'Documents in this period',
+              items: docItems,
+              layoutMode: _docsLayoutMode,
+              onLayoutChanged: (m) => setState(() => _docsLayoutMode = m),
+              isDark: isDark,
+              emptyLabel: 'No invoices, quotes, receipts, or expenses in this period.',
+            ),
+            const SizedBox(height: 24),
+
             const ReportsSectionHeader(title: '6-month trend'),
             if (_isRangeActive) ...[
               const SizedBox(height: 4),
@@ -524,7 +1035,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const SizedBox(height: 12),
             if (sortedCategoryEntries.isEmpty)
               Text(
-                'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
+                !prefs.includeExpenses
+                    ? 'Expenses are turned off for this report.'
+                    : 'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
                 style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               )
             else
