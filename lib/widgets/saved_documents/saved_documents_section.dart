@@ -29,6 +29,7 @@ import '../expenses/expense_card_shared.dart';
 import '../expenses/expense_cards.dart';
 import 'card_display_prefs.dart';
 import 'display_options_button.dart';
+import 'saved_layout_prefs.dart';
 
 part 'doc_layout_mode.dart';
 part 'doc_card_shared.dart';
@@ -137,6 +138,39 @@ String _formatShortDate(DateTime dt) {
 // change in one place later if a currency-symbol setting gets added.
 final NumberFormat _cardAmountFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
 String _formatCardAmount(double v) => _cardAmountFormat.format(v);
+
+// Converts between the shared, cross-screen SharedDocLayout (persisted via
+// SavedLayoutPrefs, also read by reports_document_list.dart) and this
+// library's own DocLayoutMode. Kanban has no shared equivalent — callers
+// treat a null result from _toShared() as "don't touch the shared pref,
+// this is a local-only choice."
+DocLayoutMode _fromShared(SharedDocLayout s) {
+  switch (s) {
+    case SharedDocLayout.list:
+      return DocLayoutMode.list;
+    case SharedDocLayout.grid:
+      return DocLayoutMode.grid;
+    case SharedDocLayout.compactGrid:
+      return DocLayoutMode.compactGrid;
+    case SharedDocLayout.compact:
+      return DocLayoutMode.compact;
+  }
+}
+
+SharedDocLayout? _toShared(DocLayoutMode m) {
+  switch (m) {
+    case DocLayoutMode.list:
+      return SharedDocLayout.list;
+    case DocLayoutMode.grid:
+      return SharedDocLayout.grid;
+    case DocLayoutMode.compactGrid:
+      return SharedDocLayout.compactGrid;
+    case DocLayoutMode.compact:
+      return SharedDocLayout.compact;
+    case DocLayoutMode.kanban:
+      return null;
+  }
+}
 
 class _DocEntry {
   final String key;
@@ -1054,6 +1088,13 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     return Consumer4<InvoiceProvider, QuoteProvider, ReceiptProvider, ExpenseProvider>(
       builder: (context, invoiceProvider, quoteProvider, receiptProvider, expenseProvider, _) {
         final categories = context.watch<CategoryProvider>();
+        // Keep _selectedLayout in sync with the shared, cross-screen layout
+        // preference (also read by Reports) — unless Kanban is active,
+        // which is a local-only choice with no shared equivalent.
+        final layoutPrefs = context.watch<SavedLayoutPrefs>();
+        if (_selectedLayout != DocLayoutMode.kanban) {
+          _selectedLayout = _fromShared(layoutPrefs.layout);
+        }
 
         final allInvoices = invoiceProvider.savedInvoices;
         final allQuotes   = quoteProvider.savedQuotes;
@@ -1587,7 +1628,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                   layoutToggle: showToggleOnInvoices
                                       ? _LayoutToggleButton(
                                           selected: _selectedLayout,
-                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                          onChanged: (m) {
+                                          final shared = _toShared(m);
+                                          if (shared != null) {
+                                            context.read<SavedLayoutPrefs>().setLayout(shared);
+                                          } else {
+                                            setState(() => _selectedLayout = m);
+                                          }
+                                        },
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnInvoices
@@ -1612,7 +1660,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                   layoutToggle: showToggleOnQuotes
                                       ? _LayoutToggleButton(
                                           selected: _selectedLayout,
-                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                          onChanged: (m) {
+                                          final shared = _toShared(m);
+                                          if (shared != null) {
+                                            context.read<SavedLayoutPrefs>().setLayout(shared);
+                                          } else {
+                                            setState(() => _selectedLayout = m);
+                                          }
+                                        },
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnQuotes
@@ -1637,7 +1692,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                   layoutToggle: showToggleOnReceipts
                                       ? _LayoutToggleButton(
                                           selected: _selectedLayout,
-                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                          onChanged: (m) {
+                                          final shared = _toShared(m);
+                                          if (shared != null) {
+                                            context.read<SavedLayoutPrefs>().setLayout(shared);
+                                          } else {
+                                            setState(() => _selectedLayout = m);
+                                          }
+                                        },
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnReceipts
@@ -1662,7 +1724,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                   layoutToggle: showToggleOnExpenses
                                       ? _LayoutToggleButton(
                                           selected: _selectedLayout,
-                                          onChanged: (m) => setState(() => _selectedLayout = m),
+                                          onChanged: (m) {
+                                          final shared = _toShared(m);
+                                          if (shared != null) {
+                                            context.read<SavedLayoutPrefs>().setLayout(shared);
+                                          } else {
+                                            setState(() => _selectedLayout = m);
+                                          }
+                                        },
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnExpenses

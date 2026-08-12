@@ -143,17 +143,25 @@ class _DocCard extends StatelessWidget {
                             Row(children: [
                               Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
                               const SizedBox(width: 4),
-                              Text('Created ${entry.createdLabel}',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withValues(alpha: 0.45))),
+                              Flexible(
+                                child: Text('Created ${entry.createdLabel}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurface.withValues(alpha: 0.45))),
+                              ),
                               const SizedBox(width: 10),
                               Icon(Icons.receipt_long_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
                               const SizedBox(width: 4),
-                              Text('${entry.itemCount} item${entry.itemCount == 1 ? '' : 's'}',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withValues(alpha: 0.45))),
+                              Flexible(
+                                child: Text('${entry.itemCount} item${entry.itemCount == 1 ? '' : 's'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurface.withValues(alpha: 0.45))),
+                              ),
                             ]),
                           ],
                           if (prefs.showProgress) ...[

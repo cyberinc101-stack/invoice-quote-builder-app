@@ -45,8 +45,8 @@ import 'package:provider/provider.dart';
 
 import '../../filters/filter_types.dart' show SortOption, sortOptionLabel;
 import '../../widgets/saved_documents/card_display_prefs.dart';
-import 'reports_item_list.dart'
-    show ReportsLayoutMode, ReportsLayoutToggleButton, ReportsIncludeCheckbox;
+import '../../widgets/saved_documents/saved_layout_prefs.dart';
+import 'reports_item_list.dart' show ReportsLayoutMode, ReportsIncludeCheckbox;
 
 enum ReportsDocType { invoice, quote, receipt, expense }
 
@@ -303,82 +303,156 @@ class _ReportsSortToggleButton extends StatelessWidget {
   }
 }
 
-// ── Category filter chips ─────────────────────────────────────────────
+// ── Shared-layout mapping ──────────────────────────────────────────────
+// Converts the cross-screen SharedDocLayout (persisted via
+// SavedLayoutPrefs, also read/written by saved_documents_section.dart on
+// Home) into this file's own ReportsLayoutMode. Reports has no
+// "Compact Grid" card variant of its own, so that shared value collapses
+// to the nearest visual equivalent, Grid, when displayed here — picking
+// Compact Grid on Home still shows *something* sensible on Reports rather
+// than crashing or silently ignoring the preference.
+ReportsLayoutMode _reportsLayoutFromShared(SharedDocLayout s) {
+  switch (s) {
+    case SharedDocLayout.list:
+      return ReportsLayoutMode.list;
+    case SharedDocLayout.grid:
+    case SharedDocLayout.compactGrid:
+      return ReportsLayoutMode.grid;
+    case SharedDocLayout.compact:
+      return ReportsLayoutMode.compact;
+  }
+}
 
-class _ReportsDocFilterBar extends StatelessWidget {
-  final ReportsDocType? selected;
-  final ValueChanged<ReportsDocType?> onChanged;
-  final Map<ReportsDocType, int> counts;
+SharedDocLayout _sharedFromReportsLayout(ReportsLayoutMode m) {
+  switch (m) {
+    case ReportsLayoutMode.list:
+      return SharedDocLayout.list;
+    case ReportsLayoutMode.grid:
+      return SharedDocLayout.grid;
+    case ReportsLayoutMode.compact:
+      return SharedDocLayout.compact;
+  }
+}
 
-  const _ReportsDocFilterBar({required this.selected, required this.onChanged, required this.counts});
+// Same bordered-pill-with-chevron visual as every other layout dropdown in
+// the app, driving the SHARED preference directly (via SavedLayoutPrefs)
+// instead of local state — picking a layout here updates Home's Saved
+// Documents section too, and vice versa.
+class _SharedReportsLayoutToggleButton extends StatelessWidget {
+  final ReportsLayoutMode selected;
+  final ValueChanged<ReportsLayoutMode> onChanged;
+
+  const _SharedReportsLayoutToggleButton({required this.selected, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final total = counts.values.fold<int>(0, (s, v) => s + v);
-
-    Widget chip({required bool isSelected, required String label, required int count, required Color color, required VoidCallback onTap}) {
-      final chipBg = isSelected ? color : (isDark ? cs.surfaceContainerHighest : const Color(0xFFF5F5F5));
-      final textColor = isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.55);
-      final badgeBg = isSelected ? Colors.white.withValues(alpha: 0.2) : cs.onSurface.withValues(alpha: 0.1);
-      final badgeText = isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.45);
-      return GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: chipBg,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isSelected ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
-          ),
+    return PopupMenuButton<ReportsLayoutMode>(
+      initialValue: selected,
+      onSelected: onChanged,
+      tooltip: 'Change layout',
+      offset: const Offset(0, 34),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (context) => ReportsLayoutMode.values.map((mode) {
+        final isSelected = mode == selected;
+        final icon = switch (mode) {
+          ReportsLayoutMode.list => Icons.view_agenda_rounded,
+          ReportsLayoutMode.grid => Icons.grid_view_rounded,
+          ReportsLayoutMode.compact => Icons.view_headline_rounded,
+        };
+        final label = switch (mode) {
+          ReportsLayoutMode.list => 'List',
+          ReportsLayoutMode.grid => 'Grid',
+          ReportsLayoutMode.compact => 'Compact',
+        };
+        return PopupMenuItem<ReportsLayoutMode>(
+          value: mode,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: TextStyle(fontSize: 13, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: textColor)),
-              const SizedBox(width: 5),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(10)),
-                child: Text('$count', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: badgeText)),
+              Icon(icon, size: 18, color: isSelected ? cs.primary : cs.onSurface),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? cs.primary : cs.onSurface,
+                  ),
+                ),
               ),
+              if (isSelected) Icon(Icons.check_rounded, size: 16, color: cs.primary),
             ],
           ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: cs.onSurface.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.25)),
         ),
-      );
-    }
-
-    return SizedBox(
-      height: 32,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          chip(isSelected: selected == null, label: 'All', count: total, color: cs.primary, onTap: () => onChanged(null)),
-          const SizedBox(width: 8),
-          for (final t in ReportsDocType.values) ...[
-            chip(
-              isSelected: selected == t,
-              label: _docTypeLabel(t),
-              count: counts[t] ?? 0,
-              color: _docTypeAccent(t),
-              onTap: () => onChanged(t),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              switch (selected) {
+                ReportsLayoutMode.list => Icons.view_agenda_rounded,
+                ReportsLayoutMode.grid => Icons.grid_view_rounded,
+                ReportsLayoutMode.compact => Icons.view_headline_rounded,
+              },
+              size: 15,
+              color: cs.onSurface.withValues(alpha: 0.7),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 3),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: cs.onSurface.withValues(alpha: 0.5)),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
+// Plain category-group header — label + count, no colored bar, matching
+// Home's "My Invoices" / "My Quotes" / "My Receipts" / "My Expenses"
+// section headers exactly, so the two screens read as the same layout
+// language rather than two different list styles.
+class _ReportsGroupHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  const _ReportsGroupHeader({required this.label, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Text(label, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface)),
+        const Spacer(),
+        Text('$count document${count == 1 ? '' : 's'}',
+            style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4))),
+      ],
+    );
+  }
+}
+
 // ── Section wrapper ─────────────────────────────────────────────────────
+//
+// GROUPED PASS (this update): "Documents in this period" no longer renders
+// as one flat, filterable list with category chips — it's now split into
+// per-type sections (My Invoices / My Quotes / My Receipts / My Expenses),
+// each with its own header + count, exactly matching how the Saved
+// Documents section groups things on Home. A category with zero items in
+// the period is simply omitted, same as Home omits an empty section. Card
+// shape (list/grid/compact) is now a single SHARED control at the top —
+// driven by SavedLayoutPrefs, the same preference Home's dropdown writes
+// to — instead of a separate local toggle, so picking Grid here shows
+// Grid on Home too. Sort still applies uniformly within each group.
 
 class ReportsDocumentSection extends StatefulWidget {
   final String title;
   final List<ReportsDocumentItem> items;
-  final ReportsLayoutMode layoutMode;
-  final ValueChanged<ReportsLayoutMode> onLayoutChanged;
   final bool isDark;
   final String emptyLabel;
 
@@ -386,8 +460,6 @@ class ReportsDocumentSection extends StatefulWidget {
     super.key,
     required this.title,
     required this.items,
-    required this.layoutMode,
-    required this.onLayoutChanged,
     required this.isDark,
     required this.emptyLabel,
   });
@@ -397,13 +469,7 @@ class ReportsDocumentSection extends StatefulWidget {
 }
 
 class _ReportsDocumentSectionState extends State<ReportsDocumentSection> {
-  ReportsDocType? _selectedFilter;
   SortOption _sortOption = SortOption.recentFirst;
-
-  List<ReportsDocumentItem> _filtered() {
-    if (_selectedFilter == null) return widget.items;
-    return widget.items.where((i) => i.docType == _selectedFilter).toList();
-  }
 
   List<ReportsDocumentItem> _sorted(List<ReportsDocumentItem> items) {
     final list = List<ReportsDocumentItem>.from(items);
@@ -430,12 +496,13 @@ class _ReportsDocumentSectionState extends State<ReportsDocumentSection> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final layoutPrefs = context.watch<SavedLayoutPrefs>();
+    final layoutMode = _reportsLayoutFromShared(layoutPrefs.layout);
 
-    final counts = <ReportsDocType, int>{
-      for (final t in ReportsDocType.values) t: widget.items.where((i) => i.docType == t).length,
-    };
-
-    final visible = _sorted(_filtered());
+    final invoiceItems = _sorted(widget.items.where((i) => i.docType == ReportsDocType.invoice).toList());
+    final quoteItems = _sorted(widget.items.where((i) => i.docType == ReportsDocType.quote).toList());
+    final receiptItems = _sorted(widget.items.where((i) => i.docType == ReportsDocType.receipt).toList());
+    final expenseItems = _sorted(widget.items.where((i) => i.docType == ReportsDocType.expense).toList());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,32 +513,56 @@ class _ReportsDocumentSectionState extends State<ReportsDocumentSection> {
             const Spacer(),
             _ReportsSortToggleButton(selected: _sortOption, onChanged: (v) => setState(() => _sortOption = v)),
             const SizedBox(width: 6),
-            ReportsLayoutToggleButton(selected: widget.layoutMode, onChanged: widget.onLayoutChanged),
+            _SharedReportsLayoutToggleButton(
+              selected: layoutMode,
+              onChanged: (m) => context.read<SavedLayoutPrefs>().setLayout(_sharedFromReportsLayout(m)),
+            ),
             const SizedBox(width: 8),
-            Text('${visible.length}', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4))),
+            Text('${widget.items.length}', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4))),
           ],
         ),
-        const SizedBox(height: 10),
-        _ReportsDocFilterBar(selected: _selectedFilter, onChanged: (v) => setState(() => _selectedFilter = v), counts: counts),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
-          'Tap the checkbox to include or exclude it from the totals above.',
+          'Tap the checkbox to include or exclude an item from the totals above.',
           style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: 0.35)),
         ),
-        const SizedBox(height: 10),
-        if (visible.isEmpty)
+        const SizedBox(height: 12),
+        if (widget.items.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Text(widget.emptyLabel, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: 0.45))),
           )
-        else
-          _buildItems(visible),
+        else ...[
+          if (invoiceItems.isNotEmpty) ...[
+            _ReportsGroupHeader(label: 'My Invoices', count: invoiceItems.length),
+            const SizedBox(height: 10),
+            _buildItems(invoiceItems, layoutMode),
+            const SizedBox(height: 20),
+          ],
+          if (quoteItems.isNotEmpty) ...[
+            _ReportsGroupHeader(label: 'My Quotes', count: quoteItems.length),
+            const SizedBox(height: 10),
+            _buildItems(quoteItems, layoutMode),
+            const SizedBox(height: 20),
+          ],
+          if (receiptItems.isNotEmpty) ...[
+            _ReportsGroupHeader(label: 'My Receipts', count: receiptItems.length),
+            const SizedBox(height: 10),
+            _buildItems(receiptItems, layoutMode),
+            if (expenseItems.isNotEmpty) const SizedBox(height: 20),
+          ],
+          if (expenseItems.isNotEmpty) ...[
+            _ReportsGroupHeader(label: 'My Expenses', count: expenseItems.length),
+            const SizedBox(height: 10),
+            _buildItems(expenseItems, layoutMode),
+          ],
+        ],
       ],
     );
   }
 
-  Widget _buildItems(List<ReportsDocumentItem> items) {
-    switch (widget.layoutMode) {
+  Widget _buildItems(List<ReportsDocumentItem> items, ReportsLayoutMode layoutMode) {
+    switch (layoutMode) {
       case ReportsLayoutMode.list:
         return Column(children: items.map((e) => _ReportsDocCard(item: e, isDark: widget.isDark)).toList());
       case ReportsLayoutMode.compact:
@@ -491,7 +582,6 @@ class _ReportsDocumentSectionState extends State<ReportsDocumentSection> {
     }
   }
 }
-
 // ── List card — mirrors _DocCard in doc_cards.dart ──────────────────────
 
 class _ReportsDocCard extends StatelessWidget {

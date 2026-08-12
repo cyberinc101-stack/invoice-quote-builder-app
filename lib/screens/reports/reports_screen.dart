@@ -1,7 +1,19 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// TREND-CHART PASS (this update): the static "6-month trend" TrendStrip
+// GROUPED DOCUMENTS + SHARED LAYOUT (this pass): "Documents in this
+// period" no longer owns its own local layout state (_docsLayoutMode is
+// gone) — ReportsDocumentSection now reads/writes the same SavedLayoutPrefs
+// preference Home's Saved Documents section uses, so picking Grid/List/
+// Compact on either screen shows up on both. The section itself also now
+// groups items into My Invoices/My Quotes/My Receipts/My Expenses with
+// headers, matching Home's layout exactly, instead of one flat filterable
+// list — see reports_document_list.dart for that change.
+//
+// ── Everything else below is unchanged from the previous pass — see
+// original header comments preserved below. ──
+//
+// TREND-CHART PASS (earlier): the static "6-month trend" TrendStrip
 // (reports_charts.dart) is retired and replaced by ReportsTrendChartCard
 // (reports_trend_chart.dart) — a collapsible card with a Net/Income/
 // Expenses metric toggle and a 1W/1M/3M/6M/1Y/2Y/5Y/10Y range selector,
@@ -18,9 +30,6 @@
 // months. It reuses _filterByRange/_sumIncome so it can never disagree
 // with the rest of the screen about what counts as income.
 //
-// ── Everything else below is unchanged from the previous pass — see
-// original header comments preserved below. ──
-//
 // EXPENSES-MERGED PASS (earlier): expenses are folded directly into
 // `docItems` as ReportsDocumentItem entries (ReportsDocType.expense —
 // see reports_document_list.dart) and rendered by the same
@@ -29,12 +38,10 @@
 // "Expenses in this period" section (ReportsListItem/ReportsItemSection
 // from reports_item_list.dart) is retired — this was the last place
 // expenses looked visually different from the other three document
-// types, both here and versus Home's own unified list. _expensesLayoutMode
-// is gone too; there's now one layout control for the whole merged
-// section (_docsLayoutMode).  "Expenses by category" and its underlying
-// byCategory rollup are UNCHANGED — that's a genuinely different view
-// (category totals, not individual transactions) and stays as its own
-// section further down the screen.
+// types, both here and versus Home's own unified list.  "Expenses by
+// category" and its underlying byCategory rollup are UNCHANGED — that's a
+// genuinely different view (category totals, not individual
+// transactions) and stays as its own section further down the screen.
 //
 // Accounting accuracy note: the gating rules that decide what counts
 // toward Income/Expenses/Net are unchanged by this pass. A document only
@@ -69,10 +76,7 @@
 // (reports_item_list.dart): tapping it flips that item's
 // excludeFromReports flag via the same provider methods the Saved
 // Documents section already uses (updateInvoiceExcludeFromReports etc.,
-// plus updateExpenseExcludeFromReports on ExpenseProvider), and the
-// section carries its own list/grid/compact layout dropdown
-// (ReportsLayoutToggleButton), independent of the Saved Documents
-// section's own layout state.
+// plus updateExpenseExcludeFromReports on ExpenseProvider).
 //
 // Tapping a document card opens SavedDocumentDetailScreen, same as
 // everywhere else in the app. Tapping an expense card is currently a
@@ -233,10 +237,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // Non-null narrows every document list to that folder before any
   // month/range bucketing happens.
   String? _selectedFolder;
-
-  // Single layout state for the merged Documents section (invoices,
-  // quotes, receipts, and now expenses all render through it).
-  ReportsLayoutMode _docsLayoutMode = ReportsLayoutMode.list;
 
   static const _monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -802,9 +802,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // invoice/quote/receipt/expense in the current period, respecting the
     // existing data-source toggles, all rendered with the same rich card
     // visual language as the Saved Documents section on the home screen
-    // via a single filterable, sortable ReportsDocumentSection below.
-    // Sorted biggest-first so the numbers that move the totals the most
-    // are easiest to spot and toggle. ───────────────────────────────────
+    // via a single ReportsDocumentSection below, grouped into per-type
+    // sections matching Home exactly. Sorted biggest-first here as the
+    // baseline order (ReportsDocumentSection re-sorts within each group
+    // per its own sort control). ─────────────────────────────────────
     final List<ReportsDocumentItem> docItems = [];
 
     if (prefs.includeInvoices) {
@@ -1257,15 +1258,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
             // The saved documents (invoices, quotes, receipts, AND
             // expenses now) behind Income/Expenses/the status breakdown/
-            // the quote pipeline, all rendered with the same card visuals
-            // as the Saved Documents section on the home screen, with a
-            // visible include/exclude checkbox and its own filter/sort/
-            // layout controls.
+            // the quote pipeline, grouped into My Invoices/My Quotes/My
+            // Receipts/My Expenses sections matching Home exactly, with a
+            // visible include/exclude checkbox and a single shared layout
+            // control (SavedLayoutPrefs — the same preference Home's
+            // Saved Documents dropdown writes to).
             ReportsDocumentSection(
               title: 'Documents in this period',
               items: docItems,
-              layoutMode: _docsLayoutMode,
-              onLayoutChanged: (m) => setState(() => _docsLayoutMode = m),
               isDark: isDark,
               emptyLabel: 'No invoices, quotes, receipts, or expenses in this period.',
             ),

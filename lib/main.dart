@@ -54,6 +54,7 @@ import 'screens/reports/reports_prefs.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'widgets/saved_documents/card_display_prefs.dart';
+import 'widgets/saved_documents/saved_layout_prefs.dart';
 
 // ─── Language translation maps ─────────────────────────────────────────
 import 'language_keys/lang_en_english.dart';
@@ -178,6 +179,7 @@ Future<void> main() async {
   final expenseProvider  = ExpenseProvider();
   final reportsPrefs     = ReportsPrefs();
   final cardDisplayPrefs = CardDisplayPrefs();
+  final savedLayoutPrefs = SavedLayoutPrefs();
 
   await NotificationService.instance.init();
   // Prompts for notification + exact-alarm permission on Android 13+/12+.
@@ -254,6 +256,7 @@ Future<void> main() async {
     expenseProvider.loadPersistedExpenses(),
     reportsPrefs.load(),
     cardDisplayPrefs.load(),
+    savedLayoutPrefs.load(),
   ]);
 
   runApp(
@@ -269,6 +272,7 @@ Future<void> main() async {
         ChangeNotifierProvider<ExpenseProvider>.value(value: expenseProvider),
         ChangeNotifierProvider<ReportsPrefs>.value(value: reportsPrefs),
         ChangeNotifierProvider<CardDisplayPrefs>.value(value: cardDisplayPrefs),
+        ChangeNotifierProvider<SavedLayoutPrefs>.value(value: savedLayoutPrefs),
       ],
       child: const InvoiceBuilderApp(),
     ),
