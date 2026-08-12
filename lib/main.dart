@@ -1,5 +1,15 @@
 // lib/main.dart
 //
+// CARD DISPLAY PREFS (this pass): registered CardDisplayPrefs — the
+// persisted, app-wide set of switches for which stats show on saved-
+// document/expense/report cards (lib/widgets/saved_documents/
+// card_display_prefs.dart) — the same way AlertPrefs/ReportsPrefs/etc.
+// are already registered: instantiated above runApp, loaded in the
+// startup Future.wait, and provided via ChangeNotifierProvider.value so
+// every card family (Home's Invoices/Quotes/Receipts/Expenses sections,
+// the Expenses screen, and the Reports document list) reads from the
+// exact same instance and stays in sync.
+//
 // NOTIFICATION TAP-THROUGH (earlier pass): added rootNavigatorKey and wired
 // NotificationService.instance.onReminderTapped so tapping a reminder
 // notification actually opens RemindersScreen with that reminder
@@ -11,7 +21,7 @@
 // doesn't exist yet at the point NotificationService.init() runs, so that
 // specific tap has to be replayed once it does).
 //
-// DOCUMENT ALERT PUSH (this pass): DocumentAlertScheduler now schedules
+// DOCUMENT ALERT PUSH (earlier pass): DocumentAlertScheduler now schedules
 // real push notifications for overdue invoices / expiring quotes / stale
 // drafts (see lib/alerts/notifications/document_alert_scheduler.dart and
 // the hooks added to InvoiceProvider/QuoteProvider/ReceiptProvider). Wired
@@ -43,6 +53,7 @@ import 'screens/saved_invoice_details_section/saved_document_detail_screen.dart'
 import 'screens/reports/reports_prefs.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
+import 'widgets/saved_documents/card_display_prefs.dart';
 
 // ─── Language translation maps ─────────────────────────────────────────
 import 'language_keys/lang_en_english.dart';
@@ -166,6 +177,7 @@ Future<void> main() async {
   final categoryProvider = CategoryProvider();
   final expenseProvider  = ExpenseProvider();
   final reportsPrefs     = ReportsPrefs();
+  final cardDisplayPrefs = CardDisplayPrefs();
 
   await NotificationService.instance.init();
   // Prompts for notification + exact-alarm permission on Android 13+/12+.
@@ -241,6 +253,7 @@ Future<void> main() async {
     categoryProvider.loadPersistedCategories(),
     expenseProvider.loadPersistedExpenses(),
     reportsPrefs.load(),
+    cardDisplayPrefs.load(),
   ]);
 
   runApp(
@@ -255,6 +268,7 @@ Future<void> main() async {
         ChangeNotifierProvider<CategoryProvider>.value(value: categoryProvider),
         ChangeNotifierProvider<ExpenseProvider>.value(value: expenseProvider),
         ChangeNotifierProvider<ReportsPrefs>.value(value: reportsPrefs),
+        ChangeNotifierProvider<CardDisplayPrefs>.value(value: cardDisplayPrefs),
       ],
       child: const InvoiceBuilderApp(),
     ),
