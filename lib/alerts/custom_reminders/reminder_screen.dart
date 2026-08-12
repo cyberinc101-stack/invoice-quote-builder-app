@@ -1,10 +1,27 @@
 // reminder_screen.dart
 // lib/alerts/custom_reminders/reminder_screen.dart
 //
+// THEME OVERHAUL (this pass): restyled to match the flat, grouped-list
+// look introduced on alerts_screen.dart — plain surface AppBar (no solid
+// color block), reminders wrapped in a single rounded card with hairline
+// dividers between rows instead of separately floating cards, and the
+// hardcoded blue (0xFF2196F3) / red (0xFFD32F2F) swapped for the app's
+// actual ColorScheme (cs.primary / cs.error) so this screen now reads as
+// part of the same design system as the rest of the app instead of a
+// visually separate one. The "New Reminder" FAB, the recurrence chips,
+// the link-picker sheet, and the add/edit form sheet all got the same
+// treatment: cs.primary for accents, flat bordered fields instead of
+// heavy fills, muted secondary text.
+//
+// No behavioral changes from the previous pass — same highlight-on-
+// arrival flash, same validation + Undo, same permission banner, same
+// edit-on-tap, same recurrence chips, same searchable link picker, same
+// note character counter.
+//
 // HIGHLIGHT ON ARRIVAL (earlier pass): RemindersScreen takes an optional
 // highlightReminderId, set when the user arrives here by tapping a
-// notification. The matching card gets a 3-second colored-border flash,
-// then fades back to normal.
+// notification. The matching card gets a colored-border flash, then
+// fades back to normal.
 //
 // VALIDATION + UNDO (earlier pass): the form rejects an empty title and a
 // past date/time with inline errors. Deleting a non-recurring reminder
@@ -14,23 +31,21 @@
 // off, the form shows a small warning so the user knows push won't fire —
 // the reminder still saves and still shows in-app either way.
 //
-// EDIT (this pass): tapping a reminder card now opens the same form
+// EDIT (earlier pass): tapping a reminder card opens the same form
 // pre-filled for editing (_ReminderFormSheet takes an optional `existing`
 // reminder) instead of only being able to delete and recreate it.
 //
-// RECURRENCE (this pass): a Wrap of choice chips (Once / Daily / Weekly /
-// Monthly) lets a reminder repeat. Swiping away a recurring reminder
+// RECURRENCE (earlier pass): a Wrap of choice chips (Once / Daily / Weekly
+// / Monthly) lets a reminder repeat. Swiping away a recurring reminder
 // advances it to its next occurrence instead of deleting the series —
 // only a non-recurring reminder (or explicit delete) actually goes away
-// with an Undo option. A small "↻ Weekly" style badge shows on recurring
-// cards so it's clear at a glance which ones repeat.
+// with an Undo option.
 //
-// SEARCHABLE LINK PICKER (this pass): the "Link to" field used to be a
-// plain dropdown, unusable once someone has 50+ saved documents. It's now
-// a tap-to-open bottom sheet with a search field that filters invoices and
+// SEARCHABLE LINK PICKER (earlier pass): the "Link to" field is a
+// tap-to-open bottom sheet with a search field that filters invoices and
 // quotes by title/client as you type.
 //
-// NOTE COUNTER (this pass): the note field now caps at 200 characters with
+// NOTE COUNTER (earlier pass): the note field caps at 200 characters with
 // Flutter's built-in maxLength counter shown beneath it.
 
 import 'package:flutter/material.dart';
@@ -72,25 +87,39 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final provider = context.watch<ReminderProvider>();
     final reminders = provider.reminders;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Reminders')),
+      backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
+      appBar: AppBar(
+        title: const Text('Reminders'),
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
+        foregroundColor: cs.onSurface,
+        centerTitle: true,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showReminderForm(context),
+        backgroundColor: cs.primary,
+        foregroundColor: Colors.white,
+        elevation: 1,
         icon: const Icon(Icons.add_alarm_rounded),
-        label: const Text('New Reminder'),
+        label: const Text('New Reminder', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: reminders.isEmpty
           ? _EmptyState(onAdd: () => _showReminderForm(context))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: reminders.length,
-              itemBuilder: (context, i) => _ReminderCard(
-                reminder: reminders[i],
-                highlighted: reminders[i].id == _highlightId,
-              ),
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              children: [
+                _RemindersCardGroup(
+                  reminders: reminders,
+                  highlightId: _highlightId,
+                ),
+              ],
             ),
     );
   }
@@ -99,6 +128,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => _ReminderFormSheet(existing: existing),
     );
   }
@@ -117,17 +147,31 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.alarm_add_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.3)),
-            const SizedBox(height: 12),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.alarm_add_rounded, size: 28, color: cs.primary),
+            ),
+            const SizedBox(height: 16),
             Text(
               'No reminders yet',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.75)),
             ),
             const SizedBox(height: 4),
             Text(
               'Set a reminder for a client follow-up, a call, or anything not tied to an invoice due date.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.45)),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: cs.primary),
+              onPressed: onAdd,
+              child: const Text('New Reminder'),
             ),
           ],
         ),
@@ -154,15 +198,51 @@ String? _linkedDocumentLabel(BuildContext context, CustomReminder reminder) {
   }
 }
 
-class _ReminderCard extends StatelessWidget {
+// Groups every reminder into a single rounded surface with hairline
+// dividers between rows — matches _CardGroup on alerts_screen.dart,
+// instead of each reminder floating as its own separately-shadowed card.
+class _RemindersCardGroup extends StatelessWidget {
+  final List<CustomReminder> reminders;
+  final String? highlightId;
+  const _RemindersCardGroup({required this.reminders, required this.highlightId});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.12)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int i = 0; i < reminders.length; i++) ...[
+            _ReminderRow(
+              reminder: reminders[i],
+              highlighted: reminders[i].id == highlightId,
+            ),
+            if (i != reminders.length - 1)
+              Divider(height: 1, thickness: 1, indent: 62, color: cs.outline.withValues(alpha: 0.1)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReminderRow extends StatelessWidget {
   final CustomReminder reminder;
   final bool highlighted;
-  const _ReminderCard({required this.reminder, this.highlighted = false});
+  const _ReminderRow({required this.reminder, this.highlighted = false});
 
   void _openEdit(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => _ReminderFormSheet(existing: reminder),
     );
   }
@@ -199,8 +279,11 @@ class _ReminderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = reminder.isDue ? const Color(0xFFD32F2F) : const Color(0xFF2196F3);
+    // Due reminders use the app's error color (urgent, unmissable); not-yet-
+    // due reminders use the app's own primary accent (cs.primary) instead
+    // of a hardcoded blue, so this matches whatever brand color the rest
+    // of the app is themed with.
+    final color = reminder.isDue ? cs.error : cs.primary;
     final linkedLabel = _linkedDocumentLabel(context, reminder);
 
     return Dismissible(
@@ -209,112 +292,110 @@ class _ReminderCard extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: const Color(0xFFD32F2F).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(14),
-        ),
+        color: cs.error.withValues(alpha: 0.1),
         child: Icon(
           reminder.isRecurring ? Icons.repeat_rounded : Icons.delete_outline_rounded,
-          color: const Color(0xFFD32F2F),
+          color: cs.error,
+          size: 20,
         ),
       ),
       onDismissed: (_) => _handleDismiss(context),
-      child: GestureDetector(
-        onTap: () => _openEdit(context),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E2235) : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: highlighted ? color : cs.outline.withValues(alpha: 0.2),
-              width: highlighted ? 2 : 1,
-            ),
-            boxShadow: highlighted
-                ? [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 3))]
+      child: Material(
+        color: highlighted ? color.withValues(alpha: 0.06) : Colors.transparent,
+        child: InkWell(
+          onTap: () => _openEdit(context),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            decoration: highlighted
+                ? BoxDecoration(border: Border.all(color: color, width: 1.5), borderRadius: BorderRadius.circular(12))
                 : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: Icon(
-                  reminder.isDue ? Icons.notifications_active_rounded : Icons.schedule_rounded,
-                  color: color,
-                  size: 20,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  margin: const EdgeInsets.only(top: 1),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: Icon(
+                    reminder.isDue ? Icons.notifications_active_rounded : Icons.schedule_rounded,
+                    color: color,
+                    size: 17,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(reminder.title,
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                        if (reminder.isRecurring) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: cs.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.repeat_rounded, size: 10, color: cs.primary),
-                                const SizedBox(width: 2),
-                                Text(
-                                  reminder.recurrence.shortLabel,
-                                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.primary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (reminder.note.isNotEmpty)
-                      Text(reminder.note,
-                          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5)),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if (linkedLabel != null) ...[
-                      const SizedBox(height: 2),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Row(
                         children: [
-                          Icon(
-                            reminder.linkedDocumentType == LinkedDocumentType.invoice
-                                ? Icons.receipt_long_rounded
-                                : Icons.description_rounded,
-                            size: 12,
-                            color: cs.primary,
-                          ),
-                          const SizedBox(width: 4),
                           Expanded(
-                            child: Text(linkedLabel,
-                                style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600),
+                            child: Text(reminder.title,
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface),
                                 maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
+                          if (reminder.isRecurring) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: cs.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.repeat_rounded, size: 10, color: cs.primary),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    reminder.recurrence.shortLabel,
+                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.primary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
+                      const SizedBox(height: 2),
+                      if (reminder.note.isNotEmpty)
+                        Text(reminder.note,
+                            style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: 0.5)),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (linkedLabel != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              reminder.linkedDocumentType == LinkedDocumentType.invoice
+                                  ? Icons.receipt_long_rounded
+                                  : Icons.description_rounded,
+                              size: 11,
+                              color: cs.onSurface.withValues(alpha: 0.32),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(linkedLabel,
+                                  style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 3),
+                      Text(_formatDateTime(reminder.remindAt),
+                          style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w600)),
                     ],
-                    const SizedBox(height: 2),
-                    Text(_formatDateTime(reminder.remindAt),
-                        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-                  ],
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.25)),
-            ],
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 2),
+                  child: Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.25)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -341,6 +422,9 @@ class _LinkOption {
 }
 
 // ── Searchable link picker sheet ──────────────────────────────────────
+// Restyled to match the flat, professional look — rounded search field
+// with a subtle border instead of the default filled TextField, list rows
+// with a small icon circle (cs.primary tint) instead of a bare icon.
 
 class _LinkPickerSheet extends StatefulWidget {
   final List<_LinkOption> options;
@@ -366,78 +450,145 @@ class _LinkPickerSheetState extends State<_LinkPickerSheet> {
         ? widget.options
         : widget.options.where((o) => o.label.toLowerCase().contains(_query.trim().toLowerCase())).toList();
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
       minChildSize: 0.4,
       maxChildSize: 0.92,
       expand: false,
-      builder: (context, scrollController) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1D2E) : const Color(0xFFF7F8FA),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Link to a document', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                hintText: 'Search invoices & quotes',
-                prefixIcon: Icon(Icons.search_rounded, size: 20),
-                isDense: true,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)),
+                ),
               ),
-              onChanged: (v) => setState(() => _query = v),
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.link_off_rounded),
-                    title: const Text('None'),
-                    onTap: () => Navigator.pop(context, _kNoneLinkKey),
+              Text('Link to a document', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface)),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E2235) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  decoration: InputDecoration(
+                    hintText: 'Search invoices & quotes',
+                    hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
+                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.4)),
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  if (widget.options.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text(
-                          'No saved invoices or quotes yet',
-                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
-                        ),
-                      ),
-                    )
-                  else if (filtered.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text('No matches', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
-                      ),
-                    )
-                  else
-                    for (final o in filtered)
-                      ListTile(
-                        leading: Icon(
-                          o.type == LinkedDocumentType.invoice
-                              ? Icons.receipt_long_rounded
-                              : Icons.description_rounded,
-                          size: 20,
-                          color: cs.primary,
-                        ),
-                        title: Text(o.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        onTap: () => Navigator.pop(context, o.key),
-                      ),
-                ],
+                  onChanged: (v) => setState(() => _query = v),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E2235) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: cs.outline.withValues(alpha: 0.12)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      _LinkRow(
+                        icon: Icons.link_off_rounded,
+                        iconColor: cs.onSurface.withValues(alpha: 0.4),
+                        label: 'None',
+                        onTap: () => Navigator.pop(context, _kNoneLinkKey),
+                      ),
+                      if (widget.options.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No saved invoices or quotes yet',
+                              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
+                            ),
+                          ),
+                        )
+                      else if (filtered.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text('No matches', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
+                          ),
+                        )
+                      else
+                        for (final o in filtered)
+                          _LinkRow(
+                            icon: o.type == LinkedDocumentType.invoice
+                                ? Icons.receipt_long_rounded
+                                : Icons.description_rounded,
+                            iconColor: cs.primary,
+                            label: o.label,
+                            onTap: () => Navigator.pop(context, o.key),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final VoidCallback onTap;
+  const _LinkRow({required this.icon, required this.iconColor, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 30, height: 30,
+                decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: Icon(icon, size: 15, color: iconColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: cs.onSurface),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -445,6 +596,11 @@ class _LinkPickerSheetState extends State<_LinkPickerSheet> {
 }
 
 // ── Add / Edit form ──────────────────────────────────────────────────────
+// Restyled bottom sheet: rounded top surface (matching the app's other
+// sheets — folder picker, export sheet, display options), a small drag
+// handle, bordered flat fields instead of filled Material defaults, and
+// cs.primary for every accent (Save button, section labels, recurrence
+// chips, linked-document icon) instead of the previous hardcoded colors.
 
 class _ReminderFormSheet extends StatefulWidget {
   final CustomReminder? existing;
@@ -552,6 +708,7 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
     final picked = await showModalBottomSheet<String?>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => _LinkPickerSheet(options: options),
     );
     if (picked == null) return; // sheet dismissed without a choice
@@ -607,6 +764,7 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
   void _confirmDelete() {
     final existing = widget.existing;
     if (existing == null) return;
+    final cs = Theme.of(context).colorScheme;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -624,50 +782,86 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
               Navigator.pop(dialogContext);
               Navigator.pop(context);
             },
-            child: const Text('Delete', style: TextStyle(color: Color(0xFFD32F2F))),
+            child: Text('Delete', style: TextStyle(color: cs.error)),
           ),
         ],
       ),
     );
   }
 
-  Widget _linkPickerField(List<_LinkOption> options) {
+  Widget _fieldLabel(String text, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 2),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: cs.onSurface.withValues(alpha: 0.45)),
+      ),
+    );
+  }
+
+  Widget _borderedField({required Widget child, required ColorScheme cs, required bool isDark}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _linkPickerField(List<_LinkOption> options, ColorScheme cs, bool isDark) {
     final selected = options.where((o) => o.key == _selectedLinkKey);
     final label = selected.isEmpty ? 'None' : selected.first.label;
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => _openLinkPicker(options),
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'Link to (optional)',
-          prefixIcon: Icon(Icons.link_rounded, size: 20),
-        ),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
-            const Icon(Icons.unfold_more_rounded, size: 18),
-          ],
+    return _borderedField(
+      cs: cs,
+      isDark: isDark,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openLinkPicker(options),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            children: [
+              Icon(Icons.link_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.4)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(fontSize: 13.5, color: cs.onSurface, fontWeight: FontWeight.w600),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.35)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _recurrenceSelector() {
-    final cs = Theme.of(context).colorScheme;
+  Widget _recurrenceSelector(ColorScheme cs) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: ReminderRecurrence.values.map((r) {
         final selected = _recurrence == r;
-        return ChoiceChip(
-          label: Text(r.shortLabel),
-          selected: selected,
-          onSelected: (_) => setState(() => _recurrence = r),
-          selectedColor: cs.primary,
-          labelStyle: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : cs.onSurface.withValues(alpha: 0.7),
+        return GestureDetector(
+          onTap: () => setState(() => _recurrence = r),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: selected ? cs.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(19),
+              border: Border.all(color: selected ? cs.primary : cs.outline.withValues(alpha: 0.25)),
+            ),
+            child: Text(
+              r.shortLabel,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : cs.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
           ),
         );
       }).toList(),
@@ -680,132 +874,201 @@ class _ReminderFormSheetState extends State<_ReminderFormSheet> {
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     final linkOptions = _buildLinkOptions(context);
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        // Whichever is taller: keyboard covering the sheet, or the phone's
-        // own bottom gesture-nav inset when the keyboard's closed.
-        bottom: (keyboardInset > safeBottom ? keyboardInset : safeBottom) + 20,
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D2E) : const Color(0xFFF7F8FA),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.isEditing ? 'Edit Reminder' : 'New Reminder',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                if (widget.isEditing)
-                  IconButton(
-                    onPressed: _confirmDelete,
-                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFD32F2F)),
-                    tooltip: 'Delete',
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(
-                labelText: 'Title',
-                hintText: 'e.g. Follow up with Acme Co.',
-                errorText: _titleError,
-              ),
-              onChanged: (_) {
-                if (_titleError != null) setState(() => _titleError = null);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _noteController,
-              decoration: const InputDecoration(labelText: 'Note (optional)'),
-              maxLines: 2,
-              maxLength: 200,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_rounded, size: 16),
-                    label: Text('${_date.day}/${_date.month}/${_date.year}'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickTime,
-                    icon: const Icon(Icons.access_time_rounded, size: 16),
-                    label: Text(_time.format(context)),
-                  ),
-                ),
-              ],
-            ),
-            if (_timeError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, left: 4),
-                child: Text(
-                  _timeError!,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFD32F2F)),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          // Whichever is taller: keyboard covering the sheet, or the phone's
+          // own bottom gesture-nav inset when the keyboard's closed.
+          bottom: (keyboardInset > safeBottom ? keyboardInset : safeBottom) + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)),
                 ),
               ),
-            const SizedBox(height: 14),
-            Text(
-              'REPEAT',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: cs.primary),
-            ),
-            const SizedBox(height: 8),
-            _recurrenceSelector(),
-            const SizedBox(height: 14),
-            _linkPickerField(linkOptions),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Push notification'),
-              subtitle: const Text('Alert me even if the app is closed'),
-              value: _notifyPush,
-              onChanged: (v) => setState(() => _notifyPush = v),
-            ),
-            if (_pushPermissionDenied && _notifyPush)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF57C00).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFF57C00).withValues(alpha: 0.3)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.isEditing ? 'Edit Reminder' : 'New Reminder',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface),
+                    ),
+                  ),
+                  if (widget.isEditing)
+                    IconButton(
+                      onPressed: _confirmDelete,
+                      icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+                      tooltip: 'Delete',
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _fieldLabel('Title', cs),
+              _borderedField(
+                cs: cs,
+                isDark: isDark,
+                child: TextField(
+                  controller: _titleController,
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Follow up with Acme Co.',
+                    hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.35)),
+                    errorText: _titleError,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  ),
+                  onChanged: (_) {
+                    if (_titleError != null) setState(() => _titleError = null);
+                  },
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFF57C00)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        "Notifications are turned off for this app in system settings, so push won't fire — this reminder will still show up in-app.",
-                        style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: 0.7)),
+              ),
+              const SizedBox(height: 14),
+              _fieldLabel('Note (optional)', cs),
+              _borderedField(
+                cs: cs,
+                isDark: isDark,
+                child: TextField(
+                  controller: _noteController,
+                  style: TextStyle(fontSize: 14, color: cs.onSurface),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  ),
+                  maxLines: 2,
+                  maxLength: 200,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _borderedField(
+                      cs: cs,
+                      isDark: isDark,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _pickDate,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.calendar_today_rounded, size: 15, color: cs.primary),
+                              const SizedBox(width: 8),
+                              Text('${_date.day}/${_date.month}/${_date.year}',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _borderedField(
+                      cs: cs,
+                      isDark: isDark,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _pickTime,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.access_time_rounded, size: 15, color: cs.primary),
+                              const SizedBox(width: 8),
+                              Text(_time.format(context),
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_timeError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text(_timeError!, style: TextStyle(fontSize: 12, color: cs.error)),
+                ),
+              const SizedBox(height: 16),
+              _fieldLabel('Repeat', cs),
+              _recurrenceSelector(cs),
+              const SizedBox(height: 16),
+              _fieldLabel('Link to (optional)', cs),
+              _linkPickerField(linkOptions, cs, isDark),
+              const SizedBox(height: 10),
+              _borderedField(
+                cs: cs,
+                isDark: isDark,
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  title: Text('Push notification', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  subtitle: Text('Alert me even if the app is closed',
+                      style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: 0.45))),
+                  value: _notifyPush,
+                  activeThumbColor: cs.primary,
+                  onChanged: (v) => setState(() => _notifyPush = v),
                 ),
               ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => _save(linkOptions),
-                child: Text(widget.isEditing ? 'Save Changes' : 'Save Reminder'),
+              if (_pushPermissionDenied && _notifyPush)
+                Container(
+                  margin: const EdgeInsets.only(top: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFB26A00).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFB26A00).withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFB26A00)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Notifications are turned off for this app in system settings, so push won't fire — this reminder will still show up in-app.",
+                          style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: 0.7)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _save(linkOptions),
+                  child: Text(
+                    widget.isEditing ? 'Save Changes' : 'Save Reminder',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

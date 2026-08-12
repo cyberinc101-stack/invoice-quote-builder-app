@@ -42,6 +42,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/invoice_provider.dart';
+import '../models/invoice_data.dart' show PaymentStatus;
 import '../providers/quote_provider.dart';
 import '../providers/receipt_provider.dart';
 import '../alerts/alert_types.dart';
@@ -53,6 +54,9 @@ import '../alerts/custom_reminders/reminder_screen.dart';
 import '../widgets/saved_documents_containers.dart' show DocType;
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'settings_screen.dart';
+import '../services/invoice_pdf_service.dart';
+import '../services/quote_pdf_service.dart';
+import '../services/receipt_pdf_service.dart';
 
 enum AlertFilter { all, overdue, expiring, drafts, reminders }
 
@@ -123,6 +127,90 @@ String _dueSince(DateTime remindAt) {
   return '${elapsed.inDays}d ago';
 }
 
+// ── Follow Up ────────────────────────────────────────────────────────────
+// Regenerates the linked document's PDF and opens the OS share sheet
+// (email/WhatsApp/SMS/etc.) with a friendly, canned follow-up message
+// prefilled — the user just picks the channel and taps send. Nothing here
+// sends anything automatically or silently; it's a one-tap shortcut to
+// the same manual "re-send the PDF with a note" flow the user already
+// does today, just without having to hunt the document down first.
+//
+// Shown on any alert that carries a linked invoice/quote/receipt —
+// overdue invoices, expiring quotes, and draft nudges for all three
+// document types.
+
+bool _hasFollowUpTarget(AlertItem a) =>
+    a.invoice != null || a.quote != null || a.receipt != null;
+
+String _followUpMessage(AlertItem a) {
+  if (a.invoice != null) {
+    final inv = a.invoice!;
+    final amount = inv.data.grandTotal.toStringAsFixed(2);
+    return 'Hi ${inv.data.clientName.isEmpty ? 'there' : inv.data.clientName}, '
+        'just a friendly follow-up on invoice ${inv.data.invoiceNumber} '
+        '(${amount}) — let me know if you have any questions. Thanks!';
+  }
+  if (a.quote != null) {
+    final q = a.quote!;
+    return 'Hi ${q.data.clientName.isEmpty ? 'there' : q.data.clientName}, '
+        'following up on the quote ${q.data.quoteNumber} I sent over — '
+        "let me know if you'd like to go ahead or if you have any questions!";
+  }
+  if (a.receipt != null) {
+    final r = a.receipt!;
+    return 'Hi ${r.data.clientName.isEmpty ? 'there' : r.data.clientName}, '
+        'here is a copy of receipt ${r.data.receiptNumber} for your records. '
+        'Let me know if you need anything else!';
+  }
+  return '';
+}
+
+Future<void> _sendFollowUp(BuildContext context, AlertItem a) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    if (a.invoice != null) {
+      await InvoicePdfService().generateAndSharePDF(
+        a.invoice!,
+        shareText: _followUpMessage(a),
+      );
+    } else if (a.quote != null) {
+      await QuotePdfService().generateAndSharePDF(
+        a.quote!,
+        shareText: _followUpMessage(a),
+      );
+    } else if (a.receipt != null) {
+      await ReceiptPdfService().generateAndSharePDF(
+        a.receipt!,
+        shareText: _followUpMessage(a),
+      );
+    }
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(
+      content: Text('Could not prepare the follow-up: $e'),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
+  }
+}
+
+// Marks the linked invoice as paid directly from its overdue alert card —
+// clears the debt (stamping paidDate via InvoiceProvider.
+// updateSavedInvoiceStatus) and, because that same call also re-syncs the
+// document's push notification, immediately cancels the pending overdue
+// push. The alert then disappears from this list on the next rebuild
+// (buildAlerts() no longer finds it overdue), so there's no separate
+// "dismiss" step needed here.
+Future<void> _markInvoicePaid(BuildContext context, AlertItem alert) async {
+  final invoice = alert.invoice;
+  if (invoice == null) return;
+  context.read<InvoiceProvider>().updateSavedInvoiceStatus(invoice.id, PaymentStatus.paid);
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text('"${invoice.title}" marked as paid'),
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  ));
+}
+
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
 
@@ -188,6 +276,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const RemindersScreen()),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.tune_rounded),
+                tooltip: 'Alert Settings',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 ),
               ),
             ],
@@ -855,6 +951,18 @@ class _AlertCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (!isReminder && _hasFollowUpTarget(alert)) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _FollowUpButton(onTap: () => _sendFollowUp(context, alert)),
+                          if (alert.type == AlertType.overdueInvoice && alert.invoice != null) ...[
+                            const SizedBox(width: 6),
+                            _MarkPaidButton(onTap: () => _markInvoicePaid(context, alert)),
+                          ],
+                        ],
+                      ),
+                    ],
                     if (isReminder) ...[
                       const SizedBox(height: 8),
                       Row(
@@ -892,6 +1000,77 @@ class _AlertCard extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// Follow Up pill button — regenerates the linked document's PDF and
+// opens the OS share sheet with a canned message prefilled (see
+// _sendFollowUp above). Uses cs.primary so it reads as a real action,
+// distinct from the neutral Snooze buttons.
+class _FollowUpButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _FollowUpButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.send_rounded, size: 12, color: cs.primary),
+            const SizedBox(width: 5),
+            Text(
+              'Follow Up',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Mark Paid pill button — shown only on overdue-invoice alert cards.
+// Uses a green accent (distinct from the primary-colored Follow Up
+// button) since this is a positive, resolving action.
+class _MarkPaidButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _MarkPaidButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF2E7D32);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: green.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: green.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline_rounded, size: 12, color: green),
+            const SizedBox(width: 5),
+            Text(
+              'Mark Paid',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: green),
+            ),
+          ],
         ),
       ),
     );
