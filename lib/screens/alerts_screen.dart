@@ -1,6 +1,15 @@
 // alerts_screen.dart
 // lib/screens/alerts_screen.dart
 //
+// VISUAL REDESIGN (this pass): full styling pass to bring this screen up
+// to the same "professional" bar as the reports/detail screens — gradient
+// hero summary, pill-style filters with icon badges, cards with a colored
+// left accent bar + type badge (INVOICE/QUOTE/RECEIPT/REMINDER) instead of
+// the old flat icon-square layout, and a relative "Xh ago" tag on due
+// reminders. No behavioral changes: same filters, same swipe-to-dismiss /
+// advance-recurring logic, same Undo snackbar, same snooze buttons, same
+// per-type disabled states, same navigation on tap.
+//
 // PER-TYPE GATING (earlier pass): buildAlerts() here receives the same
 // four AlertPrefs flags home_screen.dart's bell badge reads, so a type
 // turned off in Settings disappears from both places consistently. Filter
@@ -16,13 +25,13 @@
 // alerts get this; document alerts (overdue/expiring/draft) aren't
 // deletable from here since they're derived from the document itself.
 //
-// RECURRENCE-AWARE DISMISS (this pass): swiping a recurring reminder now
+// RECURRENCE-AWARE DISMISS (earlier pass): swiping a recurring reminder
 // advances it to its next occurrence (via advanceRecurringReminder)
 // instead of deleting the series — matching the same behavior on the
 // Reminders screen. Only a non-recurring reminder actually goes away, with
 // Undo.
 //
-// SNOOZE (this pass): due reminder alert cards show two quick Snooze
+// SNOOZE (earlier pass): due reminder alert cards show two quick Snooze
 // buttons ("1h" / "Tomorrow") that push the reminder's time back without
 // touching it otherwise — handy for "not now, but don't lose this."
 
@@ -37,6 +46,7 @@ import '../alerts/alert_prefs.dart';
 import '../alerts/custom_reminders/reminder_provider.dart';
 import '../alerts/custom_reminders/reminder_model.dart';
 import '../alerts/custom_reminders/reminder_screen.dart';
+import '../widgets/saved_documents_containers.dart' show DocType;
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'settings_screen.dart';
 
@@ -68,7 +78,7 @@ Color _alertFilterColor(AlertFilter f, ColorScheme cs) {
     case AlertFilter.overdue: return const Color(0xFFD32F2F);
     case AlertFilter.expiring: return const Color(0xFFD32F2F);
     case AlertFilter.drafts: return const Color(0xFFF57C00);
-    case AlertFilter.reminders: return const Color(0xFFD32F2F);
+    case AlertFilter.reminders: return const Color(0xFF2196F3);
   }
 }
 
@@ -80,6 +90,30 @@ bool _matchesFilter(AlertItem a, AlertFilter f) {
     case AlertFilter.drafts: return a.type == AlertType.draftInProgress;
     case AlertFilter.reminders: return a.type == AlertType.customReminder;
   }
+}
+
+// Short uppercase document-type badge shown on each card, so a glance at
+// the left edge tells you what kind of thing this alert is about without
+// reading the title.
+String _docTypeBadge(AlertItem a) {
+  if (a.reminder != null) return 'REMINDER';
+  switch (a.docType) {
+    case DocType.invoice: return 'INVOICE';
+    case DocType.quote: return 'QUOTE';
+    case DocType.receipt: return 'RECEIPT';
+    default: return '';
+  }
+}
+
+// "3m ago" / "2h ago" / "5d ago" for a due reminder's remindAt. Reminders
+// shown on this screen are always already-due (ReminderProvider.dueReminders
+// filters on isDue), so this only ever needs to look backwards.
+String _dueSince(DateTime remindAt) {
+  final elapsed = DateTime.now().difference(remindAt);
+  if (elapsed.inMinutes < 1) return 'Just now';
+  if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m ago';
+  if (elapsed.inHours < 24) return '${elapsed.inHours}h ago';
+  return '${elapsed.inDays}d ago';
 }
 
 class AlertsScreen extends StatefulWidget {
@@ -94,6 +128,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final alertPrefs = context.watch<AlertPrefs>();
     final alertsEnabled = alertPrefs.alertsEnabled;
     final dueReminders = context.watch<ReminderProvider>().dueReminders;
@@ -130,8 +166,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
         final mediumPriority = filtered.where((a) => a.priority == AlertPriority.medium).toList();
 
         return Scaffold(
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
             title: const Text('Alerts'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            foregroundColor: Colors.white,
             actions: [
               IconButton(
                 icon: const Icon(Icons.alarm_add_rounded),
@@ -144,10 +184,29 @@ class _AlertsScreenState extends State<AlertsScreen> {
             ],
           ),
           body: !alertsEnabled
-              ? const _DisabledState()
+              ? Column(
+                  children: [
+                    _AlertsHero(
+                      total: 0,
+                      overdueCount: 0,
+                      expiringCount: 0,
+                      draftsCount: 0,
+                      remindersCount: 0,
+                      disabled: true,
+                    ),
+                    const Expanded(child: _DisabledState()),
+                  ],
+                )
               : Column(
                   children: [
-                    const SizedBox(height: 12),
+                    _AlertsHero(
+                      total: alerts.length,
+                      overdueCount: overdueCount,
+                      expiringCount: expiringCount,
+                      draftsCount: draftsCount,
+                      remindersCount: remindersCount,
+                    ),
+                    const SizedBox(height: 14),
                     _FilterChipRow(
                       selected: _selectedFilter,
                       totalCount: alerts.length,
@@ -158,7 +217,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       disabledFilters: disabledFilters,
                       onChanged: (f) => setState(() => _selectedFilter = f),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Expanded(
                       child: filtered.isEmpty
                           ? _EmptyState(
@@ -167,18 +226,26 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               isTypeDisabled: disabledFilters.contains(_selectedFilter),
                             )
                           : ListView(
-                              padding: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                               children: [
                                 if (_selectedFilter == AlertFilter.all) ...[
                                   if (highPriority.isNotEmpty) ...[
-                                    const _GroupHeader(label: 'Needs Action', color: Color(0xFFD32F2F)),
-                                    const SizedBox(height: 8),
+                                    _GroupHeader(
+                                      label: 'Needs Action',
+                                      count: highPriority.length,
+                                      color: const Color(0xFFD32F2F),
+                                    ),
+                                    const SizedBox(height: 10),
                                     ...highPriority.map((a) => _AlertCardWrapper(alert: a)),
-                                    const SizedBox(height: 20),
+                                    const SizedBox(height: 22),
                                   ],
                                   if (mediumPriority.isNotEmpty) ...[
-                                    const _GroupHeader(label: 'Drafts To Finish', color: Color(0xFFF57C00)),
-                                    const SizedBox(height: 8),
+                                    _GroupHeader(
+                                      label: 'Drafts To Finish',
+                                      count: mediumPriority.length,
+                                      color: const Color(0xFFF57C00),
+                                    ),
+                                    const SizedBox(height: 10),
                                     ...mediumPriority.map((a) => _AlertCardWrapper(alert: a)),
                                   ],
                                 ] else
@@ -190,6 +257,141 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 ),
         );
       },
+    );
+  }
+}
+
+// ── Hero summary ─────────────────────────────────────────────────────────
+// Gradient header replacing the plain AppBar backdrop — sits behind the
+// (transparent) AppBar via extendBodyBehindAppBar, so the title floats over
+// it. Shows the total count as the headline and a compact per-category
+// breakdown row underneath.
+
+class _AlertsHero extends StatelessWidget {
+  final int total;
+  final int overdueCount;
+  final int expiringCount;
+  final int draftsCount;
+  final int remindersCount;
+  final bool disabled;
+
+  const _AlertsHero({
+    required this.total,
+    required this.overdueCount,
+    required this.expiringCount,
+    required this.draftsCount,
+    required this.remindersCount,
+    this.disabled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(20, topPadding + 56, 20, 22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primary,
+            Color.lerp(cs.primary, Colors.black, 0.35)!,
+          ],
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$total',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 40,
+                  fontWeight: FontWeight.w800,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  disabled
+                      ? 'alerts are turned off'
+                      : (total == 1 ? 'thing needs your attention' : 'things need your attention'),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _HeroStat(icon: Icons.warning_amber_rounded, label: 'Overdue', count: overdueCount)),
+              const SizedBox(width: 8),
+              Expanded(child: _HeroStat(icon: Icons.hourglass_bottom_rounded, label: 'Expiring', count: expiringCount)),
+              const SizedBox(width: 8),
+              Expanded(child: _HeroStat(icon: Icons.edit_note_rounded, label: 'Drafts', count: draftsCount)),
+              const SizedBox(width: 8),
+              Expanded(child: _HeroStat(icon: Icons.notifications_active_rounded, label: 'Reminders', count: remindersCount)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int count;
+  const _HeroStat({required this.icon, required this.label, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(height: 4),
+          Text(
+            '$count',
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            label,
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 10, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -230,7 +432,7 @@ class _FilterChipRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 36,
+      height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -269,6 +471,7 @@ class _AlertFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = _alertFilterColor(filter, cs);
     final isEmptyAndUnselected = count == 0 && !selected && filter != AlertFilter.all && !typeDisabled;
 
@@ -278,42 +481,49 @@ class _AlertFilterChip extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
+          gradient: selected && !typeDisabled
+              ? LinearGradient(colors: [color, Color.lerp(color, Colors.black, 0.25)!])
+              : null,
           color: typeDisabled
-              ? cs.onSurface.withValues(alpha: 0.03)
-              : (selected ? color : cs.onSurface.withValues(alpha: 0.045)),
-          borderRadius: BorderRadius.circular(18),
+              ? cs.onSurface.withValues(alpha: 0.04)
+              : (selected ? null : (isDark ? const Color(0xFF1E2235) : Colors.white)),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: typeDisabled
                 ? cs.outline.withValues(alpha: 0.12)
-                : (selected ? color : cs.outline.withValues(alpha: 0.18)),
+                : (selected ? Colors.transparent : cs.outline.withValues(alpha: 0.16)),
           ),
+          boxShadow: selected && !typeDisabled
+              ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 3))]
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               typeDisabled ? Icons.notifications_off_outlined : _alertFilterIcon(filter),
-              size: 13,
+              size: 14,
               color: typeDisabled
                   ? cs.onSurface.withValues(alpha: 0.25)
                   : (selected
                       ? Colors.white
                       : (isEmptyAndUnselected ? cs.onSurface.withValues(alpha: 0.3) : color)),
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
                 color: typeDisabled
                     ? cs.onSurface.withValues(alpha: 0.25)
                     : (selected
                         ? Colors.white
-                        : (isEmptyAndUnselected ? cs.onSurface.withValues(alpha: 0.35) : cs.onSurface.withValues(alpha: 0.68))),
+                        : (isEmptyAndUnselected ? cs.onSurface.withValues(alpha: 0.35) : cs.onSurface.withValues(alpha: 0.72))),
               ),
             ),
           ],
@@ -337,19 +547,19 @@ class _DisabledState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.notifications_off_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.3)),
-            const SizedBox(height: 12),
+            _IconBadge(icon: Icons.notifications_off_rounded, color: cs.onSurface.withValues(alpha: 0.35)),
+            const SizedBox(height: 16),
             Text(
               'Alerts are turned off',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 4),
             Text(
               "You won't see overdue, expiring, or draft nudges until you turn this back on.",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.45)),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             FilledButton(
               onPressed: () => Navigator.push(
                 context,
@@ -398,32 +608,32 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final copy = _copy;
+    final color = isTypeDisabled ? cs.onSurface.withValues(alpha: 0.35) : _alertFilterColor(filter, cs);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isTypeDisabled
+            _IconBadge(
+              icon: isTypeDisabled
                   ? Icons.notifications_off_outlined
-                  : (filter == AlertFilter.all ? Icons.notifications_off_outlined : _alertFilterIcon(filter)),
-              size: 48,
-              color: cs.onSurface.withValues(alpha: 0.3),
+                  : (filter == AlertFilter.all ? Icons.check_circle_outline_rounded : _alertFilterIcon(filter)),
+              color: filter == AlertFilter.all && !isTypeDisabled ? const Color(0xFF2E7D32) : color,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
               copy.title,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface.withValues(alpha: 0.75)),
             ),
             const SizedBox(height: 4),
             Text(
               copy.subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.45)),
             ),
             if (isTypeDisabled) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               FilledButton(
                 onPressed: () => Navigator.push(
                   context,
@@ -439,13 +649,37 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _GroupHeader extends StatelessWidget {
-  final String label;
+// Soft circular icon badge used by the empty/disabled states — replaces
+// the old flat oversized icon with a tinted circle, matching the accent
+// style used on the alert cards themselves.
+class _IconBadge extends StatelessWidget {
+  final IconData icon;
   final Color color;
-  const _GroupHeader({required this.label, required this.color});
+  const _IconBadge({required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      width: 76,
+      height: 76,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 34, color: color),
+    );
+  }
+}
+
+class _GroupHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+  const _GroupHeader({required this.label, required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Container(
@@ -455,6 +689,19 @@ class _GroupHeader extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color),
+          ),
+        ),
+        const Spacer(),
       ],
     );
   }
@@ -481,10 +728,10 @@ class _AlertCardWrapper extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: const Color(0xFFD32F2F).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Icon(
           isRecurring ? Icons.repeat_rounded : Icons.delete_outline_rounded,
@@ -540,7 +787,7 @@ class _AlertCard extends StatelessWidget {
   Color get _color {
     switch (alert.priority) {
       case AlertPriority.high:
-        return const Color(0xFFD32F2F);
+        return alert.type == AlertType.customReminder ? const Color(0xFF2196F3) : const Color(0xFFD32F2F);
       case AlertPriority.medium:
         return const Color(0xFFF57C00);
     }
@@ -566,86 +813,148 @@ class _AlertCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isReminder = alert.type == AlertType.customReminder && alert.reminder != null;
+    final badge = _docTypeBadge(alert);
+    final color = _color;
 
     return GestureDetector(
       onTap: () => _onTap(context),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E2235) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.14)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(_icon, color: _color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    alert.title,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Colored accent bar — the at-a-glance priority signal that
+              // replaces the old plain icon-square-only treatment.
+              Container(
+                width: 5,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    alert.subtitle,
-                    style: TextStyle(fontSize: 12, color: _color, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (isReminder) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        _SnoozeButton(
-                          label: '1h',
-                          onTap: () => context
-                              .read<ReminderProvider>()
-                              .snoozeReminder(alert.reminder!.id, const Duration(hours: 1)),
-                        ),
-                        const SizedBox(width: 6),
-                        _SnoozeButton(
-                          label: 'Tomorrow',
-                          onTap: () => context
-                              .read<ReminderProvider>()
-                              .snoozeReminder(alert.reminder!.id, const Duration(days: 1)),
-                        ),
-                        const Spacer(),
-                        Icon(Icons.swipe_left_alt_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.3)),
-                        const SizedBox(width: 3),
-                        Text(
-                          alert.reminder!.isRecurring ? 'Swipe to advance' : 'Swipe to dismiss',
-                          style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.3)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-            if (!isReminder) Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
-          ],
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(_icon, color: color, size: 19),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                if (badge.isNotEmpty) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: cs.onSurface.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Text(
+                                      badge,
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.5,
+                                        color: cs.onSurface.withValues(alpha: 0.45),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                if (isReminder)
+                                  Text(
+                                    _dueSince(alert.reminder!.remindAt),
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: color,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              alert.title,
+                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              alert.subtitle,
+                              style: TextStyle(fontSize: 12.5, color: color, fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (isReminder) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  _SnoozeButton(
+                                    label: '1h',
+                                    onTap: () => context
+                                        .read<ReminderProvider>()
+                                        .snoozeReminder(alert.reminder!.id, const Duration(hours: 1)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _SnoozeButton(
+                                    label: 'Tomorrow',
+                                    onTap: () => context
+                                        .read<ReminderProvider>()
+                                        .snoozeReminder(alert.reminder!.id, const Duration(days: 1)),
+                                  ),
+                                  const Spacer(),
+                                  Icon(Icons.swipe_left_alt_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.3)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    alert.reminder!.isRecurring ? 'Swipe to advance' : 'Swipe to dismiss',
+                                    style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.3)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (!isReminder)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
