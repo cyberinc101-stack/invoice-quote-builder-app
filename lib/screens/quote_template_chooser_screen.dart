@@ -1,28 +1,50 @@
 // quote_template_chooser_screen.dart
 // lib/screens/quote_template_chooser_screen.dart
 //
-// Shown when "Create Quote" is pressed, BEFORE the quote editor stepper.
-// Mirrors invoice_template_chooser_screen.dart exactly (same grid layout,
-// same "Coming Soon" stub handling) — the only differences are the model
-// types (QuoteTemplateInfo/kQuoteTemplates instead of the invoice ones)
-// and the destination screen (QuoteEditorScreen instead of EditorScreen).
-//
-// As of this pass there is no quote layout template built yet (no
-// lib/quote_layout_templates/ folder exists), so every card renders as
-// "Coming Soon" — same starting point the invoice chooser had before
-// Executive was built. Wiring a real design later is: build the layout,
-// flip `available: true` on its entry in preview_registry.dart, and add
-// its id to buildQuotePreview() there — nothing in this file changes.
+// Mirrors invoice_template_chooser_screen.dart exactly, including the
+// remembered-selection behaviour: tapping a card just selects it (radio
+// check + highlighted border), a "Save & Continue" bar confirms, and the
+// chosen id persists to SharedPreferences so the next visit pre-selects
+// it.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'quote_editor_screen.dart';
 import 'create_quote_section/quote_step_template_chooser_registry.dart';
 import 'create_quote_section/quote_template_chooser_01/preview_registry.dart';
 
-class QuoteTemplateChooserScreen extends StatelessWidget {
+const String _kLastQuoteTemplateKey = 'last_quote_template_id';
+
+class QuoteTemplateChooserScreen extends StatefulWidget {
   const QuoteTemplateChooserScreen({super.key});
 
-  void _select(BuildContext context, QuoteTemplateInfo info) {
+  @override
+  State<QuoteTemplateChooserScreen> createState() => _QuoteTemplateChooserScreenState();
+}
+
+class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen> {
+  int? _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastSelected();
+  }
+
+  Future<void> _loadLastSelected() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt(_kLastQuoteTemplateKey);
+    if (saved != null && mounted) {
+      setState(() => _selectedId = saved);
+    }
+  }
+
+  Future<void> _persistSelected(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kLastQuoteTemplateKey, id);
+  }
+
+  void _tapCard(QuoteTemplateInfo info) {
     if (!info.available) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -32,10 +54,24 @@ class QuoteTemplateChooserScreen extends StatelessWidget {
       );
       return;
     }
+    setState(() => _selectedId = info.id);
+  }
+
+  void _continue() {
+    if (_selectedId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select a template to continue'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _persistSelected(_selectedId!);
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => QuoteEditorScreen(layoutTemplateId: info.id),
+        builder: (_) => QuoteEditorScreen(layoutTemplateId: _selectedId!),
       ),
     );
   }
@@ -60,12 +96,63 @@ class QuoteTemplateChooserScreen extends StatelessWidget {
                 final info = kQuoteTemplates[i];
                 return _TemplateCard(
                   info: info,
-                  onTap: () => _select(context, info),
+                  selected: _selectedId == info.id,
+                  onTap: () => _tapCard(info),
                 );
               },
             ),
           ),
+          _buildContinueBar(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildContinueBar(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasSelection = _selectedId != null;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: const [
+          BoxShadow(color: Color(0x10000000), blurRadius: 12, offset: Offset(0, -3)),
+        ],
+      ),
+      child: GestureDetector(
+        onTap: _continue,
+        child: Container(
+          height: 50,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: hasSelection
+                  ? [const Color(0xFF4CAF50), const Color(0xFF2E7D32)]
+                  : [colorScheme.surfaceContainerHighest, colorScheme.surfaceContainerHighest],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: hasSelection
+                ? const [BoxShadow(color: Color(0x504CAF50), blurRadius: 12, offset: Offset(0, 4))]
+                : [],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.check_circle_rounded,
+                  color: hasSelection ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.4),
+                  size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Save & Continue',
+                style: TextStyle(
+                  color: hasSelection ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.4),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -139,8 +226,9 @@ class QuoteTemplateChooserScreen extends StatelessWidget {
 
 class _TemplateCard extends StatelessWidget {
   final QuoteTemplateInfo info;
+  final bool selected;
   final VoidCallback onTap;
-  const _TemplateCard({required this.info, required this.onTap});
+  const _TemplateCard({required this.info, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -155,16 +243,19 @@ class _TemplateCard extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
+                border: selected
+                    ? Border.all(color: info.accentColor, width: 2.5)
+                    : null,
                 boxShadow: [
                   BoxShadow(
-                    color: info.accentColor.withValues(alpha: info.available ? 0.22 : 0.08),
-                    blurRadius: 12,
+                    color: info.accentColor.withValues(alpha: info.available ? (selected ? 0.35 : 0.22) : 0.08),
+                    blurRadius: selected ? 16 : 12,
                     offset: const Offset(0, 5),
                   ),
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -212,6 +303,23 @@ class _TemplateCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                    if (selected && info.available)
+                      Positioned(
+                        top: 8, left: 8,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: info.accentColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                        ),
+                      ),
                     Positioned(
                       left: 0, right: 0, bottom: 0,
                       child: Container(
@@ -225,17 +333,27 @@ class _TemplateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            info.name,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: info.available
-                  ? colorScheme.onSurface
-                  : colorScheme.onSurface.withValues(alpha: 0.4),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  info.name,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: info.available
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (selected && info.available)
+                Icon(Icons.radio_button_checked_rounded, size: 15, color: info.accentColor)
+              else if (info.available)
+                Icon(Icons.radio_button_off_rounded, size: 15, color: colorScheme.onSurface.withValues(alpha: 0.25)),
+            ],
           ),
           const SizedBox(height: 2),
           Text(
