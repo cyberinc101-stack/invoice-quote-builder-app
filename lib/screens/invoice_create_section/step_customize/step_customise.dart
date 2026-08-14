@@ -304,25 +304,89 @@ class _LogoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<InvoiceProvider>();
     final data     = provider.invoiceData;
+    final colorScheme = Theme.of(context).colorScheme;
     final accent   = _colorForScheme(data.colorScheme);
+    final hasLogo  = data.businessLogoPath != null && data.businessLogoPath!.isNotEmpty;
+    final currentShape = logoShapeFromString(data.businessLogoShape);
+    // Preview box grows/shrinks live as the Logo Size slider moves, so the
+    // user sees the change here without scrolling up to the Live Preview.
+    final previewSize = (90.0 + (data.businessLogoDisplaySize - 40.0) * 3.0).clamp(90.0, 220.0);
 
     return _SectionCard(
       icon: Icons.image_rounded,
       title: 'Business Logo',
-      child: SharedLogoPicker(
-        logoPath: data.businessLogoPath,
-        logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
-        logoScale: data.businessLogoScale,
-        logoShape: logoShapeFromString(data.businessLogoShape),
-        accent: accent,
-        onChanged: (path, offset, scale, shape) {
-          provider.updateBusinessLogo(
-            path: path,
-            offset: offset,
-            scale: scale,
-            shape: shape.storageName,
-          );
-        },
+      child: Column(
+        children: [
+          Center(
+            child: Opacity(
+              opacity: hasLogo ? 1.0 : 0.5,
+              child: SharedLogoPicker(
+                logoPath: data.businessLogoPath,
+                logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+                logoScale: data.businessLogoScale,
+                logoShape: currentShape,
+                accent: accent,
+                compact: true,
+                compactBoxSize: previewSize,
+                onChanged: (path, offset, scale, shape) {
+                  provider.updateBusinessLogo(
+                    path: path,
+                    offset: offset,
+                    scale: scale,
+                    shape: shape.storageName,
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasLogo ? 'Tap logo to change, reposition, or remove' : 'Tap to upload a logo',
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+          ),
+          const SizedBox(height: 14),
+          Opacity(
+            opacity: hasLogo ? 1.0 : 0.4,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: LogoShape.values.map((s) {
+                final selected = s == currentShape;
+                return GestureDetector(
+                  onTap: hasLogo
+                      ? () => provider.updateBusinessLogo(
+                            path: data.businessLogoPath,
+                            offset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+                            scale: data.businessLogoScale,
+                            shape: s.storageName,
+                          )
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: selected ? accent : colorScheme.outline.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(s.icon, size: 16, color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.5)),
+                        const SizedBox(width: 5),
+                        Text(s.label,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.5))),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

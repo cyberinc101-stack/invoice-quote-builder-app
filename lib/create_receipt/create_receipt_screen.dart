@@ -580,21 +580,78 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
         // Reposition/zoom/shape the logo for THIS receipt only — the
         // saved business profile's own logo settings are untouched.
         receiptSectionHeader(context, 'Business Logo', _accent, icon: Icons.image_rounded),
-        SharedLogoPicker(
-          logoPath: _logoPath,
-          logoOffset: _logoOffset,
-          logoScale: _logoScale,
-          logoShape: _logoShape,
-          accent: _accent,
-          onChanged: (path, offset, scale, shape) {
-            setState(() {
-              _logoPath = path;
-              _logoOffset = offset;
-              _logoScale = scale;
-              _logoShape = shape;
-            });
-          },
-        ),
+        Builder(builder: (context) {
+          final hasLogo = _logoPath != null && _logoPath!.isNotEmpty;
+          final previewSize = (90.0 + (_logoSize - 40.0) * 3.0).clamp(90.0, 220.0);
+          return Column(
+            children: [
+              Center(
+                child: Opacity(
+                  opacity: hasLogo ? 1.0 : 0.5,
+                  child: SharedLogoPicker(
+                    logoPath: _logoPath,
+                    logoOffset: _logoOffset,
+                    logoScale: _logoScale,
+                    logoShape: _logoShape,
+                    accent: _accent,
+                    compact: true,
+                    compactBoxSize: previewSize,
+                    onChanged: (path, offset, scale, shape) {
+                      setState(() {
+                        _logoPath = path;
+                        _logoOffset = offset;
+                        _logoScale = scale;
+                        _logoShape = shape;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                hasLogo ? 'Tap logo to change, reposition, or remove' : 'Tap to upload a logo',
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
+              ),
+              const SizedBox(height: 14),
+              Opacity(
+                opacity: hasLogo ? 1.0 : 0.4,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: LogoShape.values.map((s) {
+                    final selected = s == _logoShape;
+                    return GestureDetector(
+                      onTap: hasLogo
+                          ? () => setState(() => _logoShape = s)
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: selected ? _accent.withValues(alpha: 0.12) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: selected ? _accent : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(s.icon, size: 16, color: selected ? _accent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                            const SizedBox(width: 5),
+                            Text(s.label,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected ? _accent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          );
+        }),
         const SizedBox(height: 16),
 
         receiptSectionHeader(context, 'Logo Size', _accent, icon: Icons.photo_size_select_large_rounded),
