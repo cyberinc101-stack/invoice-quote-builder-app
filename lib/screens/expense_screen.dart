@@ -1,6 +1,39 @@
 // lib/screens/expense_screen.dart
 //
-// MANUAL-ONLY PASS (this update): removed the QR-code scan FAB and its
+// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// changes — same treatment reports_screen.dart just got. The screen used
+// to open with a solid kExpenseAccent AppBar and a plain flat folder-chip
+// row above the search/filter bar — visually inconsistent with
+// HomeScreen's dark-gradient hero banner. Now:
+//   - The main (non-selection) AppBar is a plain default (theme) app bar,
+//     same as Home's and Reports', instead of a hardcoded kExpenseAccent
+//     background/white foreground. The selection-mode AppBar (bulk
+//     actions) is left as its own colored contextual bar — that's a
+//     temporary action-mode indicator, not primary chrome, same
+//     reasoning it wasn't touched on any other screen either.
+//   - The folder-scope indicator and ExpenseFilterBar (search + filter
+//     sheet trigger) are now wrapped in AppHeroCard (lib/widgets/
+//     hero_card.dart — the same navy gradient/radius/shadow pulled out
+//     of ReportsHeroCard) instead of floating directly on the page
+//     background. The folder chip's colors are swapped from
+//     kExpenseAccent-tinted to white/white70-on-dark to sit on that
+//     gradient, mirroring ReportsScreen's own folder-scope chip exactly.
+//   - Everything below the hero — the "N expenses" count row, sort/layout
+//     toggles, the grouped list itself — is unchanged and still sits on
+//     the normal page background with normal ColorScheme colors, same as
+//     how Reports keeps its stat cards below the hero rather than inside
+//     it.
+// ExpenseFilterBar's own internals (search field, "Filters" bottom sheet)
+// are untouched here — it already renders as its own bordered/surfaced
+// control, so it reads fine sitting on the dark card. If its search field
+// turns out to need its own on-dark styling once you see it live, that's
+// a small follow-up in expense_filter_bar.dart, not this file.
+//
+// Everything below this point — filtering, selection mode, bulk actions,
+// the add/edit sheet, QR export, folder sheet — is byte-for-byte
+// unchanged from the previous pass. See original header comments below.
+//
+// MANUAL-ONLY PASS (earlier): removed the QR-code scan FAB and its
 // handler (_handleScan) entirely, along with the scan_screen.dart import.
 // Finding an expense by reference number is now manual-only — type it
 // into the search field above the list (already wired: vendor OR
@@ -73,6 +106,7 @@ import '../widgets/category_picker.dart';
 import '../widgets/expenses/expense_card_shared.dart';
 import '../widgets/expenses/expense_cards.dart';
 import '../widgets/expenses/expense_filter_bar.dart';
+import '../widgets/hero_card.dart';
 import '../widgets/qr_code_display.dart';
 import '../widgets/shared_logo_picker.dart';
 import 'expense_detail_screen.dart';
@@ -468,10 +502,11 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                 ),
               ],
             )
+          // Plain default (theme) AppBar — matches HomeScreen's and
+          // ReportsScreen's, instead of the previous hardcoded
+          // kExpenseAccent background/white foreground.
           : AppBar(
               title: const Text('Expenses'),
-              backgroundColor: kExpenseAccent,
-              foregroundColor: Colors.white,
               actions: [
                 IconButton(
                   icon: const Icon(Icons.ios_share_rounded),
@@ -501,60 +536,71 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
-                if (_selectedFolder != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: kExpenseAccent.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: kExpenseAccent.withValues(alpha: 0.25)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.folder_rounded, size: 16, color: kExpenseAccent),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Folder: $_selectedFolder',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                // ── Hero card — folder scope indicator + the search/
+                // filter bar, inside the same dark gradient card
+                // HomeScreen's banner and ReportsScreen's controls use,
+                // so Expenses opens with the same visual weight as the
+                // rest of the app instead of a flat page background.
+                AppHeroCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_selectedFolder != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
                           ),
-                          GestureDetector(
-                            onTap: () => setState(() => _selectedFolder = null),
-                            child: Icon(Icons.close_rounded, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.folder_rounded, size: 16, color: Colors.white70),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Folder: $_selectedFolder',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _selectedFolder = null),
+                                child: const Icon(Icons.close_rounded, size: 18, color: Colors.white70),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      ExpenseFilterBar(
+                        searchQuery: _searchQuery,
+                        onSearchChanged: (v) => setState(() => _searchQuery = v),
+                        selectedDateRange: _selectedDateRange,
+                        onDateRangeChanged: (p) => setState(() => _selectedDateRange = p),
+                        customRangeStart: _customRangeStart,
+                        customRangeEnd: _customRangeEnd,
+                        onCustomRangeChanged: (start, end) => setState(() {
+                          _customRangeStart = start;
+                          _customRangeEnd = end;
+                        }),
+                        selectedSort: _selectedSort,
+                        onSortChanged: (s) => setState(() => _selectedSort = s),
+                        minAmount: _minAmount,
+                        maxAmount: _maxAmount,
+                        onAmountRangeChanged: (min, max) => setState(() {
+                          _minAmount = min;
+                          _maxAmount = max;
+                        }),
+                        selectedFolder: _selectedFolder,
+                        onFolderChanged: (f) => setState(() => _selectedFolder = f),
+                        availableFolders: availableFolders,
                       ),
-                    ),
+                    ],
                   ),
-                ExpenseFilterBar(
-                  searchQuery: _searchQuery,
-                  onSearchChanged: (v) => setState(() => _searchQuery = v),
-                  selectedDateRange: _selectedDateRange,
-                  onDateRangeChanged: (p) => setState(() => _selectedDateRange = p),
-                  customRangeStart: _customRangeStart,
-                  customRangeEnd: _customRangeEnd,
-                  onCustomRangeChanged: (start, end) => setState(() {
-                    _customRangeStart = start;
-                    _customRangeEnd = end;
-                  }),
-                  selectedSort: _selectedSort,
-                  onSortChanged: (s) => setState(() => _selectedSort = s),
-                  minAmount: _minAmount,
-                  maxAmount: _maxAmount,
-                  onAmountRangeChanged: (min, max) => setState(() {
-                    _minAmount = min;
-                    _maxAmount = max;
-                  }),
-                  selectedFolder: _selectedFolder,
-                  onFolderChanged: (f) => setState(() => _selectedFolder = f),
-                  availableFolders: availableFolders,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Text('${expenses.length} expense${expenses.length == 1 ? '' : 's'}',

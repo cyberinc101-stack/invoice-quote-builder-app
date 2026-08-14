@@ -1,17 +1,28 @@
 // reminder_screen.dart
 // lib/alerts/custom_reminders/reminder_screen.dart
 //
-// THEME OVERHAUL (this pass): restyled to match the flat, grouped-list
-// look introduced on alerts_screen.dart — plain surface AppBar (no solid
-// color block), reminders wrapped in a single rounded card with hairline
-// dividers between rows instead of separately floating cards, and the
-// hardcoded blue (0xFF2196F3) / red (0xFFD32F2F) swapped for the app's
-// actual ColorScheme (cs.primary / cs.error) so this screen now reads as
-// part of the same design system as the rest of the app instead of a
-// visually separate one. The "New Reminder" FAB, the recurrence chips,
-// the link-picker sheet, and the add/edit form sheet all got the same
-// treatment: cs.primary for accents, flat bordered fields instead of
-// heavy fills, muted secondary text.
+// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// changes. This screen already used cs.primary/cs.error throughout
+// (see the THEME OVERHAUL pass below) so it was mostly there already —
+// the one piece still out of step with Home/Reports/Alerts was the
+// Scaffold's custom backgroundColor and the AppBar's custom elevation/
+// background/foreground/centerTitle tuning. Both are now dropped so this
+// screen inherits the same defaults Home, Reports, and Alerts all use.
+// There's no stats/controls strip here worth promoting into an
+// AppHeroCard (unlike Alerts' stats+filter row or Reports' period/
+// folder/toggle row) — the reminders list is the whole screen — so no
+// hero card was introduced here, just the chrome alignment.
+//
+// THEME OVERHAUL (earlier pass): restyled to match the flat, grouped-list
+// look introduced on alerts_screen.dart — reminders wrapped in a single
+// rounded card with hairline dividers between rows instead of separately
+// floating cards, and the hardcoded blue (0xFF2196F3) / red (0xFFD32F2F)
+// swapped for the app's actual ColorScheme (cs.primary / cs.error) so
+// this screen reads as part of the same design system as the rest of the
+// app instead of a visually separate one. The "New Reminder" FAB, the
+// recurrence chips, the link-picker sheet, and the add/edit form sheet
+// all got the same treatment: cs.primary for accents, flat bordered
+// fields instead of heavy fills, muted secondary text.
 //
 // No behavioral changes from the previous pass — same highlight-on-
 // arrival flash, same validation + Undo, same permission banner, same
@@ -88,19 +99,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final provider = context.watch<ReminderProvider>();
     final reminders = provider.reminders;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
+      // Plain default (theme) AppBar/Scaffold background — matches
+      // HomeScreen's, ReportsScreen's, and AlertsScreen's, instead of
+      // the previous custom elevation/background/foreground tuning.
       appBar: AppBar(
         title: const Text('Reminders'),
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
-        foregroundColor: cs.onSurface,
-        centerTitle: true,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showReminderForm(context),

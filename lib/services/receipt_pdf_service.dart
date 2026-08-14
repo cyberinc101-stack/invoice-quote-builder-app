@@ -5,14 +5,23 @@
 // has no dueDate/expiryDate, uses paymentDate + paymentMethod, and its final
 // total getter is amountPaid (not grandTotal).
 //
-// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// FIX (this pass): generateAndDownloadPDF / generateAndSharePDF /
+// generatePdfBytes now accept an optional [layoutTemplateId] parameter,
+// matching InvoicePdfService's signature exactly (previously missing —
+// caused a "No named parameter" build error at every call site that
+// passed it). _buildPdf is now a small dispatcher, mirroring
+// InvoicePdfService's _buildPdf: the original single-layout body is
+// renamed to _buildExecutivePdf and is the default/only case for now.
+// Adding a second receipt layout later is: write _buildXxxPdf() + add a
+// case to the switch below — identical pattern to InvoicePdfService.
+//
+// FOLLOW UP (earlier pass): generateAndSharePDF gained an optional
 // [shareText] parameter — pre-filled message body used by the Alerts
 // screen's "Follow Up" action. Omitted (null) for every other caller.
 //
 // NEW (earlier pass): generatePdfBytes() — same purpose as the identically-named
 // method added to InvoicePdfService/QuotePdfService: raw bytes for
 // FolderDownloadService's ZIP bundling, no file written.
-// generateAndDownloadPDF below is unchanged.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -27,8 +36,13 @@ import '../models/receipt_data.dart';
 class ReceiptPdfService {
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  Future<String> generateAndDownloadPDF(SavedReceipt receipt) async {
-    final bytes = await _buildPdf(receipt);
+  /// [layoutTemplateId] selects the visual layout (1 = Executive, the only
+  /// one built so far). Null or unrecognized falls back to Executive.
+  Future<String> generateAndDownloadPDF(
+    SavedReceipt receipt, {
+    int? layoutTemplateId,
+  }) async {
+    final bytes = await _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
     final dir   = await _downloadsDir();
     final file  = File(
         '${dir.path}/Receipt_${receipt.data.receiptNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf');
@@ -39,8 +53,12 @@ class ReceiptPdfService {
   /// [shareText] is an optional pre-filled message body (used by the
   /// Alerts screen's "Follow Up" action) — omitted entirely for normal
   /// shares, unchanged from before this pass.
-  Future<void> generateAndSharePDF(SavedReceipt receipt, {String? shareText}) async {
-    final bytes = await _buildPdf(receipt);
+  Future<void> generateAndSharePDF(
+    SavedReceipt receipt, {
+    int? layoutTemplateId,
+    String? shareText,
+  }) async {
+    final bytes = await _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
     final file  = File(
         '${dir.path}/Receipt_${receipt.data.receiptNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf');
@@ -53,13 +71,31 @@ class ReceiptPdfService {
   }
 
   /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService.
-  Future<Uint8List> generatePdfBytes(SavedReceipt receipt) {
-    return _buildPdf(receipt);
+  Future<Uint8List> generatePdfBytes(
+    SavedReceipt receipt, {
+    int? layoutTemplateId,
+  }) {
+    return _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
   }
 
-  // ── PDF builder ──────────────────────────────────────────────────────────
+  // ── Layout dispatcher ───────────────────────────────────────────────────────
+  //
+  // Add a case here + a new _buildXxxPdf() method for each future layout.
+  // Mirrors InvoicePdfService._buildPdf exactly.
+  Future<Uint8List> _buildPdf(
+    SavedReceipt receipt, {
+    int? layoutTemplateId,
+  }) async {
+    switch (layoutTemplateId) {
+      case 1:
+      default:
+        return _buildExecutivePdf(receipt);
+    }
+  }
 
-  Future<Uint8List> _buildPdf(SavedReceipt receipt) async {
+  // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
+
+  Future<Uint8List> _buildExecutivePdf(SavedReceipt receipt) async {
     final pdf   = pw.Document();
     final d     = receipt.data;
     final color = _pdfColor(d.colorScheme);

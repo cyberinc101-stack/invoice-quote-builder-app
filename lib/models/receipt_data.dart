@@ -1,5 +1,19 @@
 // receipt_data.dart
 // lib/models/receipt_data.dart
+//
+// TEMPLATE + LOGO SIZER PASS (this update): added layoutTemplateId (which
+// visual design — Executive/Nordic/Vibrant/etc, see the receipt
+// preview_registry.dart — this receipt actually renders with) and
+// businessLogoOffsetDx/Dy/Scale/Shape (mirrors InvoiceData's/QuoteData's
+// own new fields, driven by the same SharedLogoPicker widget). Previously
+// receipt_full_preview_screen.dart always rendered ExecutiveReceiptPreview
+// regardless of what was picked in the receipt template chooser (per that
+// screen's own header comment), and ReceiptData had no logo reposition/
+// zoom/shape data at all — only businessLogoPath. All new fields fall
+// back to sensible defaults when missing from persisted JSON
+// (layoutTemplateId 1 = Executive, zero offset, scale 1.0, 'roundedSquare'
+// shape), so existing persisted receipts load correctly with no migration
+// step.
 
 import 'invoice_data.dart' show LineItem;
 
@@ -24,6 +38,15 @@ class ReceiptData {
   String businessAddress;
   String? businessLogoPath;
 
+  // Logo reposition/zoom/shape — mirrors InvoiceData's/QuoteData's fields,
+  // driven by the same SharedLogoPicker widget. Only meaningful when
+  // businessLogoPath is set.
+  double businessLogoOffsetDx;
+  double businessLogoOffsetDy;
+  double businessLogoScale;
+  String businessLogoShape; // storage name from LogoShape.storageName
+  double businessLogoDisplaySize;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -43,6 +66,11 @@ class ReceiptData {
   String        fontFamily;
   ReceiptColor  colorScheme;
 
+  // Which visual design (see the receipt preview_registry.dart's
+  // kReceiptTemplates / buildReceiptPreview) this receipt renders with —
+  // 1 = Executive, 2 = Nordic, etc.
+  int layoutTemplateId;
+
   // Same escape hatch as InvoiceData.excludeFromReports. See that file's
   // doc comment for the gating rule.
   bool excludeFromReports;
@@ -53,6 +81,11 @@ class ReceiptData {
     this.businessPhone    = '',
     this.businessAddress  = '',
     this.businessLogoPath,
+    this.businessLogoOffsetDx = 0.0,
+    this.businessLogoOffsetDy = 0.0,
+    this.businessLogoScale    = 1.0,
+    this.businessLogoShape    = 'roundedSquare',
+    this.businessLogoDisplaySize = 40.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -68,6 +101,7 @@ class ReceiptData {
     this.status           = ReceiptStatus.issued,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = ReceiptColor.green,
+    this.layoutTemplateId = 1,
     this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
 
@@ -86,6 +120,11 @@ class ReceiptData {
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
         'businessLogoPath': businessLogoPath,
+        'businessLogoOffsetDx': businessLogoOffsetDx,
+        'businessLogoOffsetDy': businessLogoOffsetDy,
+        'businessLogoScale':    businessLogoScale,
+        'businessLogoShape':    businessLogoShape,
+        'businessLogoDisplaySize': businessLogoDisplaySize,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -101,6 +140,7 @@ class ReceiptData {
         'status':           status.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'layoutTemplateId': layoutTemplateId,
         'excludeFromReports': excludeFromReports,
       };
 
@@ -110,6 +150,11 @@ class ReceiptData {
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
         businessLogoPath: j['businessLogoPath'] as String?,
+        businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
+        businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
+        businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -136,10 +181,15 @@ class ReceiptData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => ReceiptColor.green,
         ),
+        layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
+  //
+  // clearBusinessLogo: explicit clear flag, same reasoning as
+  // SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
+  // never express "set this field to null" once it already has a value.
 
   ReceiptData copyWith({
     String?         businessName,
@@ -147,6 +197,12 @@ class ReceiptData {
     String?         businessPhone,
     String?         businessAddress,
     String?         businessLogoPath,
+    bool            clearBusinessLogo = false,
+    double?         businessLogoOffsetDx,
+    double?         businessLogoOffsetDy,
+    double?         businessLogoScale,
+    String?         businessLogoShape,
+    double?         businessLogoDisplaySize,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -162,6 +218,7 @@ class ReceiptData {
     ReceiptStatus?  status,
     String?         fontFamily,
     ReceiptColor?   colorScheme,
+    int?            layoutTemplateId,
     bool?           excludeFromReports,
   }) =>
       ReceiptData(
@@ -169,7 +226,12 @@ class ReceiptData {
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
-        businessLogoPath: businessLogoPath ?? this.businessLogoPath,
+        businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
+        businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
+        businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
+        businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
+        businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
+        businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -185,6 +247,7 @@ class ReceiptData {
         status:           status           ?? this.status,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 

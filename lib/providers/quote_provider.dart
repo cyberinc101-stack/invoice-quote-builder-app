@@ -1,7 +1,13 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// PUSH ALERTS (this pass): same treatment as InvoiceProvider — every
+// TEMPLATE + LOGO SIZER PASS (this update): updateBusinessInfo() gained
+// optional businessLogoOffsetDx/Dy/Scale/Shape params (all pass straight
+// through to QuoteData.copyWith, same as the plain fields already there),
+// and a new updateLayoutTemplateId() mirrors InvoiceProvider's own
+// version. See quote_data.dart for the new fields these write to.
+//
+// PUSH ALERTS (earlier pass): same treatment as InvoiceProvider — every
 // mutation that can change whether a quote is expiring-eligible or a
 // draft now calls into DocumentAlertScheduler right after persisting.
 // See invoice_provider.dart's header comment for the full rationale; the
@@ -233,12 +239,22 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // businessLogoOffsetDx/Dy/Scale/Shape are optional so every existing
+  // call site (which only passes the plain business fields) keeps working
+  // unchanged; pass them together when updating from a SharedLogoPicker
+  // onChanged callback.
   void updateBusinessInfo({
     String? businessName,
     String? businessEmail,
     String? businessPhone,
     String? businessAddress,
     String? businessLogoPath,
+    bool clearBusinessLogo = false,
+    double? businessLogoOffsetDx,
+    double? businessLogoOffsetDy,
+    double? businessLogoScale,
+    String? businessLogoShape,
+    double? businessLogoDisplaySize,
   }) {
     _quoteData = _quoteData.copyWith(
       businessName:     businessName,
@@ -246,6 +262,12 @@ class QuoteProvider extends ChangeNotifier {
       businessPhone:    businessPhone,
       businessAddress:  businessAddress,
       businessLogoPath: businessLogoPath,
+      clearBusinessLogo: clearBusinessLogo,
+      businessLogoOffsetDx: businessLogoOffsetDx,
+      businessLogoOffsetDy: businessLogoOffsetDy,
+      businessLogoScale: businessLogoScale,
+      businessLogoShape: businessLogoShape,
+      businessLogoDisplaySize: businessLogoDisplaySize,
     );
     notifyListeners();
   }
@@ -318,6 +340,14 @@ class QuoteProvider extends ChangeNotifier {
 
   void updateFontFamily(String font) {
     _quoteData = _quoteData.copyWith(fontFamily: font);
+    notifyListeners();
+  }
+
+  // Which visual design (Executive/Nordic/Vibrant/etc — see the quote
+  // preview_registry.dart) this quote renders with. Set once from
+  // QuoteTemplateChooserScreen's selection (via QuoteEditorScreen).
+  void updateLayoutTemplateId(int id) {
+    _quoteData = _quoteData.copyWith(layoutTemplateId: id);
     notifyListeners();
   }
 

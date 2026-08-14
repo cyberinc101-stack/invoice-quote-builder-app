@@ -36,7 +36,44 @@ part 'doc_card_shared.dart';
 part 'doc_cards.dart';
 part 'doc_kanban.dart';
 
-// DISPLAY OPTIONS PASS (this update): _SectionHeader now gets a third
+// STATUS QUICK-CHIPS (this pass): paidCount / acceptedCount / declinedCount
+// are computed here from the full, unfiltered invoice/quote lists — same
+// spot and same pattern as needsActionCount/overdueCount/draftsCount just
+// above them — and passed straight into DocumentFilterBar. All three route
+// through countPaid()/countAccepted()/countDeclined() in filter_logic.dart,
+// which SavedDocumentsSection already imports; no new filtering logic
+// lives in this file, just the three extra badge-count calls and three
+// extra constructor args on the existing DocumentFilterBar call.
+//
+// LAYOUT-TOGGLE BUGFIX (earlier pass): the previous build() directly mutated
+// _selectedLayout as a side effect of reading context.watch<SavedLayoutPrefs>()
+// —
+//   final layoutPrefs = context.watch<SavedLayoutPrefs>();
+//   if (_selectedLayout != DocLayoutMode.kanban) {
+//     _selectedLayout = _fromShared(layoutPrefs.layout);
+//   }
+// — which is a field write happening INSIDE build(), outside of setState.
+// _LayoutToggleButton's onChanged for every non-kanban mode never called
+// setState either — it only called
+// context.read<SavedLayoutPrefs>().setLayout(shared) and relied on the
+// watch above to trigger the next rebuild. That meant the dropdown's
+// PopupMenuButton route-close animation and the provider-driven rebuild
+// (which also silently mutated a field mid-build) were racing each other:
+// harmless on the very first selection, but the popup's own internal
+// state could end up desynced from the widget tree on the second and
+// subsequent opens, which is exactly the "works once, then the dropdown
+// stops responding" symptom reported.
+//
+// Fixed by never mutating _selectedLayout during build(). It now holds
+// ONLY "is Kanban active or not" (Kanban has no shared-prefs equivalent —
+// see SavedLayoutPrefs' own doc comment). The actual layout used for
+// rendering is `effectiveLayout`, a local computed once per build from
+// _selectedLayout + the watched SavedLayoutPrefs value, and threaded
+// explicitly into _buildEntries()/_buildExpenseEntries() and every
+// _LayoutToggleButton's `selected:` — nothing outside setState() writes
+// to a State field anymore.
+//
+// DISPLAY OPTIONS PASS (earlier): _SectionHeader now gets a third
 // control — displayOptionsToggle — passed for the Invoices/Quotes/Receipts
 // sections, rendered right next to the existing layoutToggle. It opens
 // DisplayOptionsButton's sheet (display_options_button.dart), which reads/
@@ -231,6 +268,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   QuoteStatus?     _selectedQuoteStatus;
   ReceiptStatus?   _selectedReceiptStatus;
   QuickFilter      _selectedQuickFilter    = QuickFilter.none;
+
+  // Holds ONLY the "is Kanban currently active" choice — Kanban has no
+  // SavedLayoutPrefs equivalent, so it's the one layout value that must
+  // live in local State rather than the shared provider. Every other
+  // layout is read fresh from SavedLayoutPrefs each build via
+  // `effectiveLayout` in build() below — this field is never set to any
+  // of the other four DocLayoutMode values, and it is NEVER written
+  // outside of setState().
   DocLayoutMode    _selectedLayout         = DocLayoutMode.list;
   String           _searchQuery            = '';
   DateRangePreset  _selectedDateRange      = DateRangePreset.all;
@@ -1088,13 +1133,18 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     return Consumer4<InvoiceProvider, QuoteProvider, ReceiptProvider, ExpenseProvider>(
       builder: (context, invoiceProvider, quoteProvider, receiptProvider, expenseProvider, _) {
         final categories = context.watch<CategoryProvider>();
-        // Keep _selectedLayout in sync with the shared, cross-screen layout
-        // preference (also read by Reports) — unless Kanban is active,
-        // which is a local-only choice with no shared equivalent.
+
+        // Computed fresh every build — NOT written back into
+        // _selectedLayout. _selectedLayout only ever holds
+        // DocLayoutMode.kanban or is otherwise ignored; the actual layout
+        // used to render is this local value, derived from whichever of
+        // the two sources currently applies. See the bugfix note atop
+        // this file for why the old version (mutating _selectedLayout
+        // inline here) broke the layout dropdown after its first use.
         final layoutPrefs = context.watch<SavedLayoutPrefs>();
-        if (_selectedLayout != DocLayoutMode.kanban) {
-          _selectedLayout = _fromShared(layoutPrefs.layout);
-        }
+        final DocLayoutMode effectiveLayout = _selectedLayout == DocLayoutMode.kanban
+            ? DocLayoutMode.kanban
+            : _fromShared(layoutPrefs.layout);
 
         final allInvoices = invoiceProvider.savedInvoices;
         final allQuotes   = quoteProvider.savedQuotes;
@@ -1108,6 +1158,13 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
           quotes:   allQuotes,
           receipts: allReceipts,
         );
+        // NEW: badge counts backing the Paid / Accepted / Declined quick
+        // chips in DocumentFilterBar — same "compute from the full,
+        // unfiltered lists" pattern as needsActionCount/overdueCount/
+        // draftsCount just above.
+        final paidCount     = countPaid(allInvoices);
+        final acceptedCount = countAccepted(allQuotes);
+        final declinedCount = countDeclined(allQuotes);
         // Union in expense folder names too — collectFolderNames() (from
         // filter_logic.dart) only knows about invoices/quotes/receipts,
         // so expenses' own folder assignments are merged in here rather
@@ -1368,6 +1425,25 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
         final showToggleOnReceipts = !showToggleOnInvoices && !showToggleOnQuotes && receiptEntries.isNotEmpty;
         final showToggleOnExpenses = !showToggleOnInvoices && !showToggleOnQuotes && !showToggleOnReceipts && expenseEntries.isNotEmpty;
 
+        // Shared onChanged for every _LayoutToggleButton below. Kanban is
+        // the one case that needs setState (it's local State); every
+        // other mode just writes through to SavedLayoutPrefs — the
+        // resulting rebuild comes from that provider's notifyListeners(),
+        // not from mutating a field mid-build.
+        void handleLayoutChange(DocLayoutMode m) {
+          final shared = _toShared(m);
+          if (shared != null) {
+            context.read<SavedLayoutPrefs>().setLayout(shared);
+            if (_selectedLayout == DocLayoutMode.kanban) {
+              // Leaving Kanban -> clear the local override so future
+              // builds go back to trusting SavedLayoutPrefs exclusively.
+              setState(() => _selectedLayout = DocLayoutMode.list);
+            }
+          } else {
+            setState(() => _selectedLayout = DocLayoutMode.kanban);
+          }
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1538,6 +1614,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                 overdue1to30Count: countAgingBucket(allInvoices, QuickFilter.overdue1to30),
                 overdue31to60Count: countAgingBucket(allInvoices, QuickFilter.overdue31to60),
                 overdue61plusCount: countAgingBucket(allInvoices, QuickFilter.overdue61plus),
+                paidCount: paidCount,
+                acceptedCount: acceptedCount,
+                declinedCount: declinedCount,
               ),
             const SizedBox(height: 16),
 
@@ -1627,15 +1706,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                   layoutToggle: showToggleOnInvoices
                                       ? _LayoutToggleButton(
-                                          selected: _selectedLayout,
-                                          onChanged: (m) {
-                                          final shared = _toShared(m);
-                                          if (shared != null) {
-                                            context.read<SavedLayoutPrefs>().setLayout(shared);
-                                          } else {
-                                            setState(() => _selectedLayout = m);
-                                          }
-                                        },
+                                          selected: effectiveLayout,
+                                          onChanged: handleLayoutChange,
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnInvoices
@@ -1643,7 +1715,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                 ),
                                 const SizedBox(height: 10),
-                                _buildEntries(invoiceEntries),
+                                _buildEntries(invoiceEntries, effectiveLayout),
                                 const SizedBox(height: 20),
                               ],
                               if (quoteEntries.isNotEmpty) ...[
@@ -1659,15 +1731,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                   layoutToggle: showToggleOnQuotes
                                       ? _LayoutToggleButton(
-                                          selected: _selectedLayout,
-                                          onChanged: (m) {
-                                          final shared = _toShared(m);
-                                          if (shared != null) {
-                                            context.read<SavedLayoutPrefs>().setLayout(shared);
-                                          } else {
-                                            setState(() => _selectedLayout = m);
-                                          }
-                                        },
+                                          selected: effectiveLayout,
+                                          onChanged: handleLayoutChange,
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnQuotes
@@ -1675,7 +1740,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                 ),
                                 const SizedBox(height: 10),
-                                _buildEntries(quoteEntries),
+                                _buildEntries(quoteEntries, effectiveLayout),
                                 const SizedBox(height: 20),
                               ],
                               if (receiptEntries.isNotEmpty) ...[
@@ -1691,15 +1756,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                   layoutToggle: showToggleOnReceipts
                                       ? _LayoutToggleButton(
-                                          selected: _selectedLayout,
-                                          onChanged: (m) {
-                                          final shared = _toShared(m);
-                                          if (shared != null) {
-                                            context.read<SavedLayoutPrefs>().setLayout(shared);
-                                          } else {
-                                            setState(() => _selectedLayout = m);
-                                          }
-                                        },
+                                          selected: effectiveLayout,
+                                          onChanged: handleLayoutChange,
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnReceipts
@@ -1707,7 +1765,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                 ),
                                 const SizedBox(height: 10),
-                                _buildEntries(receiptEntries),
+                                _buildEntries(receiptEntries, effectiveLayout),
                                 if (expenseEntries.isNotEmpty) const SizedBox(height: 20),
                               ],
                               if (expenseEntries.isNotEmpty) ...[
@@ -1723,15 +1781,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                   layoutToggle: showToggleOnExpenses
                                       ? _LayoutToggleButton(
-                                          selected: _selectedLayout,
-                                          onChanged: (m) {
-                                          final shared = _toShared(m);
-                                          if (shared != null) {
-                                            context.read<SavedLayoutPrefs>().setLayout(shared);
-                                          } else {
-                                            setState(() => _selectedLayout = m);
-                                          }
-                                        },
+                                          selected: effectiveLayout,
+                                          onChanged: handleLayoutChange,
                                         )
                                       : null,
                                   displayOptionsToggle: showToggleOnExpenses
@@ -1739,7 +1790,7 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                                       : null,
                                 ),
                                 const SizedBox(height: 10),
-                                _buildExpenseEntries(expenseEntries),
+                                _buildExpenseEntries(expenseEntries, effectiveLayout),
                               ],
                             ],
                           ),
@@ -1751,8 +1802,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
     );
   }
 
-  Widget _buildEntries(List<_DocEntry> entries) {
-    switch (_selectedLayout) {
+  Widget _buildEntries(List<_DocEntry> entries, DocLayoutMode layout) {
+    switch (layout) {
       case DocLayoutMode.list:
         return Column(
           children: entries
@@ -1825,8 +1876,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   // Expenses map DocLayoutMode -> the nearest ExpenseLayoutMode. There's
   // no expense-kanban equivalent (no status field to build columns from),
   // so kanban falls back to the expense list layout.
-  Widget _buildExpenseEntries(List<ExpenseCardEntry> entries) {
-    switch (_selectedLayout) {
+  Widget _buildExpenseEntries(List<ExpenseCardEntry> entries, DocLayoutMode layout) {
+    switch (layout) {
       case DocLayoutMode.list:
       case DocLayoutMode.kanban:
         return Column(

@@ -1,13 +1,18 @@
-// lib/screens/receipt_edit_widgets.dart
+// lib/create_receipt/receipt_edit_widgets.dart
 //
 // Reusable pieces for the Receipt step flow — mirrors the naming and shape
 // of create_quote_section/quote_edit_widgets.dart (QuoteField, QuoteItemCard,
 // QuoteTotalsCard, QuoteStepNavBar, quoteSectionHeader) so Receipt, Quote,
 // and Invoice all read the same way.
+//
+// ADDED (this pass): kReceiptCurrencies / receiptCurrencySymbol() and
+// ReceiptColorPicker — the receipt equivalents of quote_edit_widgets.dart's
+// kQuoteCurrencies / quoteCurrencySymbol() / QuoteColorPicker, needed by
+// CreateReceiptScreen's Client & Details and Review & Save steps.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/receipt_data.dart' show PaymentMethod;
+import '../models/receipt_data.dart' show PaymentMethod, ReceiptColor;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Section header
@@ -606,6 +611,86 @@ class ReceiptStepNavBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Currency list / symbol lookup
+// Mirrors quote_edit_widgets.dart's kQuoteCurrencies / quoteCurrencySymbol.
+// ─────────────────────────────────────────────────────────────────────────
+
+const List<Map<String, String>> kReceiptCurrencies = [
+  {'code': 'USD', 'symbol': r'$'},
+  {'code': 'EUR', 'symbol': '€'},
+  {'code': 'GBP', 'symbol': '£'},
+  {'code': 'CAD', 'symbol': r'$'},
+  {'code': 'AUD', 'symbol': r'$'},
+  {'code': 'NZD', 'symbol': r'$'},
+  {'code': 'INR', 'symbol': '₹'},
+  {'code': 'JPY', 'symbol': '¥'},
+  {'code': 'ZAR', 'symbol': 'R'},
+];
+
+String receiptCurrencySymbol(String code) {
+  final match = kReceiptCurrencies.firstWhere(
+    (c) => c['code'] == code,
+    orElse: () => const {'code': 'USD', 'symbol': r'$'},
+  );
+  return match['symbol']!;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Accent color picker for ReceiptColor
+// Mirrors quote_edit_widgets.dart's QuoteColorPicker.
+// ─────────────────────────────────────────────────────────────────────────
+
+const Map<ReceiptColor, Color> kReceiptColorSwatches = {
+  ReceiptColor.blue:   Color(0xFF1565C0),
+  ReceiptColor.green:  Color(0xFF2E7D32),
+  ReceiptColor.purple: Color(0xFF6A1B9A),
+  ReceiptColor.orange: Color(0xFFE65100),
+  ReceiptColor.red:    Color(0xFFC62828),
+  ReceiptColor.teal:   Color(0xFF00695C),
+  ReceiptColor.black:  Color(0xFF212121),
+  ReceiptColor.indigo: Color(0xFF283593),
+};
+
+class ReceiptColorPicker extends StatelessWidget {
+  final ReceiptColor selected;
+  final ValueChanged<ReceiptColor> onChanged;
+
+  const ReceiptColorPicker({super.key, required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: ReceiptColor.values.map((c) {
+        final color = kReceiptColorSwatches[c]!;
+        final isSelected = selected == c;
+        return GestureDetector(
+          onTap: () => onChanged(c),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? Colors.white : Colors.transparent,
+                width: 2.5,
+              ),
+              boxShadow: isSelected
+                  ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 2))]
+                  : [],
+            ),
+            child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 18) : null,
+          ),
+        );
+      }).toList(),
     );
   }
 }

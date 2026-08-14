@@ -2,11 +2,16 @@
 // lib/filters/filter_logic.dart
 //
 // "Needs Action" / "Overdue" (+ aging buckets) / "Drafts" / "Paid" /
-// "Accepted" logic, plus search, date-range, amount-range, folder, and
-// sort helpers for the full filter bar.
+// "Accepted" / "Declined" logic, plus search, date-range, amount-range,
+// folder, and sort helpers for the full filter bar.
 //
-// UPDATED (this pass): added invoiceIsPaid / quoteIsAccepted predicates and
-// countPaid / countAccepted counters, wired into the three
+// UPDATED (this pass): added quoteIsDeclined predicate and countDeclined
+// counter, wired into the three applyQuickFilterToX() switches (kept
+// exhaustive — every QuickFilter case is handled per type, returning
+// const [] where a filter doesn't apply to that doc type).
+//
+// UPDATED (earlier pass): added invoiceIsPaid / quoteIsAccepted predicates
+// and countPaid / countAccepted counters, wired into the three
 // applyQuickFilterToX() switches (kept exhaustive — every QuickFilter case
 // is handled per type, returning const [] where a filter doesn't apply to
 // that doc type).
@@ -37,6 +42,8 @@ bool quoteIsExpiringSoon(SavedQuote q) {
 }
 
 bool quoteIsAccepted(SavedQuote q) => q.data.quoteStatus == QuoteStatus.accepted;
+
+bool quoteIsDeclined(SavedQuote q) => q.data.quoteStatus == QuoteStatus.declined;
 
 bool invoiceIsDraft(SavedInvoice inv) => inv.completionPercent < 100;
 bool quoteIsDraft(SavedQuote q) => q.completionPercent < 100;
@@ -92,7 +99,8 @@ List<SavedInvoice> applyQuickFilterToInvoices(
     case QuickFilter.paid:
       return invoices.where(invoiceIsPaid).toList();
     case QuickFilter.accepted:
-      // "Accepted" is a quote-only concept.
+    case QuickFilter.declined:
+      // "Accepted" / "Declined" are quote-only concepts.
       return const [];
   }
 }
@@ -110,6 +118,8 @@ List<SavedQuote> applyQuickFilterToQuotes(
       return quotes.where(quoteIsExpiringSoon).toList();
     case QuickFilter.accepted:
       return quotes.where(quoteIsAccepted).toList();
+    case QuickFilter.declined:
+      return quotes.where(quoteIsDeclined).toList();
     case QuickFilter.overdue:
     case QuickFilter.overdue1to30:
     case QuickFilter.overdue31to60:
@@ -136,6 +146,7 @@ List<SavedReceipt> applyQuickFilterToReceipts(
     case QuickFilter.overdue61plus:
     case QuickFilter.paid:
     case QuickFilter.accepted:
+    case QuickFilter.declined:
       // Receipts are already-settled records — none of these apply.
       return const [];
   }
@@ -162,6 +173,9 @@ int countPaid(List<SavedInvoice> invoices) =>
 
 int countAccepted(List<SavedQuote> quotes) =>
     quotes.where(quoteIsAccepted).length;
+
+int countDeclined(List<SavedQuote> quotes) =>
+    quotes.where(quoteIsDeclined).length;
 
 int countDrafts({
   required List<SavedInvoice> invoices,
@@ -208,8 +222,8 @@ List<SavedReceipt> searchReceipts(List<SavedReceipt> items, String query) {
       .toList();
 }
 
-// NEW: expenses have no client/document-number field — search matches
-// vendor and notes instead.
+// Expenses have no client/document-number field — search matches vendor
+// and notes instead.
 List<ExpenseEntry> searchExpenses(List<ExpenseEntry> items, String query) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return items;
@@ -261,9 +275,9 @@ List<SavedReceipt> filterReceiptsByDateRange(
       .toList();
 }
 
-// NEW: same lastEditedAt-based windowing as the three document types
-// above, kept consistent so "Date & Sort" behaves identically no matter
-// which type pill is selected.
+// Same lastEditedAt-based windowing as the three document types above,
+// kept consistent so "Date & Sort" behaves identically no matter which
+// type pill is selected.
 List<ExpenseEntry> filterExpensesByDateRange(
   List<ExpenseEntry> items,
   DateRangePreset preset, {
@@ -309,9 +323,9 @@ List<SavedReceipt> filterReceiptsByAmountRange(
   }).toList();
 }
 
-// NEW: expenses have no min/max-relevant "amount" naming collision with
-// the doc types (all four use plain double amount fields already), so
-// this mirrors filterInvoicesByAmountRange/etc. exactly against
+// Expenses have no min/max-relevant "amount" naming collision with the
+// doc types (all four use plain double amount fields already), so this
+// mirrors filterInvoicesByAmountRange/etc. exactly against
 // ExpenseEntry.amount.
 List<ExpenseEntry> filterExpensesByAmountRange(
     List<ExpenseEntry> items, double? min, double? max) {
@@ -440,8 +454,8 @@ List<SavedReceipt> sortReceipts(List<SavedReceipt> items, SortOption sort) {
   return sorted;
 }
 
-// NEW: expenses have no `title` — vendor stands in for the alphabetical
-// sort, and `amount` stands in for grandTotal/amountPaid.
+// Expenses have no `title` — vendor stands in for the alphabetical sort,
+// and `amount` stands in for grandTotal/amountPaid.
 List<ExpenseEntry> sortExpenses(List<ExpenseEntry> items, SortOption sort) {
   final sorted = List<ExpenseEntry>.from(items);
   switch (sort) {

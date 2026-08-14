@@ -3,27 +3,69 @@
 // One unified screen for SavedInvoice / SavedQuote / SavedReceipt, matched to
 // the shape of those models exactly as defined in lib/models/*.dart.
 //
-// FIX (this pass): PDF / Excel / CSV export in the options sheet was
+// PDF PREVIEW FIX (this pass): _handleFullPreview now also passes the real
+// InvoiceData (widget.invoice?.data, null for demo/quote/receipt) through to
+// DocumentPdfPreviewScreen as `invoiceData:`. That screen uses it to render
+// the actual A4 Executive template instead of its generic mockup card —
+// see document_pdf_preview_screen.dart for the rendering-side change.
+// Nothing else in this file changed for this pass.
+//
+// THEME-MATCH REDESIGN PASS (earlier update): DocumentDetailHeader now always
+// renders on the app's navy hero gradient (kHeroGradient, same colors as
+// the home screen's hero banner) instead of a separate flat/blurred color
+// per branch — see detail/document_detail_header.dart for the full
+// rationale. The only change needed here is _buildSliverAppBar's
+// `barColor`: it used to switch between a logo-only dark navy
+// (kDetailLogoHeaderColor) and the per-document accent color. Since the
+// header itself is now navy in both branches, the collapsed/pinned
+// SliverAppBar bar should match that same navy in both branches too —
+// otherwise the bar would flash to the accent color on scroll while the
+// header content sits on navy. Now sourced from kHeroGradient[0] (the
+// header's own constant) so the two can never drift out of sync again.
+//
+// DETAIL REDESIGN PASS (earlier update): two things pulled out into
+// lib/screens/saved_invoice_details_section/detail/ to keep this file
+// from growing unbounded, and to fix a real overflow bug:
+//   - The header background (_HeaderBackground) is now
+//     DocumentDetailHeader (detail/document_detail_header.dart). The old
+//     header packed a logo + status pill + title + type/date row into a
+//     FIXED expandedHeight: 170 regardless of whether a logo was present,
+//     which reliably overflowed ("BOTTOM OVERFLOWED BY N PIXELS") on any
+//     document with a logo. _buildSliverAppBar now calls
+//     DocumentDetailHeader.heightFor(hasLogo:) to size expandedHeight
+//     correctly per branch. The logo itself is also no longer squeezed
+//     into a small 56x56 square — it now renders as a full-width,
+//     contain-fit banner across the top of the header, so the whole
+//     business logo is visible.
+//   - A new DocumentStatusStatsCard (detail/document_detail_status_card.
+//     dart) sits between the Total/Line Items stat row and the Document
+//     preview card — a large, prominent status block (Paid/Partial/
+//     Unpaid/Overdue for invoices, Accepted/Declined/Sent/Expired/Draft
+//     for quotes, Issued/Refunded for receipts) with a plain-English
+//     description, the relevant due/expires/paid date, and — for an
+//     overdue invoice or a still-sent quote — a computed day-count
+//     ("3 days overdue" / "6 days left"). Previously status only showed
+//     as a small pill in the header; this is the first place on the
+//     screen where it's the unmissable headline it should be for a
+//     financial document.
+//
+// Everything else in this header comment block is unchanged from the
+// previous pass — see prior history for the Edit-wiring, convert,
+// rename/delete, and per-type export dispatch notes (all preserved
+// below).
+//
+// FIX (earlier pass): PDF / Excel / CSV export in the options sheet was
 // previously invoice-only — _handleDownloadPdf, _handleSharePdf,
 // _handleExportXlsx, and _handleExportCsv all early-returned with an
 // "isn't built yet" snackbar for quotes and receipts. QuotePdfService,
-// ReceiptPdfService (lib/services/) and the newly-added
-// QuoteExportService, ReceiptExportService (lib/export/) already exist and
-// mirror InvoicePdfService/InvoiceExportService exactly, so all four
-// handlers now dispatch on widget.type instead of hard-coding the invoice
-// path. Filenames/snackbars/error handling are unchanged in shape — same
-// try/catch, same "Saved to $path" / "Couldn't generate..." messages,
-// just routed to the right service per document type.
+// ReceiptPdfService (lib/services/) and QuoteExportService,
+// ReceiptExportService (lib/export/) mirror InvoicePdfService/
+// InvoiceExportService exactly, so all four handlers dispatch on
+// widget.type instead of hard-coding the invoice path.
 //
-// FIX (this pass, build error): the receipt branch of _liveState() mapped
-// `qty: i.qty`, but LineItem (lib/models/invoice_data.dart) only exposes
-// `quantity` — there's no `qty` getter, so this failed to compile. Every
-// other branch (invoice, quote, demo) already used `i.quantity` correctly;
-// the receipt branch now matches.
-//
-// Everything else in this header comment block is unchanged from the
-// previous pass — see prior history for the logo-header, Edit-wiring,
-// convert, rename/delete notes.
+// FIX (earlier pass, build error): the receipt branch of _liveState()
+// mapped `qty: i.qty`, but LineItem only exposes `quantity` — fixed to
+// match the other branches.
 // -----------------------------------------------------------------------------
 
 import 'dart:io';
@@ -50,6 +92,8 @@ import 'document_pdf_preview_screen.dart';
 import 'invoice_editable_canvas_screen.dart';
 import 'quote_editable_canvas_screen.dart';
 import 'receipt_editable_canvas_screen.dart';
+import 'detail/document_detail_header.dart';
+import 'detail/document_detail_status_card.dart';
 
 // -----------------------------------------------------------------------------
 // Small per-type status mapping (duplicated intentionally from
@@ -126,13 +170,6 @@ String _typeLabel(DocType type) {
     case DocType.receipt: return 'Receipt';
   }
 }
-
-// Neutral, formal dark shade used for the header when a business logo is
-// shown in place of the accent gradient — matches the app's existing dark
-// card color (0xFF1E2235 used throughout doc_cards.dart / stat cards) so
-// the logo header reads as part of the same visual system rather than an
-// unrelated dark patch.
-const Color _kLogoHeaderColor = Color(0xFF1A1F2E);
 
 // -----------------------------------------------------------------------------
 // DemoLineItem — plain line item shape for .demo(), no model dependency
@@ -285,8 +322,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
 
   // Resolves to a real, existing logo File, or null if there is none / the
   // path is stale. Centralized here (rather than inline in the header
-  // widget) so both the SliverAppBar's backgroundColor decision and
-  // _HeaderBackground's rendering agree on whether "logo mode" is active.
+  // widget) so both the SliverAppBar's expandedHeight/backgroundColor
+  // decision and DocumentDetailHeader's rendering agree on whether "logo
+  // mode" is active.
   File? _resolveLogoFile(String? path) {
     if (path == null || path.isEmpty) return null;
     final file = File(path);
@@ -323,10 +361,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   // call, since that method isn't confirmed to exist — the list itself is
   // confirmed, from saved_documents_containers.dart). In demo mode, skips
   // providers entirely and returns the plain demo values passed to .demo().
-  //
-  // FIX (this pass): added `logoPath` to the state shape, sourced from
-  // each type's businessLogoPath; always null for demo documents (no logo
-  // field on .demo()). paidDate (previous pass) unchanged.
   ({String title, String templateName, DateTime createdAt, DateTime lastEditedAt,
     int completionPercent, String statusLabel, Color statusColor, IconData statusIcon,
     double total, String currency, List<({String desc, double qty, double unitPrice, double total})> items,
@@ -379,8 +413,10 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           businessName: inv.data.businessName,
           clientName: inv.data.clientName,
           primaryDate: inv.data.issueDate,
-          secondaryDateLabel: 'Due',
-          secondaryDate: inv.data.dueDate,
+          secondaryDateLabel: inv.data.paymentStatus == PaymentStatus.paid ? 'Paid' : 'Due',
+          secondaryDate: inv.data.paymentStatus == PaymentStatus.paid
+              ? (inv.data.paidDate != null ? _formatDate(inv.data.paidDate!) : '—')
+              : inv.data.dueDate,
           notes: inv.data.notes,
           paidDate: inv.data.paidDate,
           logoPath: inv.data.businessLogoPath,
@@ -429,8 +465,8 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           businessName: r.data.businessName,
           clientName: r.data.clientName,
           primaryDate: r.data.paymentDate,
-          secondaryDateLabel: null,
-          secondaryDate: null,
+          secondaryDateLabel: 'Paid',
+          secondaryDate: r.data.paymentDate.isEmpty ? '—' : r.data.paymentDate,
           notes: r.data.notes,
           paidDate: null,
           logoPath: r.data.businessLogoPath,
@@ -455,6 +491,16 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     const SizedBox(height: 20),
                     _buildStatsRow(context, state),
                     const SizedBox(height: 20),
+                    DocumentStatusStatsCard(
+                      type: widget.type,
+                      statusLabel: state.statusLabel,
+                      statusColor: state.statusColor,
+                      statusIcon: state.statusIcon,
+                      accent: _accent,
+                      secondaryDateLabel: state.secondaryDateLabel,
+                      secondaryDateValue: state.secondaryDate,
+                    ),
+                    const SizedBox(height: 20),
                     _buildPreviewCard(context, state),
                     const SizedBox(height: 20),
                     _buildLineItemsCard(context, state),
@@ -475,10 +521,16 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   // --- Sliver App Bar --------------------------------------------------------
   Widget _buildSliverAppBar(BuildContext context, dynamic state) {
     final logoFile = _resolveLogoFile(state.logoPath as String?);
-    final barColor = logoFile != null ? _kLogoHeaderColor : _accent;
+    final hasLogo = logoFile != null;
+    // DocumentDetailHeader always renders on the app's navy hero gradient
+    // now (both branches — see detail/document_detail_header.dart), so
+    // the collapsed/pinned bar uses that same navy rather than switching
+    // to the per-document accent color. Sourced from the header's own
+    // kHeroGradient constant so the two can never drift apart.
+    final barColor = kHeroGradient[0];
 
     return SliverAppBar(
-      expandedHeight: 170,
+      expandedHeight: DocumentDetailHeader.heightFor(hasLogo: hasLogo),
       pinned: true,
       backgroundColor: barColor,
       elevation: 0,
@@ -515,7 +567,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
         const SizedBox(width: 4),
       ],
       flexibleSpace: FlexibleSpaceBar(
-        background: _HeaderBackground(
+        background: DocumentDetailHeader(
           accentColor: _accent,
           logoFile: logoFile,
           title: _currentTitle,
@@ -829,8 +881,11 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   }
 
   // Wired to DocumentPdfPreviewScreen. Works for BOTH real and demo
-  // documents — it's a plain-values mockup screen, so the already-
-  // normalized `state` (identical shape for demo/real) feeds it directly.
+  // documents — the already-normalized `state` (identical shape for
+  // demo/real) feeds the plain-values fields directly. For real invoices
+  // (not demo), the actual InvoiceData is also passed as `invoiceData:` so
+  // the preview screen can render the real A4 Executive template instead
+  // of its generic mockup — see document_pdf_preview_screen.dart.
   void _handleFullPreview(BuildContext context, dynamic state) {
     Navigator.push(
       context,
@@ -855,6 +910,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           ],
           total: state.total,
           notes: state.notes,
+          invoiceData: (!widget.isDemo && widget.type == DocType.invoice)
+              ? widget.invoice!.data
+              : null,
           onDownloadPdf: () => _handleDownloadPdf(context),
           onSharePdf: () => _handleSharePdf(context),
         ),
@@ -862,13 +920,9 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // FIX (this pass): now dispatches on widget.type instead of only ever
-  // handling invoices. Quote/receipt branches use QuotePdfService /
-  // ReceiptPdfService, which mirror InvoicePdfService's
-  // generateAndDownloadPDF signature exactly (SavedQuote/SavedReceipt in,
-  // Downloads path out). Demo documents still show the "isn't built yet"
-  // message, since there's no SavedInvoice/Quote/Receipt to hand the
-  // service in that mode.
+  // Dispatches on widget.type. Quote/receipt branches use
+  // QuotePdfService/ReceiptPdfService, which mirror InvoicePdfService's
+  // generateAndDownloadPDF signature exactly.
   Future<void> _handleDownloadPdf(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
@@ -878,13 +932,22 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
       final String path;
       switch (widget.type) {
         case DocType.invoice:
-          path = await InvoicePdfService().generateAndDownloadPDF(widget.invoice!);
+          path = await InvoicePdfService().generateAndDownloadPDF(
+            widget.invoice!,
+            layoutTemplateId: widget.invoice!.data.layoutTemplateId,
+          );
           break;
         case DocType.quote:
-          path = await QuotePdfService().generateAndDownloadPDF(widget.quote!);
+          path = await QuotePdfService().generateAndDownloadPDF(
+            widget.quote!,
+            layoutTemplateId: widget.quote!.data.layoutTemplateId,
+          );
           break;
         case DocType.receipt:
-          path = await ReceiptPdfService().generateAndDownloadPDF(widget.receipt!);
+          path = await ReceiptPdfService().generateAndDownloadPDF(
+            widget.receipt!,
+            layoutTemplateId: widget.receipt!.data.layoutTemplateId,
+          );
           break;
       }
       if (!context.mounted) return;
@@ -903,7 +966,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // FIX (this pass): same dispatch pattern as _handleDownloadPdf above.
   Future<void> _handleSharePdf(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
@@ -912,13 +974,22 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     try {
       switch (widget.type) {
         case DocType.invoice:
-          await InvoicePdfService().generateAndSharePDF(widget.invoice!);
+          await InvoicePdfService().generateAndSharePDF(
+            widget.invoice!,
+            layoutTemplateId: widget.invoice!.data.layoutTemplateId,
+          );
           break;
         case DocType.quote:
-          await QuotePdfService().generateAndSharePDF(widget.quote!);
+          await QuotePdfService().generateAndSharePDF(
+            widget.quote!,
+            layoutTemplateId: widget.quote!.data.layoutTemplateId,
+          );
           break;
         case DocType.receipt:
-          await ReceiptPdfService().generateAndSharePDF(widget.receipt!);
+          await ReceiptPdfService().generateAndSharePDF(
+            widget.receipt!,
+            layoutTemplateId: widget.receipt!.data.layoutTemplateId,
+          );
           break;
       }
     } catch (e) {
@@ -931,9 +1002,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // FIX (this pass): dispatches on widget.type using the new
-  // QuoteExportService / ReceiptExportService, which mirror
-  // InvoiceExportService's exportSingleXlsxToDownloads signature exactly.
   Future<void> _handleExportXlsx(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
@@ -968,8 +1036,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // FIX (this pass): same dispatch pattern as _handleExportXlsx above, for
-  // .csv via exportSingleCsvToDownloads.
   Future<void> _handleExportCsv(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
@@ -1004,11 +1070,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  // Builds a fresh InvoiceData from this quote via
-  // convertQuoteDataToInvoiceData(), saves it as a brand-new SavedInvoice
-  // via InvoiceProvider.addConvertedInvoice() (doesn't touch whatever's
-  // open in the invoice editor), then navigates to that new invoice's
-  // detail screen. Only reachable when widget.type == DocType.quote.
   void _handleConvertQuoteToInvoice(BuildContext context) {
     if (widget.isDemo || widget.quote == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
@@ -1035,8 +1096,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
-  // Same idea as above but for Invoice -> Receipt. Only reachable when
-  // widget.type == DocType.invoice.
   Future<void> _handleConvertInvoiceToReceipt(BuildContext context) async {
     if (widget.isDemo || widget.invoice == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
@@ -1099,7 +1158,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                   _showRenameDialog(context);
                 },
               ),
-              // Convert to Invoice — quotes only.
               if (widget.type == DocType.quote)
                 DetailSheetOption(
                   icon: Icons.receipt_long_rounded,
@@ -1110,7 +1168,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     _handleConvertQuoteToInvoice(context);
                   },
                 ),
-              // Convert to Receipt — invoices only.
               if (widget.type == DocType.invoice)
                 DetailSheetOption(
                   icon: Icons.receipt_rounded,
@@ -1121,7 +1178,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     _handleConvertInvoiceToReceipt(context);
                   },
                 ),
-              // Download / Share PDF — now wired for all three document types.
               DetailSheetOption(
                 icon: Icons.download_rounded,
                 label: 'Download PDF',
@@ -1140,7 +1196,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                   _handleSharePdf(context);
                 },
               ),
-              // Export as Excel / CSV — now wired for all three document types.
               DetailSheetOption(
                 icon: Icons.grid_on_rounded,
                 label: 'Export as Excel',
@@ -1347,164 +1402,6 @@ class _SecondaryActionButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// _HeaderBackground
-//
-// Two distinct visual branches:
-//   - Logo branch: flat neutral-dark background (_kLogoHeaderColor), the
-//     logo shown large in a white rounded card (so logos with transparent
-//     backgrounds or light artwork stay legible regardless of image
-//     content), status pill / title / type row / date row unchanged below
-//     it. No decorative circles or ghost type-icon here — logo mode is
-//     meant to read as "this business's letterhead", not a branded app
-//     card, so the decoration is dropped in favor of the logo doing that
-//     job itself.
-//   - No-logo branch: unchanged from before — accent gradient, decorative
-//     circles, ghost type icon.
-// -----------------------------------------------------------------------------
-class _HeaderBackground extends StatelessWidget {
-  final Color accentColor;
-  final File? logoFile;
-  final String title;
-  final String typeLabel;
-  final IconData typeIcon;
-  final String statusLabel;
-  final Color statusColor;
-  final IconData statusIcon;
-  final DateTime createdAt;
-
-  const _HeaderBackground({
-    required this.accentColor,
-    required this.logoFile,
-    required this.title,
-    required this.typeLabel,
-    required this.typeIcon,
-    required this.statusLabel,
-    required this.statusColor,
-    required this.statusIcon,
-    required this.createdAt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const double topInset = 56;
-    final hasLogo = logoFile != null;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: hasLogo
-            ? null
-            : LinearGradient(
-                colors: [accentColor, accentColor.withValues(alpha: 0.72)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-        color: hasLogo ? _kLogoHeaderColor : null,
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (!hasLogo) ...[
-            Positioned(
-              top: -50, right: -50,
-              child: Container(
-                width: 160, height: 160,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)),
-              ),
-            ),
-            Positioned(
-              bottom: -20, left: -20,
-              child: Container(
-                width: 90, height: 90,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
-              ),
-            ),
-            Positioned(
-              right: -10, bottom: -10,
-              child: Icon(typeIcon, size: 110, color: Colors.white.withValues(alpha: 0.06)),
-            ),
-          ],
-          Padding(
-            padding: const EdgeInsets.only(top: topInset),
-            child: Align(
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (hasLogo) ...[
-                    Container(
-                      width: 56, height: 56,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: Image.file(logoFile!, fit: BoxFit.contain),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor.withValues(alpha: 0.45), width: 1),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(statusIcon, size: 10, color: statusColor),
-                        const SizedBox(width: 4),
-                        Text(statusLabel,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor, letterSpacing: 0.3)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4, height: 1.2),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(typeIcon, size: 10, color: Colors.white.withValues(alpha: 0.85)),
-                            const SizedBox(width: 4),
-                            Text(typeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Icon(Icons.calendar_today_rounded, size: 10, color: Colors.white.withValues(alpha: 0.55)),
-                      const SizedBox(width: 4),
-                      Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.65), fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

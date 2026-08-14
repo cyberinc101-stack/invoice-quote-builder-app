@@ -1,6 +1,17 @@
 // lib/screens/invoice_create_section/step_create_invoice.dart
 //
-// REWRITE (this pass): This screen used to build its own local `Invoice`
+// TEMPLATE PASS (this update): _syncToProvider() now also carries
+// widget.layoutTemplateId (the visual design picked in
+// InvoiceTemplateChooserScreen) and the chosen BusinessInfo template's
+// logo offset/scale/shape into the InvoiceData it builds. Previously
+// layoutTemplateId was accepted as a constructor param but never actually
+// written anywhere — Customise's live preview, the full preview screen,
+// and the PDF/mockup preview all rendered as Executive regardless of what
+// was picked here. Falls back to whatever's already on the provider (same
+// pattern every other field on this screen already uses), so going
+// Customise -> Back -> this step doesn't reset the chosen design.
+//
+// REWRITE (earlier pass): This screen used to build its own local `Invoice`
 // model (from client_info.dart via invoice_models.dart aliases) into a
 // `buildInvoice()` method that was never actually called by anything —
 // meaning everything typed here (invoice number, customer, line items,
@@ -18,7 +29,7 @@
 //     before widget.onNext(), so by the time Customise reads
 //     provider.invoiceData for its live preview, this step's data is in it.
 //
-// DROPPED (this pass): Barcode Number and Thank You Message fields are
+// DROPPED (earlier pass): Barcode Number and Thank You Message fields are
 // removed. Neither exists on InvoiceData, and neither was ever read by
 // InvoicePdfService or InvoiceExportService — the old buildInvoice() that
 // used them was unused, so this data was already going nowhere. Rather
@@ -239,7 +250,12 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
   // Builds a full InvoiceData from everything on this step and writes it
   // via provider.updateInvoiceData(). paymentStatus and fontFamily aren't
   // edited on this step, so they're carried over from whatever's currently
-  // on the provider rather than reset to defaults.
+  // on the provider rather than reset to defaults. layoutTemplateId and
+  // the business logo's offset/scale/shape are new (this pass): the
+  // former comes from widget.layoutTemplateId (set by
+  // InvoiceTemplateChooserScreen) falling back to whatever's already on
+  // the provider; the latter comes from the selected BusinessInfo
+  // template's own logo positioning, same fallback pattern.
   // ---------------------------------------------------------------------------
   void _syncToProvider() {
     final provider = context.read<InvoiceProvider>();
@@ -252,6 +268,10 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       businessPhone: businessInfo?.phone ?? current.businessPhone,
       businessAddress: businessInfo?.address ?? current.businessAddress,
       businessLogoPath: businessInfo?.logoPath ?? current.businessLogoPath,
+      businessLogoOffsetDx: businessInfo?.logoOffsetDx ?? current.businessLogoOffsetDx,
+      businessLogoOffsetDy: businessInfo?.logoOffsetDy ?? current.businessLogoOffsetDy,
+      businessLogoScale: businessInfo?.logoScale ?? current.businessLogoScale,
+      businessLogoShape: businessInfo?.logoShape ?? current.businessLogoShape,
       clientName: _custNameCtrl.text.trim(),
       clientEmail: _custEmailCtrl.text.trim(),
       clientPhone: _custPhoneCtrl.text.trim(),
@@ -267,6 +287,7 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       paymentStatus: current.paymentStatus,
       fontFamily: current.fontFamily,
       colorScheme: _colorScheme,
+      layoutTemplateId: widget.layoutTemplateId ?? current.layoutTemplateId,
     );
 
     provider.updateInvoiceData(data);

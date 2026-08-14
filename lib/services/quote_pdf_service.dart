@@ -3,16 +3,25 @@
 // Generates and exports quote PDFs. Mirrors InvoicePdfService exactly,
 // built directly against the real QuoteData/SavedQuote model (businessName,
 // clientName, lineItems, subtotal/discountAmount/taxAmount/grandTotal
-// getters, QuoteColor scheme) — no dispatcher/layout switch since quotes
-// only have one layout so far.
+// getters, QuoteColor scheme).
 //
-// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// FIX (this pass): generateAndDownloadPDF / generateAndSharePDF /
+// generatePdfBytes now accept an optional [layoutTemplateId] parameter,
+// matching InvoicePdfService's signature exactly (previously missing —
+// caused a "No named parameter" build error at every call site that
+// passed it). _buildPdf is now a small dispatcher, mirroring
+// InvoicePdfService's _buildPdf: the original single-layout body is
+// renamed to _buildExecutivePdf and is the default/only case for now.
+// Adding a second quote layout later is: write _buildXxxPdf() + add a
+// case to the switch below — identical pattern to InvoicePdfService.
+//
+// FOLLOW UP (earlier pass): generateAndSharePDF gained an optional
 // [shareText] parameter — pre-filled message body used by the Alerts
 // screen's "Follow Up" action. Omitted (null) for every other caller.
 //
 // NEW (earlier pass): generatePdfBytes() — same purpose as the identically-named
 // method added to InvoicePdfService: raw bytes for FolderDownloadService's
-// ZIP bundling, no file written. generateAndDownloadPDF below is unchanged.
+// ZIP bundling, no file written.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -27,8 +36,13 @@ import '../models/quote_data.dart';
 class QuotePdfService {
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  Future<String> generateAndDownloadPDF(SavedQuote quote) async {
-    final bytes = await _buildPdf(quote);
+  /// [layoutTemplateId] selects the visual layout (1 = Executive, the only
+  /// one built so far). Null or unrecognized falls back to Executive.
+  Future<String> generateAndDownloadPDF(
+    SavedQuote quote, {
+    int? layoutTemplateId,
+  }) async {
+    final bytes = await _buildPdf(quote, layoutTemplateId: layoutTemplateId);
     final dir   = await _downloadsDir();
     final file  = File(
         '${dir.path}/Quote_${quote.data.quoteNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf');
@@ -39,8 +53,12 @@ class QuotePdfService {
   /// [shareText] is an optional pre-filled message body (used by the
   /// Alerts screen's "Follow Up" action) — omitted entirely for normal
   /// shares, unchanged from before this pass.
-  Future<void> generateAndSharePDF(SavedQuote quote, {String? shareText}) async {
-    final bytes = await _buildPdf(quote);
+  Future<void> generateAndSharePDF(
+    SavedQuote quote, {
+    int? layoutTemplateId,
+    String? shareText,
+  }) async {
+    final bytes = await _buildPdf(quote, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
     final file  = File(
         '${dir.path}/Quote_${quote.data.quoteNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf');
@@ -53,13 +71,31 @@ class QuotePdfService {
   }
 
   /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService.
-  Future<Uint8List> generatePdfBytes(SavedQuote quote) {
-    return _buildPdf(quote);
+  Future<Uint8List> generatePdfBytes(
+    SavedQuote quote, {
+    int? layoutTemplateId,
+  }) {
+    return _buildPdf(quote, layoutTemplateId: layoutTemplateId);
   }
 
-  // ── PDF builder ──────────────────────────────────────────────────────────
+  // ── Layout dispatcher ───────────────────────────────────────────────────────
+  //
+  // Add a case here + a new _buildXxxPdf() method for each future layout.
+  // Mirrors InvoicePdfService._buildPdf exactly.
+  Future<Uint8List> _buildPdf(
+    SavedQuote quote, {
+    int? layoutTemplateId,
+  }) async {
+    switch (layoutTemplateId) {
+      case 1:
+      default:
+        return _buildExecutivePdf(quote);
+    }
+  }
 
-  Future<Uint8List> _buildPdf(SavedQuote quote) async {
+  // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
+
+  Future<Uint8List> _buildExecutivePdf(SavedQuote quote) async {
     final pdf   = pw.Document();
     final d     = quote.data;
     final color = _pdfColor(d.colorScheme);

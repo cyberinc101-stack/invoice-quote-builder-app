@@ -2,12 +2,38 @@
 // lib/alerts/notifications/notification_service.dart
 //
 // Wraps flutter_local_notifications + timezone for scheduling custom
-// reminders AND document alerts (overdue invoice / quote expiring /
-// draft nudge, via DocumentAlertScheduler) as real push notifications.
+// reminders, document alerts (overdue invoice / quote expiring / draft
+// nudge, via DocumentAlertScheduler), AND the weekly digest (via
+// WeeklyDigestScheduler) as real push notifications.
 //
-// TAP-THROUGH (earlier pass): notifications carry a payload, and the
-// plugin's onDidReceiveNotificationResponse callback routes taps back
-// into the app. Two paths are covered: (1) the app is already running
+// WEEKLY DIGEST PASS (this update): added scheduleWeeklyDigest(), which
+// uses zonedSchedule's matchDateTimeComponents:
+// DateTimeComponents.dayOfWeekAndTime — this tells the OS "fire every
+// week on this weekday at this time," so it's a true recurring
+// notification scheduled ONCE and never needs to be re-scheduled on every
+// app open the way document alerts do. Deliberately generic body text
+// ("Your weekly summary is ready") rather than embedding actual numbers —
+// a notification scheduled ahead of time has no way to know next Monday's
+// real income/expense totals, so faking dynamic content in would mean
+// showing stale or wrong figures. The notification's job is just to pull
+// the user back into the app; Reports renders the real, live numbers once
+// they're actually there.
+//
+// Payload routing gets a third branch alongside the existing "doc:" (a
+// document alert) and bare-reminder-id (legacy/custom reminder) cases:
+// payloads starting with "digest:" route through the new
+// onDigestTapped callback, set by main.dart to push straight to
+// ReportsScreen. Falls back to the same _pendingLaunchPayload stash used
+// by the other two paths if the Navigator isn't wired up yet (cold start
+// via notification tap).
+//
+// Everything else below (init/permissions/reminder scheduling/tap
+// routing for doc: and reminder payloads) is UNCHANGED from the previous
+// pass — see prior header comments, preserved below.
+//
+// TAP-THROUGH: notifications carry a payload, and the plugin's
+// onDidReceiveNotificationResponse callback routes taps back into the
+// app. Two paths are covered: (1) the app is already running
 // (foreground/background) — the plugin's callback fires directly; (2) the
 // app was fully terminated and got launched BY tapping the notification —
 // getNotificationAppLaunchDetails() catches that on the next init() and
@@ -15,32 +41,27 @@
 // Navigator exists (main.dart does this in a post-frame callback right
 // after runApp()).
 //
-// PAYLOAD ROUTING (this pass): DocumentAlertScheduler now schedules
-// notifications too, using payloads shaped "doc:<category>:<docId>"
-// (e.g. "doc:overdueInvoice:abc123") instead of a bare reminder id. This
-// service used to assume every payload WAS a reminder id and always
-// routed through onReminderTapped -> RemindersScreen, which would have
-// sent a tapped invoice-overdue notification to the wrong screen. _handleTap
-// now branches on the "doc:" prefix: reminder payloads still go through
-// onReminderTapped(reminderId) exactly as before (main.dart's existing
-// wiring needs no changes), and doc payloads go through the new
-// onDocumentAlertTapped(category, docId) — set this in main.dart to push
-// the right invoice/quote detail screen. If onDocumentAlertTapped isn't
-// set, a doc tap is a silent no-op rather than crashing or being
-// misrouted to Reminders.
+// PAYLOAD ROUTING: DocumentAlertScheduler schedules notifications using
+// payloads shaped "doc:<category>:<docId>" (e.g.
+// "doc:overdueInvoice:abc123"). _handleTap branches on the "doc:" prefix:
+// reminder payloads go through onReminderTapped(reminderId) exactly as
+// before, doc payloads go through onDocumentAlertTapped(category, docId),
+// and (this pass) digest payloads go through onDigestTapped(). If the
+// relevant callback isn't set, a tap is a silent no-op rather than
+// crashing or being misrouted.
 //
-// PERMISSION VISIBILITY (earlier pass): added notificationsEnabled, so the
-// Add Reminder sheet can warn the user up front if push notifications are
-// blocked at the OS level, instead of silently scheduling something that
-// will never fire.
+// PERMISSION VISIBILITY: added notificationsEnabled, so the Add Reminder
+// sheet can warn the user up front if push notifications are blocked at
+// the OS level, instead of silently scheduling something that will never
+// fire.
 //
-// TIMEZONE FIX (earlier pass): DateTime.now().timeZoneName returns a
-// platform abbreviation like "NZST" or "PST", not an IANA identifier —
-// passing that straight into tz.getLocation() throws on virtually every
-// real device, which was silently caught and fell back to UTC every
-// single time. Fixed by using the flutter_timezone package to get the
-// device's real IANA timezone (e.g. "Pacific/Auckland") instead of
-// guessing from timeZoneName.
+// TIMEZONE FIX: DateTime.now().timeZoneName returns a platform
+// abbreviation like "NZST" or "PST", not an IANA identifier — passing
+// that straight into tz.getLocation() throws on virtually every real
+// device, which was silently caught and fell back to UTC every single
+// time. Fixed by using the flutter_timezone package to get the device's
+// real IANA timezone (e.g. "Pacific/Auckland") instead of guessing from
+// timeZoneName.
 //
 // Requires: flutter pub add flutter_timezone
 
@@ -60,7 +81,7 @@ class NotificationService {
 
   /// Set by main.dart once the root Navigator exists. Called with the
   /// tapped notification's payload for a CUSTOM REMINDER (the reminder's
-  /// id) — unchanged from before this pass.
+  /// id).
   void Function(String reminderId)? onReminderTapped;
 
   /// Set by main.dart once the root Navigator exists. Called when a
@@ -70,6 +91,12 @@ class NotificationService {
   /// [docId] is the invoice/quote/receipt id — use these to push the
   /// right detail screen.
   void Function(String category, String docId)? onDocumentAlertTapped;
+
+  /// Set by main.dart once the root Navigator exists. Called when the
+  /// WEEKLY DIGEST notification is tapped — no id/category payload, since
+  /// there's only ever one of these; main.dart should just push
+  /// ReportsScreen.
+  void Function()? onDigestTapped;
 
   String? _pendingLaunchPayload;
 
@@ -132,8 +159,8 @@ class NotificationService {
   }
 
   /// Parses a raw payload and routes it. Doc alerts are shaped
-  /// "doc:<category>:<docId>"; anything else is treated as a legacy bare
-  /// reminder id, unchanged from before this pass.
+  /// "doc:<category>:<docId>"; the digest is shaped "digest:weekly";
+  /// anything else is treated as a legacy bare reminder id.
   void _handleTap(String payload) {
     if (payload.startsWith('doc:')) {
       final parts = payload.split(':');
@@ -142,6 +169,15 @@ class NotificationService {
       final docId = parts.sublist(2).join(':'); // docId itself could theoretically contain ':'
       if (onDocumentAlertTapped != null) {
         onDocumentAlertTapped!(category, docId);
+      } else {
+        _pendingLaunchPayload = payload;
+      }
+      return;
+    }
+
+    if (payload.startsWith('digest:')) {
+      if (onDigestTapped != null) {
+        onDigestTapped!();
       } else {
         _pendingLaunchPayload = payload;
       }
@@ -229,6 +265,71 @@ class NotificationService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('NotificationService: failed to schedule "$title" — $e');
+      }
+    }
+  }
+
+  /// Schedules a TRUE recurring weekly notification — fires every week on
+  /// [weekday] (1 = Monday ... 7 = Sunday, matching DateTime's own
+  /// weekday convention) at [hour]:[minute] local time, indefinitely,
+  /// without ever needing to be re-scheduled. Uses
+  /// matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, which
+  /// tells the OS itself to repeat the notification on that weekly
+  /// cadence — unlike scheduleReminder() above (a single one-shot future
+  /// DateTime), this is set once and keeps firing on its own.
+  ///
+  /// Calling this again with the same [id] replaces the existing
+  /// schedule (the plugin overwrites by id), so callers don't need to
+  /// cancel first when just re-confirming the same schedule — e.g.
+  /// WeeklyDigestScheduler.sync() calls this on every app launch as a
+  /// cheap idempotent "make sure it's still scheduled" step.
+  Future<void> scheduleWeeklyDigest({
+    required int id,
+    required String title,
+    required String body,
+    required int weekday,
+    required int hour,
+    required int minute,
+    String? payload,
+  }) async {
+    if (!_initialized) await init();
+
+    // First future occurrence of the target weekday/time — the OS then
+    // takes over repeating it weekly from there via
+    // matchDateTimeComponents, so this only needs to be "some point in
+    // the future on the right weekday," not recomputed each week.
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    while (scheduled.weekday != weekday || !scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    const androidDetails = AndroidNotificationDetails(
+      'digest_channel',
+      'Weekly Summary',
+      channelDescription: 'A weekly summary of your invoicing activity',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduled,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: payload,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('NotificationService: failed to schedule weekly digest — $e');
       }
     }
   }

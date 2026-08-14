@@ -1,7 +1,29 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// GROUPED DOCUMENTS + SHARED LAYOUT (this pass): "Documents in this
+// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// changes. The screen used to open with a solid teal AppBar and a plain
+// flat row for the period/folder/data-source controls — visually
+// inconsistent with HomeScreen's dark-gradient hero banner. Now:
+//   - AppBar is a plain default (theme) app bar, same as Home's, instead
+//     of a hardcoded teal background/white foreground.
+//   - The period selector, folder scope selector, and
+//     DataSourceToggleRow are wrapped in the new ReportsHeroCard
+//     (reports_widgets.dart) — the same navy gradient/radius/shadow
+//     treatment as HomeScreen's hero banner — with their text/icon colors
+//     switched to white/white70 to sit on that dark background.
+//   - DataSourceToggleRow's call site dropped the now-removed `accent`
+//     param (see reports_widgets.dart header comment); the chips now
+//     carry their own per-type colors instead.
+// Everything below the hero card (trend chart, stat cards, tax card,
+// client statements, top clients, category breakdown, document list,
+// status breakdown) — and every computation feeding them — is
+// byte-for-byte unchanged from the previous pass.
+//
+// ── Everything else below is unchanged from the previous pass — see
+// original header comments preserved below. ──
+//
+// GROUPED DOCUMENTS + SHARED LAYOUT (earlier): "Documents in this
 // period" no longer owns its own local layout state (_docsLayoutMode is
 // gone) — ReportsDocumentSection now reads/writes the same SavedLayoutPrefs
 // preference Home's Saved Documents section uses, so picking Grid/List/
@@ -9,9 +31,6 @@
 // groups items into My Invoices/My Quotes/My Receipts/My Expenses with
 // headers, matching Home's layout exactly, instead of one flat filterable
 // list — see reports_document_list.dart for that change.
-//
-// ── Everything else below is unchanged from the previous pass — see
-// original header comments preserved below. ──
 //
 // TREND-CHART PASS (earlier): the static "6-month trend" TrendStrip
 // (reports_charts.dart) is retired and replaced by ReportsTrendChartCard
@@ -964,156 +983,154 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reports'),
-        backgroundColor: kReportsAccent,
-        foregroundColor: Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
         children: [
-          // ── Period selector — either month chevrons + label, or the
-          // active range label + a clear button. ─────────────────────
-          if (_isRangeActive)
-            Row(
+          // ── Hero card — period selector, folder scope, and the
+          // data-source toggle row, all inside the same dark gradient
+          // card HomeScreen's banner uses, so Reports opens with the
+          // same visual weight as Home instead of a flat teal AppBar. ──
+          ReportsHeroCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: _openMonthPicker,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Icon(Icons.date_range_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.5)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _rangeLabel(),
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
-                                overflow: TextOverflow.ellipsis,
+                // Period selector — either month chevrons + label, or the
+                // active range label + a clear button. White-on-dark
+                // styling since this now sits on the gradient card.
+                if (_isRangeActive)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: _openMonthPicker,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.date_range_rounded, size: 16, color: Colors.white70),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _rangeLabel(),
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                        tooltip: 'Clear range',
+                        onPressed: _clearRange,
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left_rounded, color: Colors.white70),
+                        onPressed: () => setState(() => _month = DateTime(_month.year, _month.month - 1)),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: _openMonthPicker,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _monthLabel(_month),
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.expand_more_rounded, size: 18, color: Colors.white54),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+                        onPressed: () => setState(() => _month = DateTime(_month.year, _month.month + 1)),
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  tooltip: 'Clear range',
-                  onPressed: _clearRange,
-                ),
-              ],
-            )
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left_rounded),
-                  onPressed: () => setState(() => _month = DateTime(_month.year, _month.month - 1)),
-                ),
+                const SizedBox(height: 10),
+
+                // Folder scope selector — white-on-dark translucent chip.
                 Material(
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(10),
-                    onTap: _openMonthPicker,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    onTap: () => _openFolderPicker(folderNames),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: _selectedFolder != null
+                            ? Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.2)
+                            : null,
+                      ),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            _monthLabel(_month),
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+                          const Icon(Icons.folder_rounded, size: 15, color: Colors.white70),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _selectedFolder ?? 'All folders',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const SizedBox(width: 4),
-                          Icon(Icons.expand_more_rounded, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+                          if (_selectedFolder != null)
+                            GestureDetector(
+                              onTap: () => setState(() => _selectedFolder = null),
+                              child: const Icon(Icons.close_rounded, size: 16, color: Colors.white70),
+                            )
+                          else
+                            const Icon(Icons.expand_more_rounded, size: 16, color: Colors.white54),
                         ],
                       ),
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right_rounded),
-                  onPressed: () => setState(() => _month = DateTime(_month.year, _month.month + 1)),
+                const SizedBox(height: 14),
+
+                DataSourceToggleRow(
+                  includeInvoices: prefs.includeInvoices,
+                  includeQuotes: prefs.includeQuotes,
+                  includeReceipts: prefs.includeReceipts,
+                  includeExpenses: prefs.includeExpenses,
+                  onInvoicesChanged: (v) => prefs.setIncludeInvoices(v),
+                  onQuotesChanged: (v) => prefs.setIncludeQuotes(v),
+                  onReceiptsChanged: (v) => prefs.setIncludeReceipts(v),
+                  onExpensesChanged: (v) => prefs.setIncludeExpenses(v),
                 ),
               ],
             ),
-          const SizedBox(height: 10),
-
-          // Folder scope selector — sits right under the period selector,
-          // above the data-source toggle row.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _openFolderPicker(folderNames),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                decoration: BoxDecoration(
-                  color: _selectedFolder != null
-                      ? kReportsAccent.withValues(alpha: 0.1)
-                      : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
-                  borderRadius: BorderRadius.circular(10),
-                  border: _selectedFolder != null
-                      ? Border.all(color: kReportsAccent.withValues(alpha: 0.4), width: 1.2)
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.folder_rounded,
-                      size: 15,
-                      color: _selectedFolder != null ? kReportsAccent : colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _selectedFolder ?? 'All folders',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _selectedFolder != null ? kReportsAccent : colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (_selectedFolder != null)
-                      GestureDetector(
-                        onTap: () => setState(() => _selectedFolder = null),
-                        child: Icon(Icons.close_rounded, size: 16, color: kReportsAccent),
-                      )
-                    else
-                      Icon(Icons.expand_more_rounded, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.4)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          DataSourceToggleRow(
-            includeInvoices: prefs.includeInvoices,
-            includeQuotes: prefs.includeQuotes,
-            includeReceipts: prefs.includeReceipts,
-            includeExpenses: prefs.includeExpenses,
-            accent: kReportsAccent,
-            onInvoicesChanged: (v) => prefs.setIncludeInvoices(v),
-            onQuotesChanged: (v) => prefs.setIncludeQuotes(v),
-            onReceiptsChanged: (v) => prefs.setIncludeReceipts(v),
-            onExpensesChanged: (v) => prefs.setIncludeExpenses(v),
           ),
           const SizedBox(height: 16),
 
           // Collapsible Net/Income/Expenses trend chart — 1W up to 10Y,
           // green/red % change badge, tap-and-drag scrub. Sits right below
-          // the data-source toggle chips and above the Income/Expenses/Net
-          // stat cards, so it reads as "here's the shape of the numbers
-          // below." Anchored on "today", not the period selector above
-          // (see _buildTrendPoints doc comment) — and shown regardless of
+          // the hero card and above the Income/Expenses/Net stat cards, so
+          // it reads as "here's the shape of the numbers below." Anchored
+          // on "today", not the period selector above (see
+          // _buildTrendPoints doc comment) — and shown regardless of
           // whether the selected month has data, since it isn't scoped to
           // that month anyway. Replaces the old static 6-month TrendStrip.
           ReportsTrendChartCard(

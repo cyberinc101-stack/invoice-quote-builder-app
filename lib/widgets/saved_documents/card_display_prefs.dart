@@ -13,9 +13,21 @@
 // card's shape (list/grid/compactGrid/compact). A user can be on Grid
 // layout with the logo hidden, or List layout with everything showing —
 // the two concerns are independent.
+//
+// CARD STYLE PASS (this update): added `cardStyle` (CardStyle.standard /
+// CardStyle.logoBanner) — a separate axis from the field switches above.
+// Standard is the existing side-by-side logo + text layout. Logo Banner
+// renders the business logo as a full-width band across the top of the
+// card (List layout only for now — compactGrid/compact stay square, no
+// room for a banner at those sizes). This is deliberately NOT another
+// switchTile alongside showLogo/showAmount/etc: it changes the card's
+// shape, not just which fields are visible, so it gets its own segmented
+// control in the sheet rather than being mixed into that list.
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum CardStyle { standard, logoBanner }
 
 class CardDisplayPrefs extends ChangeNotifier {
   static const String _kShowLogo             = 'card_display_show_logo';
@@ -24,6 +36,7 @@ class CardDisplayPrefs extends ChangeNotifier {
   static const String _kShowCreatedAndItems  = 'card_display_show_created_items';
   static const String _kShowProgress         = 'card_display_show_progress';
   static const String _kShowStatusChip       = 'card_display_show_status_chip';
+  static const String _kCardStyle            = 'card_display_card_style';
 
   bool showLogo            = true;
   bool showAmount          = true;
@@ -31,6 +44,7 @@ class CardDisplayPrefs extends ChangeNotifier {
   bool showCreatedAndItems = true;
   bool showProgress        = true;
   bool showStatusChip      = true;
+  CardStyle cardStyle      = CardStyle.standard;
 
   SharedPreferences? _prefs;
   bool _loaded = false;
@@ -46,6 +60,10 @@ class CardDisplayPrefs extends ChangeNotifier {
       showCreatedAndItems  = prefs.getBool(_kShowCreatedAndItems) ?? true;
       showProgress         = prefs.getBool(_kShowProgress)        ?? true;
       showStatusChip       = prefs.getBool(_kShowStatusChip)      ?? true;
+      final styleIndex     = prefs.getInt(_kCardStyle) ?? 0;
+      cardStyle = (styleIndex >= 0 && styleIndex < CardStyle.values.length)
+          ? CardStyle.values[styleIndex]
+          : CardStyle.standard;
       _loaded = true;
       notifyListeners();
     } catch (e) {
@@ -88,5 +106,11 @@ class CardDisplayPrefs extends ChangeNotifier {
     showStatusChip = value;
     notifyListeners();
     await _prefs?.setBool(_kShowStatusChip, value);
+  }
+
+  Future<void> setCardStyle(CardStyle value) async {
+    cardStyle = value;
+    notifyListeners();
+    await _prefs?.setInt(_kCardStyle, value.index);
   }
 }

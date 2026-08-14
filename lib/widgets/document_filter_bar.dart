@@ -1,7 +1,27 @@
 // document_filter_bar.dart
 // lib/widgets/document_filter_bar.dart
 //
-// EXPENSES (this pass): DocTypeFilter gained a fifth value, `expenses`,
+// STATUS QUICK-CHIPS (this pass): Paid (invoices) / Accepted (quotes) /
+// Declined (quotes) join the always-visible quick-access row, alongside
+// the existing needsAction/overdue/aging-bucket/drafts chips. All three
+// route through the exact same QuickFilter plumbing filter_logic.dart
+// already had wired (applyQuickFilterToInvoices/Quotes/Receipts,
+// countPaid/countAccepted/countDeclined) — no new filtering logic here,
+// just new required count params (paidCount, acceptedCount,
+// declinedCount) and two contextual visibility booleans.
+//
+// Visibility is contextual, matching the exact pattern the Status
+// dropdowns inside the Filters sheet already use: Paid only shows when
+// Invoices (or All, with invoices present) is the selected type; Accepted
+// and Declined only show when Quotes (or All, with quotes present) is
+// selected. This keeps the row from permanently carrying chips that don't
+// apply to whatever's currently in view. Each new chip still hides itself
+// at count 0 (unless currently selected), same as the existing
+// needsAction/overdue chips — reusing _QuickEntry's existing
+// `.where((e) => e.count > 0 || selected)` filter rather than adding a
+// second visibility mechanism.
+//
+// EXPENSES (earlier pass): DocTypeFilter gained a fifth value, `expenses`,
 // and this bar gained a required `expensesCount` param. The "All" pill's
 // count now sums invoices+quotes+receipts+expenses so it reads as the
 // true total of everything Home can show. A new Expenses quick-access
@@ -111,6 +131,15 @@ class DocumentFilterBar extends StatefulWidget {
   final int overdue31to60Count;
   final int overdue61plusCount;
 
+  // NEW: counts backing the Paid / Accepted / Declined quick chips.
+  // Contextual visibility (Paid needs Invoices/All; Accepted+Declined need
+  // Quotes/All) is computed in build() from selectedType + invoiceCount/
+  // quoteCount, same pattern the Filters sheet's Status dropdowns already
+  // use — no separate "show" params needed here.
+  final int paidCount;
+  final int acceptedCount;
+  final int declinedCount;
+
   final String searchQuery;
   final ValueChanged<String> onSearchChanged;
 
@@ -172,6 +201,9 @@ class DocumentFilterBar extends StatefulWidget {
     required this.overdue1to30Count,
     required this.overdue31to60Count,
     required this.overdue61plusCount,
+    required this.paidCount,
+    required this.acceptedCount,
+    required this.declinedCount,
     required this.searchQuery,
     required this.onSearchChanged,
     this.searchHint,
@@ -567,18 +599,32 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // FIX: build the five overdue/needs-action quick chips as a filtered
-    // list first — only entries that are actually going to render (count
-    // > 0, or currently the selected quick filter) survive. Spacing is
-    // then only emitted between/around chips that are really there, so a
-    // fully-empty state (everything at 0, nothing selected) contributes
-    // zero extra width instead of a dead strip of padding.
+    // NEW: contextual visibility for the Paid / Accepted / Declined quick
+    // chips — same rule the Filters sheet's Status dropdowns already use
+    // (showInvoiceStatus/showQuoteStatus above): show when that type is
+    // the selected pill, OR "All" is selected and that type actually has
+    // documents.
+    final showPaidChip = widget.selectedType == DocTypeFilter.invoices ||
+        (widget.selectedType == DocTypeFilter.all && widget.invoiceCount > 0);
+    final showQuoteStatusChips = widget.selectedType == DocTypeFilter.quotes ||
+        (widget.selectedType == DocTypeFilter.all && widget.quoteCount > 0);
+
+    // FIX: build the overdue/needs-action/paid/accepted/declined quick
+    // chips as a filtered list first — only entries that are actually
+    // going to render (contextually applicable, AND count > 0 or
+    // currently the selected quick filter) survive. Spacing is then only
+    // emitted between/around chips that are really there, so a fully-empty
+    // state (everything at 0, nothing selected) contributes zero extra
+    // width instead of a dead strip of padding.
     final quickEntries = <_QuickEntry>[
       _QuickEntry(QuickFilter.needsAction, widget.needsActionCount),
       _QuickEntry(QuickFilter.overdue, widget.overdueCount),
       _QuickEntry(QuickFilter.overdue1to30, widget.overdue1to30Count),
       _QuickEntry(QuickFilter.overdue31to60, widget.overdue31to60Count),
       _QuickEntry(QuickFilter.overdue61plus, widget.overdue61plusCount),
+      if (showPaidChip) _QuickEntry(QuickFilter.paid, widget.paidCount),
+      if (showQuoteStatusChips) _QuickEntry(QuickFilter.accepted, widget.acceptedCount),
+      if (showQuoteStatusChips) _QuickEntry(QuickFilter.declined, widget.declinedCount),
     ].where((e) => e.count > 0 || widget.selectedQuickFilter == e.filter).toList();
 
     return Padding(
@@ -749,7 +795,8 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
   }
 }
 
-// ── Small holder used to filter the overdue/needs-action quick chips ──────
+// ── Small holder used to filter the overdue/needs-action/status quick
+// chips ─────────────────────────────────────────────────────────────────
 
 class _QuickEntry {
   final QuickFilter filter;

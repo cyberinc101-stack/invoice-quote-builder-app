@@ -1,5 +1,17 @@
 // quote_data.dart
 // lib/models/quote_data.dart
+//
+// TEMPLATE + LOGO SIZER PASS (this update): added layoutTemplateId (which
+// visual design — Executive/Nordic/Vibrant/etc, see the quote
+// preview_registry.dart — this quote actually renders with) and
+// businessLogoOffsetDx/Dy/Scale/Shape (mirrors InvoiceData's own new
+// fields, driven by the same SharedLogoPicker widget). Previously the
+// quote always rendered as Executive regardless of what was picked in
+// QuoteTemplateChooserScreen, and had no logo reposition/zoom/shape data
+// at all. All new fields fall back to sensible defaults when missing from
+// persisted JSON (layoutTemplateId 1 = Executive, zero offset, scale 1.0,
+// 'roundedSquare' shape), so existing persisted quotes load correctly
+// with no migration step.
 
 import 'invoice_data.dart' show LineItem;
 
@@ -22,6 +34,15 @@ class QuoteData {
   String businessAddress;
   String? businessLogoPath;
 
+  // Logo reposition/zoom/shape — mirrors InvoiceData's fields, driven by
+  // the same SharedLogoPicker widget. Only meaningful when
+  // businessLogoPath is set.
+  double businessLogoOffsetDx;
+  double businessLogoOffsetDy;
+  double businessLogoScale;
+  String businessLogoShape; // storage name from LogoShape.storageName
+  double businessLogoDisplaySize;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -41,6 +62,11 @@ class QuoteData {
   String      fontFamily;
   QuoteColor  colorScheme;
 
+  // Which visual design (see the quote preview_registry.dart's
+  // kQuoteTemplates / buildQuotePreview) this quote renders with —
+  // 1 = Executive, 2 = Nordic, etc.
+  int layoutTemplateId;
+
   // Same escape hatch as InvoiceData.excludeFromReports. See that file's
   // doc comment for the gating rule.
   bool excludeFromReports;
@@ -51,6 +77,11 @@ class QuoteData {
     this.businessPhone    = '',
     this.businessAddress  = '',
     this.businessLogoPath,
+    this.businessLogoOffsetDx = 0.0,
+    this.businessLogoOffsetDy = 0.0,
+    this.businessLogoScale    = 1.0,
+    this.businessLogoShape    = 'roundedSquare',
+    this.businessLogoDisplaySize = 40.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -66,6 +97,7 @@ class QuoteData {
     this.quoteStatus      = QuoteStatus.draft,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = QuoteColor.purple,
+    this.layoutTemplateId = 1,
     this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
 
@@ -84,6 +116,11 @@ class QuoteData {
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
         'businessLogoPath': businessLogoPath,
+        'businessLogoOffsetDx': businessLogoOffsetDx,
+        'businessLogoOffsetDy': businessLogoOffsetDy,
+        'businessLogoScale':    businessLogoScale,
+        'businessLogoShape':    businessLogoShape,
+        'businessLogoDisplaySize': businessLogoDisplaySize,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -99,6 +136,7 @@ class QuoteData {
         'quoteStatus':      quoteStatus.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'layoutTemplateId': layoutTemplateId,
         'excludeFromReports': excludeFromReports,
       };
 
@@ -108,6 +146,11 @@ class QuoteData {
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
         businessLogoPath: j['businessLogoPath'] as String?,
+        businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
+        businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
+        businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -131,10 +174,15 @@ class QuoteData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => QuoteColor.purple,
         ),
+        layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
+  //
+  // clearBusinessLogo: explicit clear flag, same reasoning as
+  // SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
+  // never express "set this field to null" once it already has a value.
 
   QuoteData copyWith({
     String?         businessName,
@@ -142,6 +190,12 @@ class QuoteData {
     String?         businessPhone,
     String?         businessAddress,
     String?         businessLogoPath,
+    bool            clearBusinessLogo = false,
+    double?         businessLogoOffsetDx,
+    double?         businessLogoOffsetDy,
+    double?         businessLogoScale,
+    String?         businessLogoShape,
+    double?         businessLogoDisplaySize,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -157,6 +211,7 @@ class QuoteData {
     QuoteStatus?    quoteStatus,
     String?         fontFamily,
     QuoteColor?     colorScheme,
+    int?            layoutTemplateId,
     bool?           excludeFromReports,
   }) =>
       QuoteData(
@@ -164,7 +219,12 @@ class QuoteData {
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
-        businessLogoPath: businessLogoPath ?? this.businessLogoPath,
+        businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
+        businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
+        businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
+        businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
+        businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
+        businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -180,6 +240,7 @@ class QuoteData {
         quoteStatus:      quoteStatus      ?? this.quoteStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 

@@ -1,6 +1,21 @@
 // lib/main.dart
 //
-// CARD DISPLAY PREFS (this pass): registered CardDisplayPrefs — the
+// WEEKLY DIGEST WIRING (this pass): two additions for the new weekly
+// summary notification (lib/alerts/notifications/digest_scheduler.dart):
+//   1. NotificationService.instance.onDigestTapped — routes a tapped
+//      digest notification to ReportsScreen, same pattern as
+//      onReminderTapped/onDocumentAlertTapped above it (assigned before
+//      runApp, safe since rootNavigatorKey.currentState is only read
+//      later, inside the closure, once a tap actually happens).
+//   2. WeeklyDigestScheduler.instance.sync(alertPrefs.weeklyDigestEnabled)
+//      — called once, right after the startup Future.wait resolves (so
+//      alertPrefs.weeklyDigestEnabled reflects the real persisted value,
+//      not its default), to (re)confirm the recurring weekly schedule is
+//      still in place on every app launch. Cheap/idempotent — see
+//      scheduleWeeklyDigest()'s doc comment in notification_service.dart
+//      for why calling this on every launch doesn't create duplicates.
+//
+// CARD DISPLAY PREFS (earlier pass): registered CardDisplayPrefs — the
 // persisted, app-wide set of switches for which stats show on saved-
 // document/expense/report cards (lib/widgets/saved_documents/
 // card_display_prefs.dart) — the same way AlertPrefs/ReportsPrefs/etc.
@@ -35,6 +50,8 @@
 // being tapped, the lookup comes back null and this is a silent no-op
 // rather than a crash.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -49,8 +66,10 @@ import 'alerts/alert_prefs.dart';
 import 'alerts/custom_reminders/reminder_provider.dart';
 import 'alerts/custom_reminders/reminder_screen.dart';
 import 'alerts/notifications/notification_service.dart';
+import 'alerts/notifications/digest_scheduler.dart';
 import 'screens/saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'screens/reports/reports_prefs.dart';
+import 'screens/reports/reports_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'widgets/saved_documents/card_display_prefs.dart';
@@ -245,6 +264,15 @@ Future<void> main() async {
     }
   };
 
+  // Route a tapped weekly-digest notification straight to Reports — no
+  // id/category to look up (there's only ever one digest slot), so this
+  // is simpler than onDocumentAlertTapped above: just push the screen.
+  NotificationService.instance.onDigestTapped = () {
+    rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => const ReportsScreen()),
+    );
+  };
+
   await Future.wait([
     invoiceProvider.loadPersistedInvoices(),
     quoteProvider.loadPersistedQuotes(),
@@ -258,6 +286,13 @@ Future<void> main() async {
     cardDisplayPrefs.load(),
     savedLayoutPrefs.load(),
   ]);
+
+  // (Re)confirms the recurring weekly-summary notification is scheduled,
+  // reflecting whatever alertPrefs.weeklyDigestEnabled resolved to from
+  // persisted storage above — must run AFTER the Future.wait, not before,
+  // since alertPrefs.load() is what populates that value. Safe/cheap to
+  // call on every launch — see scheduleWeeklyDigest()'s doc comment.
+  unawaited(WeeklyDigestScheduler.instance.sync(alertPrefs.weeklyDigestEnabled));
 
   runApp(
     MultiProvider(

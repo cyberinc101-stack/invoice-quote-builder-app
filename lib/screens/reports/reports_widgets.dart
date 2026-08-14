@@ -5,12 +5,62 @@
 // (no provider reads in here) so the screen stays the single source of
 // truth for data and these just render whatever numbers they're given.
 //
-// THIS PASS: DataSourceToggleRow grew a 4th chip — Expenses — backed by
-// ReportsPrefs.includeExpenses, alongside the existing Invoices/Quotes/
-// Receipts chips. Everything else in this file is unchanged.
+// HOME UI-PARITY PASS (this update): added ReportsHeroCard — a plain
+// gradient wrapper using the exact same navy gradient
+// (Color(0xFF1A1A2E) -> Color(0xFF16213E) -> Color(0xFF0F3460)) and
+// rounded-corner/shadow treatment as HomeScreen's hero banner
+// (_buildHeroBanner in home_screen.dart), so Reports' top section now
+// reads as the same "premium dark card" as Home's, instead of the old
+// flat teal AppBar. reports_screen.dart wraps the period selector, folder
+// selector, and DataSourceToggleRow in this card.
+//
+// DataSourceToggleRow was restyled to live on that dark card: each chip
+// now gets its own per-type gradient (blue/purple/green/red), matching
+// the colors Home's Create Invoice / Create Quote / Create Receipt CTA
+// buttons already use, filled solid when selected and a translucent
+// white outline when not — instead of the old single-teal-tint chip.
+// The public constructor signature is UNCHANGED except the now-unused
+// `accent` param was removed (its only call site is reports_screen.dart,
+// updated alongside this file).
+//
+// Everything else in this file (ReportsStatCard, NetMarginBadge,
+// TaxSetAsideCard, CategoryBarRow, TopClientsCard, ReportsEmptyState,
+// ReportsSectionHeader) is UNCHANGED from the previous pass.
 
 import 'package:flutter/material.dart';
 import '../../models/document_category.dart';
+
+// ── Hero card — same gradient/radius/shadow language as Home's banner ─────
+
+class ReportsHeroCard extends StatelessWidget {
+  final Widget child;
+
+  const ReportsHeroCard({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x401A1A2E),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
 
 // ── Animated stat card (Income / Expenses / Net) ───────────────────────────
 
@@ -265,6 +315,13 @@ class _StepperButton extends StatelessWidget {
 }
 
 // ── Data sources toggle row (Invoices / Quotes / Receipts / Expenses chips) ─
+//
+// Restyled to sit on ReportsHeroCard's dark gradient background. Each chip
+// carries its own per-type gradient — the exact colors HomeScreen's
+// Create Invoice / Create Quote / Create Receipt CTA buttons use for
+// invoices/quotes, plus a matching green for receipts and red for
+// expenses — filled solid when selected, translucent white outline when
+// not. This replaces the previous single-teal-tint bordered chip design.
 
 class DataSourceToggleRow extends StatelessWidget {
   final bool includeInvoices;
@@ -275,7 +332,6 @@ class DataSourceToggleRow extends StatelessWidget {
   final ValueChanged<bool> onQuotesChanged;
   final ValueChanged<bool> onReceiptsChanged;
   final ValueChanged<bool> onExpensesChanged;
-  final Color accent;
 
   const DataSourceToggleRow({
     super.key,
@@ -287,49 +343,53 @@ class DataSourceToggleRow extends StatelessWidget {
     required this.onQuotesChanged,
     required this.onReceiptsChanged,
     required this.onExpensesChanged,
-    required this.accent,
   });
+
+  static const _invoiceGradient = [Color(0xFF2196F3), Color(0xFF1565C0)];
+  static const _quoteGradient = [Color(0xFF7B1FA2), Color(0xFF4A148C)];
+  static const _receiptGradient = [Color(0xFF43A047), Color(0xFF2E7D32)];
+  static const _expenseGradient = [Color(0xFFE53935), Color(0xFFB71C1C)];
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Expanded(
-          child: _ToggleChip(
+          child: _HeroToggleChip(
             label: 'Invoices',
             icon: Icons.receipt_long_rounded,
             selected: includeInvoices,
-            accent: accent,
+            gradient: _invoiceGradient,
             onChanged: onInvoicesChanged,
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _ToggleChip(
+          child: _HeroToggleChip(
             label: 'Quotes',
             icon: Icons.request_quote_rounded,
             selected: includeQuotes,
-            accent: accent,
+            gradient: _quoteGradient,
             onChanged: onQuotesChanged,
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _ToggleChip(
+          child: _HeroToggleChip(
             label: 'Receipts',
             icon: Icons.point_of_sale_rounded,
             selected: includeReceipts,
-            accent: accent,
+            gradient: _receiptGradient,
             onChanged: onReceiptsChanged,
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _ToggleChip(
+          child: _HeroToggleChip(
             label: 'Expenses',
             icon: Icons.payments_rounded,
             selected: includeExpenses,
-            accent: accent,
+            gradient: _expenseGradient,
             onChanged: onExpensesChanged,
           ),
         ),
@@ -338,27 +398,25 @@ class DataSourceToggleRow extends StatelessWidget {
   }
 }
 
-class _ToggleChip extends StatelessWidget {
+class _HeroToggleChip extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool selected;
-  final Color accent;
+  final List<Color> gradient;
   final ValueChanged<bool> onChanged;
 
-  const _ToggleChip({
+  const _HeroToggleChip({
     required this.label,
     required this.icon,
     required this.selected,
-    required this.accent,
+    required this.gradient,
     required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: selected ? accent.withValues(alpha: 0.14) : colorScheme.onSurface.withValues(alpha: 0.04),
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => onChanged(!selected),
@@ -366,22 +424,26 @@ class _ToggleChip extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
+            gradient: selected ? LinearGradient(colors: gradient) : null,
+            color: selected ? null : Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.12),
-              width: selected ? 1.4 : 1,
+              color: selected ? Colors.transparent : Colors.white.withValues(alpha: 0.16),
             ),
+            boxShadow: selected
+                ? [BoxShadow(color: gradient.first.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))]
+                : null,
           ),
           child: Column(
             children: [
-              Icon(icon, size: 16, color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.4)),
+              Icon(icon, size: 16, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.55)),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: selected ? accent : colorScheme.onSurface.withValues(alpha: 0.4),
+                  color: selected ? Colors.white : Colors.white.withValues(alpha: 0.55),
                 ),
               ),
             ],

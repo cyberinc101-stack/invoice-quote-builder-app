@@ -1,31 +1,48 @@
 // lib/screens/saved_invoice_details_section/document_pdf_preview_screen.dart
 //
-// Full-screen dummy "how this would look as a downloaded PDF" preview.
+// Full-screen "how this would look as a downloaded PDF" preview.
 // One shared screen for Invoice / Quote / Receipt (see design rationale in
 // saved_document_detail_screen.dart) — takes plain values only, no
 // dependency on SavedInvoice/SavedQuote/SavedReceipt models, so it works for
 // both real saved documents AND demo placeholder documents with zero
 // branching logic.
 //
-// NOTE: this is a layout mockup for reviewing the general "letter" shape
-// (header / bill-to / items table / totals / footer note) — it does NOT
-// attempt to reproduce your real invoice_layout_templates/invoice_templates
-// designs pixel-for-pixel. Swap the body content later once you're ready to
-// match a specific template.
+// FIX (this pass): the previous version always rendered a hand-rolled
+// "letter shape" mockup — a generic header/bill-to/table/totals card that
+// did NOT reproduce the real A4 executive template used everywhere else
+// (Edit screen, invoice_full_preview_screen.dart, and the actual exported
+// PDF via invoice_pdf_service.dart), and was labelled "DUMMY PREVIEW" /
+// "Layout mockup only" accordingly.
 //
-// FIX (this pass): added a bottom bar with Download / Share buttons so you
-// can export straight from the preview itself, not just from the detail
-// screen. Both call back into the SAME onDownloadPdf/onSharePdf callbacks
-// passed in from saved_document_detail_screen.dart — currently only wired
-// for invoices there. If a callback is null (quote/receipt), tapping shows
-// a "not built yet" snackbar instead of doing nothing silently.
+// Invoices now take an optional [invoiceData] (the real InvoiceData for the
+// document being viewed). When it's supplied, this screen renders the SAME
+// ExecutiveInvoicePreview widget + A4Paginator + ScaledPageStack pipeline
+// used by invoice_full_preview_screen.dart — real A4 page proportions,
+// correct multi-page pagination, and pixel-accurate match to both the Edit
+// screen and the exported PDF. The "DUMMY PREVIEW" badge and mockup
+// disclaimer only show when [invoiceData] is null (currently: quotes and
+// receipts, which don't have their own ExecutiveXxxPreview widgets wired
+// up yet — pass their equivalents here once those exist to remove the
+// fallback for those two types as well).
+//
+// Save / Download / Share logic is UNCHANGED from the previous pass — both
+// buttons call back into the SAME onDownloadPdf/onSharePdf callbacks passed
+// in from saved_document_detail_screen.dart.
 
 import 'package:flutter/material.dart';
 import '../../widgets/saved_documents_containers.dart'
     show DocType, kInvoiceAccent, kQuoteAccent, kReceiptAccent;
+import '../../models/invoice_data.dart';
+import '../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
+import '../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+    show kPageW;
+import '../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../invoice_create_section/invoice_template_previews/preview_registry.dart'
+    show buildInvoicePreview;
 
 // -----------------------------------------------------------------------------
 // PdfPreviewLineItem — plain line item shape, no model dependency
+// (still used by the quote/receipt mockup fallback below)
 // -----------------------------------------------------------------------------
 class PdfPreviewLineItem {
   final String description;
@@ -57,10 +74,15 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
   final double total;
   final String notes;
 
-  // NEW: optional export actions. When provided (currently only wired for
-  // invoices — see saved_document_detail_screen.dart), tapping the button
+  // NEW: the real invoice data, when available. When non-null (invoices
+  // only, for now), the real A4 Executive template renders instead of the
+  // generic mockup below.
+  final InvoiceData? invoiceData;
+
+  // Optional export actions. When provided (currently wired for all three
+  // types — see saved_document_detail_screen.dart), tapping the button
   // runs the real PDF export. When null, tapping shows a "not built yet"
-  // snackbar instead, so Quote/Receipt previews don't silently do nothing.
+  // snackbar instead, so previews don't silently do nothing.
   final VoidCallback? onDownloadPdf;
   final VoidCallback? onSharePdf;
 
@@ -77,9 +99,12 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
     required this.items,
     required this.total,
     required this.notes,
+    this.invoiceData,
     this.onDownloadPdf,
     this.onSharePdf,
   });
+
+  bool get _usesRealTemplate => type == DocType.invoice && invoiceData != null;
 
   Color get _accent {
     switch (type) {
@@ -146,61 +171,95 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         title: const Text('PDF Preview', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'DUMMY PREVIEW',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white70, letterSpacing: 0.5),
+          // Only shown for the generic mockup path — the real A4 template
+          // path matches the actual export exactly, so no disclaimer badge.
+          if (!_usesRealTemplate)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'DUMMY PREVIEW',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white70, letterSpacing: 0.5),
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 30, offset: const Offset(0, 12)),
-                ],
-              ),
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 28),
-                  _buildClientAndDates(),
+      body: _usesRealTemplate ? _buildRealTemplateBody(context) : _buildMockupBody(context),
+      bottomNavigationBar: _buildBottomBar(context),
+    );
+  }
+
+  // ── Real A4 template path (invoices with invoiceData supplied) ───────────
+
+  Widget _buildRealTemplateBody(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    final targetWidth = (screenW - 32).clamp(200.0, kPageW);
+    final data = invoiceData!;
+    // Dispatches on the invoice's own chosen design (Executive/Nordic/
+    // Vibrant/etc — see preview_registry.dart) instead of always rendering
+    // Executive, so this preview matches whatever was picked in
+    // InvoiceTemplateChooserScreen.
+    final preview = buildInvoicePreview(data.layoutTemplateId, data) ??
+        ExecutiveInvoicePreview(data: data);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Center(
+        child: ScaledPageStack(
+          targetWidth: targetWidth,
+          nativePageWidth: kPageW,
+          child: preview,
+        ),
+      ),
+    );
+  }
+
+  // ── Generic mockup path (quote/receipt, or invoices with no data) ───────
+
+  Widget _buildMockupBody(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 30, offset: const Offset(0, 12)),
+              ],
+            ),
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 28),
+                _buildClientAndDates(),
+                const SizedBox(height: 26),
+                _buildItemsTable(),
+                const SizedBox(height: 18),
+                _buildTotals(),
+                if (notes.isNotEmpty) ...[
                   const SizedBox(height: 26),
-                  _buildItemsTable(),
-                  const SizedBox(height: 18),
-                  _buildTotals(),
-                  if (notes.isNotEmpty) ...[
-                    const SizedBox(height: 26),
-                    _buildFooterNote(),
-                  ],
-                  const SizedBox(height: 8),
-                  _buildBottomDisclaimer(),
+                  _buildFooterNote(),
                 ],
-              ),
+                const SizedBox(height: 8),
+                _buildBottomDisclaimer(),
+              ],
             ),
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomBar(context),
     );
   }
 

@@ -4,8 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
 import '../alerts/alert_prefs.dart';
-import '../alerts/alert_type_toggles.dart';
+import '../alerts/notifications/digest_scheduler.dart';
 import '../helpers/lang_helper.dart';
+import '../backup/backup_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'help_faq_screen.dart';
@@ -26,7 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const String _supportEmail = 'cyberinc101@gmail.com';
   static const String _appVersion   = '1.0.0';
 
-  // FIX (this pass): previous flag literals were corrupted mojibake
+  // FIX (earlier pass): previous flag literals were corrupted mojibake
   // ('????' for every entry). Rebuilt using Unicode regional-indicator
   // escape pairs (\u{XXXXX}\u{YYYYY}) instead of literal emoji glyphs —
   // escapes can't be mangled by terminal/clipboard encoding the way raw
@@ -284,6 +285,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(height: 1, indent: 72),
 
+                // SIMPLIFIED (this pass): per-type alert toggles (Overdue
+                // Invoices / Expiring Quotes / Drafts / Reminders) no
+                // longer live here — they've moved to a bottom sheet on
+                // alerts_screen.dart itself, opened via the tune icon in
+                // that screen's app bar. Settings now only carries the
+                // two top-level, "set once" switches: the Alerts master
+                // switch and Weekly Summary. Per-type tuning is something
+                // people do WHILE looking at their alerts, not something
+                // that belongs buried in a rarely-visited Settings screen
+                // — see the AlertTypeTogglesList usage in
+                // alerts_screen.dart for where it lives now.
                 _buildTile(
                   icon: alertPrefs.alertsEnabled
                       ? Icons.notifications_active_rounded
@@ -300,31 +312,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     activeThumbColor: const Color(0xFF2196F3),
                   ),
                 ),
+                const Divider(height: 1, indent: 72),
 
-                // NEW: per-type toggles, nested under the master switch.
-                // Visually dimmed and non-interactive whenever the master
-                // switch is off, since these settings have no visible
-                // effect until Alerts is turned back on — but the
-                // underlying values still persist, so re-enabling Alerts
-                // restores whatever mix the user had configured rather
-                // than resetting everything to "on".
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: alertPrefs.alertsEnabled ? 1.0 : 0.4,
-                  child: IgnorePointer(
-                    ignoring: !alertPrefs.alertsEnabled,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          const AlertTypeTogglesList(showHeader: true, dense: true),
-                        ],
-                      ),
-                    ),
+                // Weekly Summary — deliberately independent of the Alerts
+                // master switch above. It isn't part of buildAlerts()'s
+                // live in-app alert list (see AlertPrefs' doc comment on
+                // weeklyDigestEnabled) — it's a standalone OS-scheduled
+                // notification, so it stays interactive regardless of
+                // whether the master Alerts switch is on or off. Calls
+                // WeeklyDigestScheduler.sync() directly on toggle, same
+                // pattern DocumentAlertScheduler callers use elsewhere in
+                // the app (schedule/cancel right after the flag changes,
+                // not on the next app restart).
+                _buildTile(
+                  icon: alertPrefs.weeklyDigestEnabled
+                      ? Icons.calendar_view_week_rounded
+                      : Icons.calendar_view_week_outlined,
+                  iconColor: alertPrefs.weeklyDigestEnabled
+                      ? const Color(0xFF00897B)
+                      : Colors.grey,
+                  title: 'Weekly Summary',
+                  subtitle: 'A Monday reminder to check your invoicing activity',
+                  trailing: Switch(
+                    value: alertPrefs.weeklyDigestEnabled,
+                    onChanged: (value) {
+                      alertPrefs.setWeeklyDigestEnabled(value);
+                      WeeklyDigestScheduler.instance.sync(value);
+                    },
+                    activeThumbColor: const Color(0xFF2196F3),
                   ),
+                ),
+              ],
+            ),
+          ),
+
+          // Data — currently just Backup & Restore. Kept separate from
+          // "Support"/"About" since this is an app-level data-management
+          // action, not a support link or static info tile, and separate
+          // from "Preferences" since it's an action you tap into rather
+          // than a live setting you flip.
+          _buildSectionHeader('Data'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+            color: Theme.of(context).colorScheme.surface,
+            child: Column(
+              children: [
+                _buildTile(
+                  icon: Icons.backup_rounded,
+                  title: 'Backup & Restore',
+                  subtitle: 'Export or restore your invoices, quotes, receipts & expenses',
+                  iconColor: const Color(0xFF2196F3),
+                  onTap: () => _navigateTo(const BackupScreen()),
                 ),
               ],
             ),

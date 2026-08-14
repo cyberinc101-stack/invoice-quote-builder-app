@@ -3,7 +3,11 @@
 //
 // Enums shared by the filter bar, filter_logic.dart, and home_screen.dart.
 //
-// UPDATED (this pass): added QuickFilter.paid (invoices) and
+// UPDATED (this pass): added QuickFilter.declined — the counterpart to
+// the existing QuickFilter.accepted, so quotes that need a follow-up or
+// revised offer are as one-tap-visible as ones that already landed.
+//
+// UPDATED (earlier pass): added QuickFilter.paid (invoices) and
 // QuickFilter.accepted (quotes) — quick-access chips for the two most
 // common "good" statuses, alongside the existing overdue/drafts/etc.
 
@@ -17,6 +21,7 @@ enum QuickFilter {
   drafts,
   paid,
   accepted,
+  declined,
 }
 
 String quickFilterLabel(QuickFilter f) {
@@ -37,6 +42,8 @@ String quickFilterLabel(QuickFilter f) {
       return 'Paid';
     case QuickFilter.accepted:
       return 'Accepted';
+    case QuickFilter.declined:
+      return 'Declined';
     case QuickFilter.none:
       return '';
   }

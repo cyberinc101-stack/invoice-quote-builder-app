@@ -1,7 +1,15 @@
 // quote_full_preview_screen.dart
 // lib/screens/create_quote_section/quote_full_preview_screen.dart
 //
-// UPDATED (this pass): the old inline _QuoteDocument mockup widget has
+// TEMPLATE PASS (this update): the body no longer hardcodes
+// ExecutiveQuotePreview — it now dispatches on data.layoutTemplateId via
+// buildQuotePreview() (quote_template_chooser_01/preview_registry.dart),
+// the same function the template chooser grid already uses. Also swapped
+// the fixed-height Transform.scale for ScaledPageStack (matching the
+// invoice full preview screen's fix) since non-Executive quote templates
+// don't necessarily render at a fixed kPageH height.
+//
+// UPDATED (earlier pass): the old inline _QuoteDocument mockup widget has
 // been replaced with ExecutiveQuotePreview from
 // quote_layout_templates/01_executive_quote_layout — the same self-scaling
 // A4-page template used by the real PDF export and by
@@ -15,7 +23,9 @@ import '../../models/quote_data.dart';
 import '../../services/quote_pdf_service.dart';
 import '../../quote_layout_templates/01_executive_quote_layout/executive_quote_logic_data.dart';
 import '../../quote_layout_templates/01_executive_quote_layout/executive_quote_stationary_layout.dart'
-    show kPageW, kPageH;
+    show kPageW;
+import '../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import 'quote_template_chooser_01/preview_registry.dart' show buildQuotePreview;
 import 'quote_preview_bottom_bar.dart';
 
 class QuoteFullPreviewScreen extends StatefulWidget {
@@ -89,15 +99,19 @@ class _QuoteFullPreviewScreenState extends State<QuoteFullPreviewScreen> {
     return map[scheme] ?? const Color(0xFF6A1B9A);
   }
 
+  // Dispatches on data.layoutTemplateId — falls back to Executive if the
+  // id is unrecognized.
+  Widget _buildPreviewWidget(QuoteData data) {
+    return buildQuotePreview(data.layoutTemplateId, data) ??
+        ExecutiveQuotePreview(data: data);
+  }
+
   @override
   Widget build(BuildContext context) {
     final data   = context.watch<QuoteProvider>().quoteData;
     final accent = _accentFromScheme(data.colorScheme);
     final screenW = MediaQuery.of(context).size.width;
-    // Page renders at its native A4 size (kPageW x kPageH); scale the
-    // whole thing down to fit the available screen width, same approach
-    // used by the invoice and receipt full preview screens.
-    final fitScale = ((screenW - 40) / kPageW).clamp(0.3, 1.0);
+    final targetWidth = (screenW - 40).clamp(200.0, kPageW);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
@@ -110,14 +124,10 @@ class _QuoteFullPreviewScreenState extends State<QuoteFullPreviewScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Center(
-          child: SizedBox(
-            width: kPageW * fitScale,
-            height: kPageH * fitScale,
-            child: Transform.scale(
-              scale: fitScale,
-              alignment: Alignment.topCenter,
-              child: ExecutiveQuotePreview(data: data),
-            ),
+          child: ScaledPageStack(
+            targetWidth: targetWidth,
+            nativePageWidth: kPageW,
+            child: _buildPreviewWidget(data),
           ),
         ),
       ),

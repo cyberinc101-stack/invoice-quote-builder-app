@@ -1,7 +1,25 @@
 // expense_card_shared.dart
 // lib/widgets/expenses/expense_card_shared.dart
 //
-// LOGO FIX (this pass): ExpenseGradientAvatar now supports independent
+// LOGO BANNER PASS (this update): added ExpenseLogoBanner — a full-width
+// top band mirroring doc_card_shared.dart's private _DocLogoBanner
+// exactly (same height/topRadius/gradient-fallback/contain-fit
+// treatment), used by the new Logo Banner variant of ExpenseListCard
+// (see expense_cards.dart) when CardDisplayPrefs.cardStyle ==
+// CardStyle.logoBanner. Previously expense cards had NO Logo Banner
+// equivalent at all — only the side-by-side Standard layout — so
+// selecting Logo Banner made invoices/quotes/receipts switch to the
+// full-width-image style while expenses stayed in the old side-by-side
+// layout, which is what caused expenses to visibly not match the rest of
+// the saved-document card family whenever Logo Banner was the active
+// style. This widget can't literally reuse _DocLogoBanner (it's private
+// to saved_documents_section.dart's library), so it's a same-shaped
+// sibling here instead, using ExpenseGradientAvatar's existing photo/logo
+// resolution (SharedLogoThumbnail) for the "has an image" branch and the
+// category's own color+icon for the fallback, instead of a business name
+// initial.
+//
+// LOGO FIX (earlier pass): ExpenseGradientAvatar now supports independent
 // width/height (defaulting to `size`, same pattern as _DocLogoAvatar in
 // doc_card_shared.dart) instead of always forcing a square. The List
 // layout (ExpenseListCard) now passes height: double.infinity inside an
@@ -267,10 +285,17 @@ class ExpenseSelectionBadge extends StatelessWidget {
 }
 
 // ── 3-dot options icon — mirrors _ThreeDotIcon in doc_card_shared.dart ──
+//
+// `background`/`iconColor` overrides added (this pass) so the new Logo
+// Banner expense card can render this icon as a translucent pill on top
+// of an image/gradient background — same reasoning as doc_card_shared.
+// dart's _ThreeDotIcon overrides.
 
 class ExpenseThreeDotIcon extends StatelessWidget {
   final VoidCallback onTap;
-  const ExpenseThreeDotIcon({super.key, required this.onTap});
+  final Color? background;
+  final Color? iconColor;
+  const ExpenseThreeDotIcon({super.key, required this.onTap, this.background, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -280,8 +305,8 @@ class ExpenseThreeDotIcon extends StatelessWidget {
       child: Container(
         width: 26,
         height: 26,
-        decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), shape: BoxShape.circle),
-        child: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.65)),
+        decoration: BoxDecoration(color: background ?? cs.onSurface.withValues(alpha: 0.06), shape: BoxShape.circle),
+        child: Icon(Icons.more_vert_rounded, size: 16, color: iconColor ?? cs.onSurface.withValues(alpha: 0.65)),
       ),
     );
   }
@@ -451,6 +476,78 @@ class ExpenseGradientAvatar extends StatelessWidget {
         ],
       ),
       child: Icon(category.icon, color: Colors.white, size: iconSize),
+    );
+  }
+}
+
+// ── Logo banner — full-width top band for the Logo Banner card style.
+// Same shape/height/gradient-fallback treatment as doc_card_shared.dart's
+// private _DocLogoBanner (can't be reused directly — it's private to a
+// different library), rebuilt here for expenses:
+//   - Has a photo/logo -> shown large, centered, BoxFit.contain (never
+//     cropped), filling the banner height, using the same
+//     SharedLogoThumbnail the side-by-side avatar already uses.
+//   - No photo -> soft gradient tinted with the category's own color,
+//     with a large category icon centered (category icon stands in for
+//     the business-name initial doc cards fall back to, since an expense
+//     has no business name field).
+class ExpenseLogoBanner extends StatelessWidget {
+  final String? logoPath;
+  final Offset logoOffset;
+  final double logoScale;
+  final LogoShape logoShape;
+  final DocumentCategory category;
+  final double height;
+  final double topRadius;
+
+  const ExpenseLogoBanner({
+    super.key,
+    required this.logoPath,
+    required this.logoOffset,
+    required this.logoScale,
+    required this.logoShape,
+    required this.category,
+    this.height = 110,
+    this.topRadius = 18,
+  });
+
+  bool get _hasLogo =>
+      logoPath != null && logoPath!.isNotEmpty && File(logoPath!).existsSync();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasLogo) {
+      return ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+        child: SizedBox(
+          width: double.infinity,
+          height: height,
+          child: SharedLogoThumbnail(
+            logoPath: logoPath!,
+            logoOffset: logoOffset,
+            logoScale: logoScale,
+            logoShape: logoShape,
+            boxSize: height,
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+        gradient: LinearGradient(
+          colors: [
+            category.color.withValues(alpha: 0.18),
+            category.color.withValues(alpha: 0.07),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Icon(category.icon, color: category.color.withValues(alpha: 0.85), size: 44),
     );
   }
 }

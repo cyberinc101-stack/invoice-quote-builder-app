@@ -3,27 +3,29 @@
 //
 // Part of saved_documents_section.dart — small widgets shared across every
 // card layout: the section header row, the selection-mode check badge, the
-// 3-dot options icon, the green "positive status" dot, and the business
-// logo avatar.
+// 3-dot options icon, the green "positive status" dot, the business logo
+// avatar, the full-width logo banner used by CardStyle.logoBanner, and the
+// bold Accepted/Declined decision badge used on quote cards.
 //
-// LOGO FIX (this pass): _DocLogoAvatar now supports independent width/
-// height instead of a single forced-square `size`. Previously every call
-// site passed one `size` value used for both dimensions, so the logo
-// always rendered as a small square icon-box regardless of how much
-// vertical room the card actually had — on the List layout in particular
-// this looked cramped and unprofessional next to a full row of text.
-// `width`/`height` now default to `size` for callers that still want a
-// square (grid/compactGrid/compact, which are genuinely tight on space),
-// but the List layout passes an explicit `height: double.infinity` inside
-// an IntrinsicHeight + CrossAxisAlignment.stretch row (see doc_cards.dart)
-// so the logo image fills the card's full available height edge-to-edge,
-// with BoxFit.cover, instead of sitting in a little padded square.
+// NO-BACKGROUND LOGO PASS (this update): _DocLogoAvatar and _DocLogoBanner
+// previously wrapped the real logo image in a tinted Container (a soft
+// accent-colored backing) so contain-fit logos wouldn't look like they were
+// floating on nothing. Per feedback, that background reads as clutter — the
+// image itself should just fill/sit centered in the card slot with nothing
+// behind it. Both widgets now render the plain Image.file directly with
+// BoxFit.contain + Alignment.center, no Container/tint/padding wrapper, when
+// a real logo file exists. The colored tint is ONLY still used for the
+// fallback state (no logo file — initials monogram or generic icon), since
+// there's no actual image there and a bare icon/letter on a transparent
+// background would look broken, not clean.
 //
-// Three-tier fallback unchanged: logo file exists -> real image; no logo
-// but a business name -> colored initial monogram; neither -> generic
-// document icon. Uses File.existsSync() (sync, not async) since this
-// check needs to happen inline during build() for dozens of cards in a
-// grid — avoids FutureBuilder flicker on every scroll.
+// DECISION BADGE (this update): added `_decisionBadge(statusLabel)` — a
+// small bold, high-contrast pill only rendered when statusLabel is exactly
+// 'Accepted' or 'Declined' (the two QuoteStatus states callers care about
+// seeing at a glance). Returns SizedBox.shrink() for every other status, so
+// it's a no-op / safe to drop into any card layout without special-casing
+// document type. Solid fill (not the usual soft-tint chip) so it reads
+// clearly even at a glance in a scrolled list.
 
 part of 'saved_documents_section.dart';
 
@@ -109,9 +111,16 @@ class _SelectionBadge extends StatelessWidget {
 // 3-dot options icon — shared by all card layouts. Rendered instead of the
 // selection badge when NOT in selection mode (list/grid/compactGrid/
 // compact), or always (kanban, which has no selection mode).
+//
+// `background`/`iconColor` overrides let the Logo Banner list card render
+// this icon as a translucent-white pill on top of an image background,
+// instead of the default subtle-on-surface tint that would be invisible
+// there.
 class _ThreeDotIcon extends StatelessWidget {
   final VoidCallback onTap;
-  const _ThreeDotIcon({required this.onTap});
+  final Color? background;
+  final Color? iconColor;
+  const _ThreeDotIcon({required this.onTap, this.background, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -122,10 +131,14 @@ class _ThreeDotIcon extends StatelessWidget {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: cs.onSurface.withValues(alpha: 0.06),
+          color: background ?? cs.onSurface.withValues(alpha: 0.06),
           shape: BoxShape.circle,
         ),
-        child: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.65)),
+        child: Icon(
+          Icons.more_vert_rounded,
+          size: 16,
+          color: iconColor ?? cs.onSurface.withValues(alpha: 0.65),
+        ),
       ),
     );
   }
@@ -140,16 +153,53 @@ Widget _positiveDot() => Container(
       decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4CAF50)),
     );
 
-// Business logo avatar — replaces the old plain description-icon box on
-// every card layout. Three-tier fallback:
-//   1. logoPath set AND file still exists on disk  -> the actual logo image
-//   2. logoPath missing/stale, businessName present -> colored initial monogram
-//   3. neither available                            -> generic document icon
-//
-// width/height default to `size` (a square) for layouts that are tight on
-// space. Pass them independently (e.g. width: 64, height: double.infinity
-// inside an IntrinsicHeight row) to have the logo fill the card's full
-// height edge-to-edge instead of sitting in a small square.
+// Bold Accepted/Declined pill for quote cards. No-op (SizedBox.shrink) for
+// every status label other than exactly 'Accepted' or 'Declined', so it's
+// safe to drop into any card layout unconditionally — invoices/receipts
+// never carry those two labels so this never renders for them.
+Widget _decisionBadge(String statusLabel, {double fontSize = 11}) {
+  final isAccepted = statusLabel == 'Accepted';
+  final isDeclined = statusLabel == 'Declined';
+  if (!isAccepted && !isDeclined) return const SizedBox.shrink();
+
+  final color = isAccepted ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+  final icon  = isAccepted ? Icons.check_circle_rounded : Icons.cancel_rounded;
+  final label = isAccepted ? 'ACCEPTED' : 'DECLINED';
+
+  return Container(
+    padding: EdgeInsets.symmetric(horizontal: fontSize * 0.8, vertical: fontSize * 0.35),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(fontSize),
+      boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 6, offset: const Offset(0, 2))],
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: fontSize + 2, color: Colors.white),
+        SizedBox(width: fontSize * 0.35),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// Business logo avatar. Three-tier fallback:
+//   1. logoPath set AND file still exists on disk  -> the actual logo image,
+//      rendered plain (no background) — BoxFit.contain, centered, nothing
+//      behind it.
+//   2. logoPath missing/stale, businessName present -> colored initial
+//      monogram (tint kept here — there's no image to show plainly).
+//   3. neither available                            -> generic document
+//      icon (tint kept here too, same reasoning).
 class _DocLogoAvatar extends StatelessWidget {
   final String? logoPath;
   final String businessName;
@@ -159,6 +209,7 @@ class _DocLogoAvatar extends StatelessWidget {
   final double? height;
   final double iconSize;
   final double borderRadius;
+  final BoxFit fit;
 
   const _DocLogoAvatar({
     required this.logoPath,
@@ -169,6 +220,7 @@ class _DocLogoAvatar extends StatelessWidget {
     this.height,
     this.iconSize = 24,
     this.borderRadius = 12,
+    this.fit = BoxFit.contain,
   });
 
   @override
@@ -179,14 +231,19 @@ class _DocLogoAvatar extends StatelessWidget {
     if (path != null && path.isNotEmpty) {
       final file = File(path);
       if (file.existsSync()) {
+        // Plain image, no tint/background container — just sized, clipped
+        // to match the card's corner radius, centered and fully contained.
         return ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius),
-          child: Image.file(
-            file,
+          child: SizedBox(
             width: w,
             height: h,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _fallback(w, h),
+            child: Image.file(
+              file,
+              fit: fit,
+              alignment: Alignment.center,
+              errorBuilder: (_, __, ___) => _fallback(w, h),
+            ),
           ),
         );
       }
@@ -208,6 +265,7 @@ class _DocLogoAvatar extends StatelessWidget {
       child: initial != null
           ? Text(
               initial,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: iconSize * 0.62,
                 fontWeight: FontWeight.w800,
@@ -216,5 +274,91 @@ class _DocLogoAvatar extends StatelessWidget {
             )
           : Icon(Icons.description_rounded, color: accentColor, size: iconSize),
     );
+  }
+}
+
+// Full-width logo banner — top band of the List card when
+// CardDisplayPrefs.cardStyle == CardStyle.logoBanner.
+//
+// NO-BACKGROUND PASS: when a real logo file exists, this now renders the
+// plain image (contain, centered) filling the banner height with no tint/
+// gradient behind it — just the image itself against the card's own
+// background. The soft accent gradient is kept ONLY for the fallback state
+// (no logo file), where a bare monogram/icon needs some visual weight
+// behind it to not look like an empty card.
+class _DocLogoBanner extends StatelessWidget {
+  final String? logoPath;
+  final String businessName;
+  final Color accentColor;
+  final double height;
+  final double topRadius;
+
+  const _DocLogoBanner({
+    required this.logoPath,
+    required this.businessName,
+    required this.accentColor,
+    this.height = 120,
+    this.topRadius = 16,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final path = logoPath;
+
+    if (path != null && path.isNotEmpty) {
+      final file = File(path);
+      if (file.existsSync()) {
+        return ClipRRect(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+          child: SizedBox(
+            width: double.infinity,
+            height: height,
+            child: Image.file(
+              file,
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              errorBuilder: (_, __, ___) => _fallbackBanner(),
+            ),
+          ),
+        );
+      }
+    }
+    return _fallbackBanner();
+  }
+
+  Widget _fallbackBanner() {
+    return Container(
+      width: double.infinity,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+        gradient: LinearGradient(
+          colors: [
+            accentColor.withValues(alpha: 0.16),
+            accentColor.withValues(alpha: 0.06),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: _fallbackContent(),
+    );
+  }
+
+  Widget _fallbackContent() {
+    final trimmedName = businessName.trim();
+    final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : null;
+    return initial != null
+        ? Text(
+            initial,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 40,
+              fontWeight: FontWeight.w800,
+              color: accentColor.withValues(alpha: 0.85),
+            ),
+          )
+        : Icon(Icons.description_rounded, color: accentColor.withValues(alpha: 0.85), size: 44);
   }
 }

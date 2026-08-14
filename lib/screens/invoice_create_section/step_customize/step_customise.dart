@@ -1,33 +1,48 @@
 // lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
-// FIX (this pass): "Preview & Download" at the bottom of this step was a
+// TEMPLATE PASS (this update): _InvoicePreviewCard no longer hardcodes
+// ExecutiveInvoicePreview — it now dispatches on data.layoutTemplateId via
+// buildInvoicePreview() (preview_registry.dart), the same function the
+// template chooser grid and its full-preview modal already use. This is
+// what actually makes "the template you picked" and "the invoice you're
+// customising" match — previously this live preview (and the full
+// preview screen, and the PDF-preview mockup) all rendered as Executive
+// regardless of what was picked in InvoiceTemplateChooserScreen. Only
+// Executive is paginated (via A4Paginator/onPageCount) today, so the page
+// counter badge only updates for that template; every other design
+// renders as a single natural-height page.
+//
+// LOGO SIZER PASS (this update): added a new "Business Logo" section
+// using SharedLogoPicker (same widget step_templates.dart uses for the
+// saved BusinessInfo template's logo) so the actual invoice's logo can be
+// repositioned/zoomed/reshaped right here, without leaving this step.
+// Wired to InvoiceProvider.updateBusinessLogo(). NOTE: the underlying
+// template layout files (executive_page_stationary_layout.dart etc.)
+// don't yet read businessLogoOffsetDx/Dy/Scale/Shape when painting the
+// logo — this control saves the values, but they won't visually move/
+// zoom the logo in the preview until those layout files are updated to
+// use them.
+//
+// FIX (earlier pass): "Preview & Download" at the bottom of this step was a
 // TODO -- tapping it did nothing. It now pushes InvoiceFullPreviewScreen,
 // handing it the same InvoiceProvider instance via
 // ChangeNotifierProvider.value so the preview screen sees the exact invoice
 // data/customisation state built up across the previous steps. Download and
 // Share now live on that full preview screen (via
 // invoice_preview_bottom_bar.dart) rather than here or on step_create_invoice.
-//
-// FIX (this pass 2): _InvoicePreviewCard was a hand-rolled mock invoice
-// layout that never matched the real A4 template used by the PDF export,
-// the full preview screen, or the editable canvas. It now renders the real
-// ExecutiveInvoicePreview (same widget as everywhere else) scaled to width
-// via ScaledPageStack, so this step shows the exact same paginated A4
-// layout as the rest of the app. The old dead CustomizePreview file
-// (leftover from CV Builder Pro, unused, still referencing CvProvider /
-// cv_templates that don't exist in this app) has been deleted.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 
 import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
+import '../../../widgets/shared_logo_picker.dart';
 import 'invoice_full_preview_screen.dart';
 import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
 import '../../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
     show kPageW, invoiceAccent;
 import '../../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
 
 // =============================================================================
 // Public entry point
@@ -107,6 +122,14 @@ class _StepCustomiseState extends State<StepCustomise> {
                 const _InvoicePreviewCard(),
                 const SizedBox(height: 24),
 
+                // ---- Business logo sizer ----
+                const _LogoSection(),
+                const SizedBox(height: 16),
+
+                // ---- Business logo size ----
+                const _LogoSizeSection(),
+                const SizedBox(height: 16),
+
                 // ---- Accent colour ----
                 const _ColourSection(),
                 const SizedBox(height: 16),
@@ -167,7 +190,8 @@ class _StepCustomiseState extends State<StepCustomise> {
 }
 
 // =============================================================================
-// Inline invoice preview -- now renders the real A4 template, scaled to width
+// Inline invoice preview -- renders whichever design template.layoutTemplateId
+// points to, scaled to width
 // =============================================================================
 
 class _InvoicePreviewCard extends StatefulWidget {
@@ -179,6 +203,27 @@ class _InvoicePreviewCard extends StatefulWidget {
 
 class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
   int _pageCount = 1;
+
+  void _setPageCount(int count) {
+    if (count == _pageCount) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _pageCount = count);
+    });
+  }
+
+  // Dispatches on data.layoutTemplateId — Executive (id 1) is the only
+  // paginated design today (via A4Paginator/onPageCount), so it's built
+  // directly to keep that callback; every other template renders as a
+  // single natural-height page via buildInvoicePreview(), falling back to
+  // Executive if the id is unrecognized.
+  Widget _buildPreviewWidget(InvoiceData data) {
+    if (data.layoutTemplateId == 1) {
+      return ExecutiveInvoicePreview(data: data, onPageCount: _setPageCount);
+    }
+    _setPageCount(1);
+    return buildInvoicePreview(data.layoutTemplateId, data) ??
+        ExecutiveInvoicePreview(data: data, onPageCount: _setPageCount);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -230,14 +275,7 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
                 child: ScaledPageStack(
                   targetWidth: constraints.maxWidth,
                   nativePageWidth: kPageW,
-                  child: ExecutiveInvoicePreview(
-                    data: data,
-                    onPageCount: (count) {
-                      if (count != _pageCount) {
-                        setState(() => _pageCount = count);
-                      }
-                    },
-                  ),
+                  child: _buildPreviewWidget(data),
                 ),
               ),
             );
@@ -251,6 +289,102 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
                   fontStyle: FontStyle.italic)),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// Business logo section — reposition/zoom/shape via SharedLogoPicker
+// =============================================================================
+
+class _LogoSection extends StatelessWidget {
+  const _LogoSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<InvoiceProvider>();
+    final data     = provider.invoiceData;
+    final accent   = _colorForScheme(data.colorScheme);
+
+    return _SectionCard(
+      icon: Icons.image_rounded,
+      title: 'Business Logo',
+      child: SharedLogoPicker(
+        logoPath: data.businessLogoPath,
+        logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+        logoScale: data.businessLogoScale,
+        logoShape: logoShapeFromString(data.businessLogoShape),
+        accent: accent,
+        onChanged: (path, offset, scale, shape) {
+          provider.updateBusinessLogo(
+            path: path,
+            offset: offset,
+            scale: scale,
+            shape: shape.storageName,
+          );
+        },
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Logo size section
+// =============================================================================
+
+class _LogoSizeSection extends StatelessWidget {
+  const _LogoSizeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final provider    = context.watch<InvoiceProvider>();
+    final data        = provider.invoiceData;
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent      = _colorForScheme(data.colorScheme);
+    final hasLogo = data.businessLogoPath != null && data.businessLogoPath!.isNotEmpty;
+
+    return Opacity(
+      opacity: hasLogo ? 1.0 : 0.4,
+      child: _SectionCard(
+        icon: Icons.photo_size_select_large_rounded,
+        title: 'Logo Size',
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.image_outlined, size: 14,
+                    color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor:   accent,
+                      inactiveTrackColor: accent.withValues(alpha: 0.2),
+                      thumbColor:         accent,
+                      overlayColor:       accent.withValues(alpha: 0.15),
+                      trackHeight:        4,
+                    ),
+                    child: Slider(
+                      value: data.businessLogoDisplaySize,
+                      min: 24,
+                      max: 60,
+                      divisions: 9,
+                      onChanged: hasLogo ? (v) => provider.updateBusinessLogoSize(v) : null,
+                    ),
+                  ),
+                ),
+                Icon(Icons.image_outlined, size: 24,
+                    color: colorScheme.onSurface.withValues(alpha: 0.5)),
+              ],
+            ),
+            Text(
+              hasLogo ? '${data.businessLogoDisplaySize.toInt()}px' : 'Add a logo to enable',
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: hasLogo ? accent : colorScheme.onSurface.withValues(alpha: 0.4)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

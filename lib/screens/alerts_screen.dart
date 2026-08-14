@@ -1,24 +1,54 @@
 // alerts_screen.dart
 // lib/screens/alerts_screen.dart
 //
-// PROFESSIONAL RESTYLE (this pass): replaced the bold gradient hero +
-// colorful pill filters with a clean, minimal look closer to a native
-// settings/notifications screen — plain white/surface AppBar, a discreet
-// single-row stats strip (small icon + number, muted colors, thin
-// dividers instead of tinted boxes), flat segmented-style filter tabs
-// instead of colored gradient chips, and list-style cards with a small
-// neutral icon circle, subtle 1px divider, and minimal color usage
-// (color only appears on the icon and on genuinely urgent text, not as
-// background fills or gradients). No behavioral changes: same filters,
-// same swipe-to-dismiss / advance-recurring logic, same Undo snackbar,
-// same snooze buttons, same per-type disabled states, same navigation on
-// tap.
+// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// changes — same treatment reports_screen.dart and expense_screen.dart
+// just got. Previously this screen had its own flat, minimal look: a
+// custom light-gray Scaffold background, a plain elevation-tuned AppBar,
+// and the stats strip / filter tabs each rendered as their own separate
+// bordered white card. Now:
+//   - Scaffold no longer overrides backgroundColor — it inherits the
+//     theme's scaffoldBackgroundColor, same as HomeScreen and
+//     ReportsScreen (neither of which set a custom background either).
+//   - AppBar is a plain default (theme) app bar — dropped the custom
+//     elevation/scrolledUnderElevation/backgroundColor/foregroundColor/
+//     centerTitle overrides, matching Home's and Reports' bare
+//     `AppBar(title: ..., actions: [...])`.
+//   - The stats strip (_AlertsStatsBar) and the filter tabs
+//     (_FilterTabRow) are no longer two separate white/dark bordered
+//     cards floating on the page — they're now combined into one
+//     AppHeroCard (lib/widgets/hero_card.dart), the same navy gradient
+//     card HomeScreen's banner and ReportsScreen's period/folder/toggle
+//     controls use. Both widgets are always white-on-dark now (no more
+//     isDark branching — they always render on the dark hero regardless
+//     of the app's light/dark theme), matching how ReportsScreen's
+//     DataSourceToggleRow/folder chip are styled white-on-dark inside its
+//     own hero.
+// Everything below the hero — the "Needs Action"/"Drafts To Finish"
+// groups, the alert cards themselves, swipe-to-dismiss, snooze, Follow
+// Up/Mark Paid — is unchanged and still sits on the normal page
+// background inside its own white/surface _CardGroup, same as before.
+//
+// ALERT TYPES SHEET (earlier pass): the app-bar "tune" icon no longer
+// navigates to the full Settings screen — it now opens a bottom sheet
+// containing AlertTypeTogglesList directly on this screen. Reasoning:
+// Overdue Invoices / Expiring Quotes / Drafts / Reminders are "tune as
+// you go" settings people adjust WHILE looking at their alerts (e.g.
+// "I don't want draft nudges, turn those off"), not "set once and
+// forget" settings that belong in a rarely-visited Settings screen.
+// Settings (settings_screen.dart) now only carries the two top-level
+// switches — Alerts (master) and Weekly Summary — so this sheet is the
+// only place the four per-type toggles live. The master Alerts switch
+// itself, and the disabled/empty states' "Go to Settings" buttons below,
+// still correctly point at the full Settings screen since turning
+// Alerts back on entirely is still a Settings-level action.
 //
 // PER-TYPE GATING (earlier pass): buildAlerts() here receives the same
 // four AlertPrefs flags home_screen.dart's bell badge reads, so a type
-// turned off in Settings disappears from both places consistently. Filter
-// tabs for a turned-off type render as "<Label> · Off" and the empty
-// state explains why, with a shortcut to Settings.
+// turned off in the sheet disappears from both places consistently.
+// Filter tabs for a turned-off type render as "<Label> · Off" and the
+// empty state explains why, with a shortcut to Settings (to re-enable
+// the master switch if that's what's actually off).
 //
 // UNDO (earlier pass): swiping away a non-recurring reminder-type alert
 // offers Undo via ReminderProvider.restoreReminder().
@@ -48,9 +78,11 @@ import '../providers/receipt_provider.dart';
 import '../alerts/alert_types.dart';
 import '../alerts/alert_engine.dart';
 import '../alerts/alert_prefs.dart';
+import '../alerts/alert_type_toggles.dart';
 import '../alerts/custom_reminders/reminder_provider.dart';
 import '../alerts/custom_reminders/reminder_model.dart';
 import '../alerts/custom_reminders/reminder_screen.dart';
+import '../widgets/hero_card.dart';
 import '../widgets/saved_documents_containers.dart' show DocType;
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'settings_screen.dart';
@@ -77,19 +109,6 @@ IconData _alertFilterIcon(AlertFilter f) {
     case AlertFilter.expiring: return Icons.hourglass_bottom_rounded;
     case AlertFilter.drafts: return Icons.edit_note_rounded;
     case AlertFilter.reminders: return Icons.notifications_active_rounded;
-  }
-}
-
-// Muted, low-saturation accents — used sparingly (icon tint / urgent text
-// only), never as a background fill or gradient, matching the reference
-// screens' restrained use of color.
-Color _alertFilterColor(AlertFilter f, ColorScheme cs) {
-  switch (f) {
-    case AlertFilter.all: return cs.onSurface.withValues(alpha: 0.6);
-    case AlertFilter.overdue: return const Color(0xFFC62828);
-    case AlertFilter.expiring: return const Color(0xFFC62828);
-    case AlertFilter.drafts: return const Color(0xFFB26A00);
-    case AlertFilter.reminders: return const Color(0xFF1565C0);
   }
 }
 
@@ -125,6 +144,74 @@ String _dueSince(DateTime remindAt) {
   if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m ago';
   if (elapsed.inHours < 24) return '${elapsed.inHours}h ago';
   return '${elapsed.inDays}d ago';
+}
+
+// ── Alert Types sheet ────────────────────────────────────────────────────
+// Opened from the app bar's tune icon. Hosts the exact same
+// AlertTypeTogglesList widget that used to live nested in Settings — no
+// new toggle logic here, just a new place for it to render from. Kept as
+// a free function (rather than a State method) since it doesn't need
+// anything from _AlertsScreenState beyond the BuildContext.
+void _openAlertTypesSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) {
+      final cs = Theme.of(sheetContext).colorScheme;
+      return Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(sheetContext).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: cs.onSurface.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Text(
+                  'Alert Types',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Choose which alerts show up on this screen',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // showHeader: false — the sheet's own "Alert Types" title
+                // above already does that job; dense: true keeps the
+                // sheet compact, same as it was nested in Settings.
+                const AlertTypeTogglesList(showHeader: false, dense: true),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 // ── Follow Up ────────────────────────────────────────────────────────────
@@ -223,8 +310,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final alertPrefs = context.watch<AlertPrefs>();
     final alertsEnabled = alertPrefs.alertsEnabled;
     final dueReminders = context.watch<ReminderProvider>().dueReminders;
@@ -261,14 +346,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
         final mediumPriority = filtered.where((a) => a.priority == AlertPriority.medium).toList();
 
         return Scaffold(
-          backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
+          // Plain default (theme) AppBar — matches HomeScreen's and
+          // ReportsScreen's, instead of the previous custom elevation/
+          // background/foreground tuning.
           appBar: AppBar(
             title: const Text('Alerts'),
-            elevation: 0,
-            scrolledUnderElevation: 0.5,
-            backgroundColor: isDark ? const Color(0xFF14162220) : const Color(0xFFF7F8FA),
-            foregroundColor: cs.onSurface,
-            centerTitle: true,
             actions: [
               IconButton(
                 icon: const Icon(Icons.alarm_add_rounded),
@@ -280,44 +362,67 @@ class _AlertsScreenState extends State<AlertsScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
-                tooltip: 'Alert Settings',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                ),
+                tooltip: 'Alert Types',
+                onPressed: () => _openAlertTypesSheet(context),
               ),
             ],
           ),
           body: !alertsEnabled
               ? Column(
                   children: [
-                    _AlertsStatsBar(
-                      overdueCount: 0,
-                      expiringCount: 0,
-                      draftsCount: 0,
-                      remindersCount: 0,
-                      disabled: true,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: AppHeroCard(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: const _AlertsStatsRow(
+                          overdueCount: 0,
+                          expiringCount: 0,
+                          draftsCount: 0,
+                          remindersCount: 0,
+                          disabled: true,
+                        ),
+                      ),
                     ),
                     const Expanded(child: _DisabledState()),
                   ],
                 )
               : Column(
                   children: [
-                    _AlertsStatsBar(
-                      overdueCount: overdueCount,
-                      expiringCount: expiringCount,
-                      draftsCount: draftsCount,
-                      remindersCount: remindersCount,
-                    ),
-                    _FilterTabRow(
-                      selected: _selectedFilter,
-                      totalCount: alerts.length,
-                      overdueCount: overdueCount,
-                      expiringCount: expiringCount,
-                      draftsCount: draftsCount,
-                      remindersCount: remindersCount,
-                      disabledFilters: disabledFilters,
-                      onChanged: (f) => setState(() => _selectedFilter = f),
+                    // ── Hero card — the stats strip and the filter tabs,
+                    // combined inside the same dark gradient card
+                    // HomeScreen's banner and ReportsScreen's controls
+                    // use, so Alerts opens with the same visual weight as
+                    // the rest of the app instead of two flat white/dark
+                    // bordered cards.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: AppHeroCard(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _AlertsStatsRow(
+                              overdueCount: overdueCount,
+                              expiringCount: expiringCount,
+                              draftsCount: draftsCount,
+                              remindersCount: remindersCount,
+                            ),
+                            const SizedBox(height: 14),
+                            Container(height: 1, color: Colors.white.withValues(alpha: 0.12)),
+                            const SizedBox(height: 12),
+                            _FilterTabRow(
+                              selected: _selectedFilter,
+                              totalCount: alerts.length,
+                              overdueCount: overdueCount,
+                              expiringCount: expiringCount,
+                              draftsCount: draftsCount,
+                              remindersCount: remindersCount,
+                              disabledFilters: disabledFilters,
+                              onChanged: (f) => setState(() => _selectedFilter = f),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     Expanded(
                       child: filtered.isEmpty
@@ -354,21 +459,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 }
 
-// ── Discreet stats strip ─────────────────────────────────────────────────
-// A single thin row of small icon+number pairs separated by hairline
-// dividers — replaces the old full-bleed gradient hero. Sits directly
-// under the AppBar as a plain surface card, matching the understated
-// "settings list" tone of the reference screens rather than a dashboard
-// banner.
+// ── Hero-card stats row ─────────────────────────────────────────────────
+// A single row of small icon+number pairs separated by hairline white
+// dividers, always styled white-on-dark since it now lives inside
+// AppHeroCard regardless of the app's light/dark theme — mirrors how
+// ReportsScreen's own hero-card content (folder chip, toggle row) is
+// always white-on-dark rather than theme-aware.
 
-class _AlertsStatsBar extends StatelessWidget {
+class _AlertsStatsRow extends StatelessWidget {
   final int overdueCount;
   final int expiringCount;
   final int draftsCount;
   final int remindersCount;
   final bool disabled;
 
-  const _AlertsStatsBar({
+  const _AlertsStatsRow({
     required this.overdueCount,
     required this.expiringCount,
     required this.draftsCount,
@@ -378,28 +483,16 @@ class _AlertsStatsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E2235) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _StatCell(icon: Icons.warning_amber_rounded, label: 'Overdue', count: overdueCount, disabled: disabled)),
-          _VDivider(),
-          Expanded(child: _StatCell(icon: Icons.hourglass_bottom_rounded, label: 'Expiring', count: expiringCount, disabled: disabled)),
-          _VDivider(),
-          Expanded(child: _StatCell(icon: Icons.edit_note_rounded, label: 'Drafts', count: draftsCount, disabled: disabled)),
-          _VDivider(),
-          Expanded(child: _StatCell(icon: Icons.notifications_active_rounded, label: 'Reminders', count: remindersCount, disabled: disabled)),
-        ],
-      ),
+    return Row(
+      children: [
+        Expanded(child: _StatCell(icon: Icons.warning_amber_rounded, label: 'Overdue', count: overdueCount, disabled: disabled)),
+        _VDivider(),
+        Expanded(child: _StatCell(icon: Icons.hourglass_bottom_rounded, label: 'Expiring', count: expiringCount, disabled: disabled)),
+        _VDivider(),
+        Expanded(child: _StatCell(icon: Icons.edit_note_rounded, label: 'Drafts', count: draftsCount, disabled: disabled)),
+        _VDivider(),
+        Expanded(child: _StatCell(icon: Icons.notifications_active_rounded, label: 'Reminders', count: remindersCount, disabled: disabled)),
+      ],
     );
   }
 }
@@ -407,8 +500,7 @@ class _AlertsStatsBar extends StatelessWidget {
 class _VDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(width: 1, height: 30, color: cs.outline.withValues(alpha: 0.14));
+    return Container(width: 1, height: 30, color: Colors.white.withValues(alpha: 0.14));
   }
 }
 
@@ -421,9 +513,8 @@ class _StatCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final muted = cs.onSurface.withValues(alpha: disabled ? 0.25 : 0.55);
-    final strong = cs.onSurface.withValues(alpha: disabled ? 0.3 : 0.85);
+    final muted = Colors.white.withValues(alpha: disabled ? 0.25 : 0.7);
+    final strong = Colors.white.withValues(alpha: disabled ? 0.3 : 1.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -438,10 +529,10 @@ class _StatCell extends StatelessWidget {
 }
 
 // ── Filter tabs ─────────────────────────────────────────────────────────
-// Flat, low-contrast segmented tabs — a light gray track with a small
-// white/selected pill, no gradients or drop shadows. Closer to the
-// reference screenshots' restrained visual language than the previous
-// colorful chip row.
+// White-on-dark translucent chips, styled to match the folder-scope chip
+// and DataSourceToggleRow pattern already used inside ReportsHeroCard —
+// unselected chips sit at low white opacity, the selected chip brightens,
+// a disabled type dims further and swaps its icon for a muted "off" bell.
 
 class _FilterTabRow extends StatelessWidget {
   final AlertFilter selected;
@@ -480,7 +571,6 @@ class _FilterTabRow extends StatelessWidget {
       height: 38,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
           for (final f in AlertFilter.values) ...[
             _FilterTab(
@@ -515,22 +605,17 @@ class _FilterTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final label = typeDisabled
         ? '${_alertFilterLabel(filter)} · Off'
         : '${_alertFilterLabel(filter)} · $count';
 
     final bg = typeDisabled
-        ? cs.onSurface.withValues(alpha: 0.04)
-        : (selected
-            ? (isDark ? Colors.white.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.88))
-            : (isDark ? const Color(0xFF1E2235) : Colors.white));
+        ? Colors.white.withValues(alpha: 0.04)
+        : (selected ? Colors.white.withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.08));
 
     final textColor = typeDisabled
-        ? cs.onSurface.withValues(alpha: 0.28)
-        : (selected ? (isDark ? Colors.white : Colors.white) : cs.onSurface.withValues(alpha: 0.6));
+        ? Colors.white.withValues(alpha: 0.28)
+        : (selected ? const Color(0xFF16213E) : Colors.white70);
 
     return GestureDetector(
       onTap: onTap,
@@ -542,8 +627,8 @@ class _FilterTab extends StatelessWidget {
           borderRadius: BorderRadius.circular(19),
           border: Border.all(
             color: typeDisabled
-                ? cs.outline.withValues(alpha: 0.1)
-                : (selected ? Colors.transparent : cs.outline.withValues(alpha: 0.14)),
+                ? Colors.white.withValues(alpha: 0.1)
+                : (selected ? Colors.transparent : Colors.white.withValues(alpha: 0.16)),
           ),
         ),
         child: Row(
@@ -617,7 +702,7 @@ class _EmptyState extends StatelessWidget {
     if (isTypeDisabled) {
       return (
         title: '${_alertFilterLabel(filter)} alerts are off',
-        subtitle: 'Turn this alert type back on in Settings to see it here.',
+        subtitle: 'Turn this alert type back on to see it here.',
       );
     }
     switch (filter) {
@@ -665,14 +750,29 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.45)),
             ),
+            // A disabled type is re-enabled right here via the same Alert
+            // Types sheet the tune icon opens — no need to leave the
+            // screen. "Go to Settings" is kept as a fallback in case the
+            // master Alerts switch is what's off instead (that toggle
+            // still lives in Settings).
             if (isTypeDisabled) ...[
               const SizedBox(height: 18),
-              OutlinedButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                ),
-                child: const Text('Go to Settings'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton(
+                    onPressed: () => _openAlertTypesSheet(context),
+                    child: const Text('Turn On'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    ),
+                    child: const Text('Settings'),
+                  ),
+                ],
               ),
             ],
           ],
@@ -741,9 +841,8 @@ class _GroupHeader extends StatelessWidget {
 }
 
 // Wraps a list of cards in a single rounded surface with hairline
-// dividers between rows — the "grouped settings list" look from the
-// reference screens, instead of each card floating separately with its
-// own shadow.
+// dividers between rows — the "grouped settings list" look, instead of
+// each card floating separately with its own shadow.
 class _CardGroup extends StatelessWidget {
   final List<Widget> children;
   const _CardGroup({required this.children});

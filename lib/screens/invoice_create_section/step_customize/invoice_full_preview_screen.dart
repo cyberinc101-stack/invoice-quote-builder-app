@@ -1,7 +1,18 @@
 // invoice_full_preview_screen.dart
 // lib/screens/invoice_create_section/step_customize/invoice_full_preview_screen.dart
 //
-// UPDATED (this pass): the old inline _InvoiceDocument mockup widget has
+// TEMPLATE PASS (this update): the body no longer hardcodes
+// ExecutiveInvoicePreview — it now dispatches on
+// data.layoutTemplateId via buildInvoicePreview() (preview_registry.dart),
+// same as the template chooser grid, its full-preview modal, and
+// step_customise.dart's live preview. Download/Share now also pass
+// layoutTemplateId through to InvoicePdfService so that once PDF builders
+// exist for designs beyond Executive, this screen picks the right one
+// automatically — today only Executive's PDF builder exists, so other
+// template ids still fall back to the Executive PDF layout even though
+// the on-screen preview here correctly shows the real design.
+//
+// UPDATED (earlier pass): the old inline _InvoiceDocument mockup widget has
 // been replaced with ExecutiveInvoicePreview from
 // invoice_layout_templates/01_executive_cv_layout — the same self-scaling
 // A4-page template used by the real PDF export and now also by
@@ -9,8 +20,8 @@
 // preview now matches what actually gets exported, at correct A4
 // proportions, instead of a free-form content-sized mockup.
 //
-// Save / Download / Share logic is UNCHANGED from the previous pass —
-// only the body content changed.
+// Save / Download / Share logic is otherwise UNCHANGED from the previous
+// pass.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +32,9 @@ import '../../../services/invoice_pdf_service.dart';
 import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
 import '../../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
-    show kPageW, kPageH;
+    show kPageW;
+import '../../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
 import 'invoice_preview_bottom_bar.dart';
 
 class InvoiceFullPreviewScreen extends StatefulWidget {
@@ -58,7 +71,10 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     final data = context.read<InvoiceProvider>().invoiceData;
     setState(() => _isLoading = true);
     try {
-      final path = await _pdfService.generateAndDownloadPDF(_wrapAsSavedInvoice(data));
+      final path = await _pdfService.generateAndDownloadPDF(
+        _wrapAsSavedInvoice(data),
+        layoutTemplateId: data.layoutTemplateId,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to $path')));
       }
@@ -75,7 +91,10 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     final data = context.read<InvoiceProvider>().invoiceData;
     setState(() => _isLoading = true);
     try {
-      await _pdfService.generateAndSharePDF(_wrapAsSavedInvoice(data));
+      await _pdfService.generateAndSharePDF(
+        _wrapAsSavedInvoice(data),
+        layoutTemplateId: data.layoutTemplateId,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to share PDF: $e')));
@@ -193,15 +212,24 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     return map[scheme] ?? const Color(0xFF1565C0);
   }
 
+  // Dispatches on data.layoutTemplateId — Executive (id 1) renders
+  // directly (the only design with true A4Paginator pagination today);
+  // every other id goes through buildInvoicePreview(), falling back to
+  // Executive if unrecognized.
+  Widget _buildPreviewWidget(InvoiceData data) {
+    if (data.layoutTemplateId == 1) {
+      return ExecutiveInvoicePreview(data: data);
+    }
+    return buildInvoicePreview(data.layoutTemplateId, data) ??
+        ExecutiveInvoicePreview(data: data);
+  }
+
   @override
   Widget build(BuildContext context) {
     final data   = context.watch<InvoiceProvider>().invoiceData;
     final accent = _accentFromScheme(data.colorScheme);
     final screenW = MediaQuery.of(context).size.width;
-    // Page renders at its native A4 size (kPageW x kPageH); scale the
-    // whole thing down to fit the available screen width, same approach
-    // used by the quote and receipt full preview screens.
-    final fitScale = ((screenW - 40) / kPageW).clamp(0.3, 1.0);
+    final targetWidth = (screenW - 40).clamp(200.0, kPageW);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
@@ -236,14 +264,10 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Center(
-          child: SizedBox(
-            width: kPageW * fitScale,
-            height: kPageH * fitScale,
-            child: Transform.scale(
-              scale: fitScale,
-              alignment: Alignment.topCenter,
-              child: ExecutiveInvoicePreview(data: data),
-            ),
+          child: ScaledPageStack(
+            targetWidth: targetWidth,
+            nativePageWidth: kPageW,
+            child: _buildPreviewWidget(data),
           ),
         ),
       ),

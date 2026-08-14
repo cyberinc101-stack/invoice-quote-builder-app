@@ -1,6 +1,16 @@
 // executive_receipt_stationary_layout.dart
 // lib/receipt_layout_templates/01_executive_receipt_layout/executive_receipt_stationary_layout.dart
 //
+// LOGO SIZER PASS (this update): _Logo now renders through
+// SharedLogoThumbnail instead of a plain centred Image.file cover-fit, so
+// the businessLogoOffsetDx/Dy/Scale/Shape values saved via the Review
+// step's logo sizer (SharedLogoPicker, create_receipt_screen.dart)
+// actually take visual effect here — previously this widget ignored all
+// four fields entirely. Mirrors the identical fix in
+// executive_page_stationary_layout.dart (invoice) and
+// executive_quote_stationary_layout.dart (quote). The initial-letter
+// diamond fallback (no logo set) is unchanged.
+//
 // Minimal, single-page receipt template. Diamond-logo mark, generous
 // whitespace, no sidebar — mirrors
 // invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
@@ -17,6 +27,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/receipt_data.dart';
+import '../../widgets/shared_logo_picker.dart'
+    show SharedLogoThumbnail, LogoShapeX, logoShapeFromString;
 
 // ── Page geometry ─────────────────────────────────────────────────────────────
 const double kPageW    = 595.0;
@@ -169,12 +181,23 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const size = 44.0;
+    final size = data.businessLogoDisplaySize;
     final path = data.businessLogoPath;
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(File(path), width: size, height: size, fit: BoxFit.cover),
+      final shape = logoShapeFromString(data.businessLogoShape);
+      return SizedBox(
+        width: size,
+        height: size,
+        child: ClipRRect(
+          borderRadius: shape.radiusFor(size),
+          child: SharedLogoThumbnail(
+            logoPath: path,
+            logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+            logoScale: data.businessLogoScale,
+            logoShape: shape,
+            boxSize: size,
+          ),
+        ),
       );
     }
     final initial = data.businessName.trim().isNotEmpty

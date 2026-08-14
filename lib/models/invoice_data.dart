@@ -1,5 +1,15 @@
 // invoice_data.dart
 // lib/models/invoice_data.dart
+//
+// TEMPLATE + LOGO SIZER PASS: layoutTemplateId (which visual design —
+// Executive/Nordic/Vibrant/etc, see preview_registry.dart — this invoice
+// renders with) and businessLogoOffsetDx/Dy/Scale/Shape (driven by
+// SharedLogoPicker) plus businessLogoDisplaySize (rendered logo box size
+// in px, driven by the Logo Size slider on the Customise step). All new
+// fields fall back to sensible defaults when missing from persisted JSON
+// (layoutTemplateId 1 = Executive, zero offset, scale 1.0, 'roundedSquare'
+// shape, size 40.0), so existing persisted invoices load correctly with
+// no migration step.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LineItem
@@ -61,6 +71,18 @@ class InvoiceData {
   String businessAddress;
   String? businessLogoPath;
 
+  // Logo reposition/zoom/shape — driven by SharedLogoPicker. Only
+  // meaningful when businessLogoPath is set.
+  double businessLogoOffsetDx;
+  double businessLogoOffsetDy;
+  double businessLogoScale;
+  String businessLogoShape; // storage name from LogoShape.storageName
+
+  // Rendered logo box size (width/height, px) — driven by the "Logo Size"
+  // slider on the Customise step, independent of businessLogoScale (which
+  // is the zoom/crop level *within* the box).
+  double businessLogoDisplaySize;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -80,6 +102,12 @@ class InvoiceData {
   String        fontFamily;
   InvoiceColor  colorScheme;
 
+  // Which visual design (see preview_registry.dart's kInvoiceTemplates /
+  // buildInvoicePreview) this invoice renders with — 1 = Executive, 2 =
+  // Nordic, etc. Set from InvoiceTemplateChooserScreen's selection and
+  // carried through the wizard by StepCreateInvoice._syncToProvider().
+  int layoutTemplateId;
+
   // System-stamped (not user-typed, unlike issueDate/dueDate) — set the
   // moment paymentStatus flips to PaymentStatus.paid, cleared if it's ever
   // changed away from paid. See InvoiceProvider.updateSavedInvoiceStatus.
@@ -98,6 +126,11 @@ class InvoiceData {
     this.businessPhone    = '',
     this.businessAddress  = '',
     this.businessLogoPath,
+    this.businessLogoOffsetDx = 0.0,
+    this.businessLogoOffsetDy = 0.0,
+    this.businessLogoScale    = 1.0,
+    this.businessLogoShape    = 'roundedSquare',
+    this.businessLogoDisplaySize = 40.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -113,6 +146,7 @@ class InvoiceData {
     this.paymentStatus    = PaymentStatus.unpaid,
     this.fontFamily       = 'Roboto',
     this.colorScheme      = InvoiceColor.blue,
+    this.layoutTemplateId = 1,
     this.paidDate,
     this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
@@ -132,6 +166,11 @@ class InvoiceData {
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
         'businessLogoPath': businessLogoPath,
+        'businessLogoOffsetDx': businessLogoOffsetDx,
+        'businessLogoOffsetDy': businessLogoOffsetDy,
+        'businessLogoScale':    businessLogoScale,
+        'businessLogoShape':    businessLogoShape,
+        'businessLogoDisplaySize': businessLogoDisplaySize,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -147,6 +186,7 @@ class InvoiceData {
         'paymentStatus':    paymentStatus.name,
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
+        'layoutTemplateId': layoutTemplateId,
         'paidDate':         paidDate?.toIso8601String(),
         'excludeFromReports': excludeFromReports,
       };
@@ -157,6 +197,11 @@ class InvoiceData {
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
         businessLogoPath: j['businessLogoPath'] as String?,
+        businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
+        businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
+        businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -180,6 +225,7 @@ class InvoiceData {
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => InvoiceColor.blue,
         ),
+        layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
         paidDate: j['paidDate'] != null
             ? DateTime.tryParse(j['paidDate'] as String)
             : null,
@@ -188,11 +234,11 @@ class InvoiceData {
 
   // ── copyWith ───────────────────────────────────────────────────────────────
   //
-  // clearPaidDate: pass true to explicitly wipe paidDate back to null — plain
-  // `paidDate: null` alone can never clear an existing value through the
-  // standard `?? this.paidDate` pattern (same reasoning as SavedInvoice's
-  // clearFolderName). excludeFromReports is a plain bool, so it doesn't need
-  // a clear flag — `false` passes straight through the `?? this.x` pattern.
+  // clearPaidDate / clearBusinessLogo: explicit clear flags, same reasoning
+  // as SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
+  // never express "set this field to null" once it already has a value.
+  // excludeFromReports is a plain bool, so it doesn't need a clear flag —
+  // `false` passes straight through the `?? this.x` pattern.
 
   InvoiceData copyWith({
     String?         businessName,
@@ -200,6 +246,12 @@ class InvoiceData {
     String?         businessPhone,
     String?         businessAddress,
     String?         businessLogoPath,
+    bool            clearBusinessLogo = false,
+    double?         businessLogoOffsetDx,
+    double?         businessLogoOffsetDy,
+    double?         businessLogoScale,
+    String?         businessLogoShape,
+    double?         businessLogoDisplaySize,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -215,6 +267,7 @@ class InvoiceData {
     PaymentStatus?  paymentStatus,
     String?         fontFamily,
     InvoiceColor?   colorScheme,
+    int?            layoutTemplateId,
     DateTime?       paidDate,
     bool            clearPaidDate = false,
     bool?           excludeFromReports,
@@ -224,7 +277,12 @@ class InvoiceData {
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
-        businessLogoPath: businessLogoPath ?? this.businessLogoPath,
+        businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
+        businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
+        businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
+        businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
+        businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
+        businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -240,6 +298,7 @@ class InvoiceData {
         paymentStatus:    paymentStatus    ?? this.paymentStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
+        layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
         paidDate: clearPaidDate ? null : (paidDate ?? this.paidDate),
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );

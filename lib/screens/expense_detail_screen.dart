@@ -1,17 +1,31 @@
 // expense_detail_screen.dart
 // lib/screens/expense_detail_screen.dart
 //
-// REFERENCE NUMBER PASS (this update): added a "Reference" row to the
-// Details card, right after Folder, showing expense.referenceNumber or
-// "None" — same plain local field described in expense_data.dart, no
-// database involved.
+// THEME-MATCH PASS (this update): previously this screen used its own
+// header widget (_ExpenseHeaderBackground) with a flat red/expense-accent
+// gradient, a small logo-or-category-icon avatar, and a fixed
+// expandedHeight: 190 — none of which matched the navy hero-gradient
+// header used everywhere else (SavedDocumentDetailScreen for invoices/
+// quotes/receipts, via detail/document_detail_header.dart). This screen
+// now uses that same DocumentDetailHeader widget: the navy kHeroGradient
+// base in both branches, a full-bleed cover-fit logo when one exists
+// (matching hasLogo sizing via DocumentDetailHeader.heightFor), a status
+// pill, and the type+date pill row — so Home/Reports/Expenses detail
+// screens are visually one product again.
 //
-// FIX (earlier pass): the import below only listed `LogoShape` in its
-// `show` clause, so `logoShape.radiusFor(...)` failed to resolve —
-// radiusFor is defined on the `LogoShapeX` extension in
-// shared_logo_picker.dart, and a `show` clause has to name an extension
-// explicitly for its methods to be visible, naming the type it extends
-// isn't enough. Added `LogoShapeX` to the show list below.
+// Since expenses don't have a payment-style status enum, the status pill
+// now reflects excludeFromReports: "Included in Reports" (green,
+// check-circle) or "Excluded from Reports" (grey, visibility-off) — the
+// same fact the old header showed as a separate badge, now folded into
+// the shared header's own status-pill slot. typeIcon is the expense's
+// category icon (falls back to a generic receipt icon has no fallback
+// needed — category.icon is always set), typeLabel is the category name,
+// so the type+date pill reads e.g. "Travel · 11 Aug 2026" instead of a
+// generic "Expense" label.
+//
+// The stat cards, Details card, and bottom bar are otherwise unchanged
+// from the previous pass (still local _StatCard/_DetailRow widgets, same
+// fields/order) — only the header and SliverAppBar sizing changed.
 //
 // Re-reads the live copy from ExpenseProvider by id on every build (same
 // pattern SavedDocumentDetailScreen uses for invoices/quotes/receipts) so
@@ -23,17 +37,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/document_category.dart';
 import '../models/expense_data.dart';
 import '../providers/category_provider.dart';
 import '../providers/expense_provider.dart';
 import '../widgets/expenses/expense_card_shared.dart';
-import '../widgets/shared_logo_picker.dart' show LogoShape, LogoShapeX, logoShapeFromString, SharedLogoThumbnail;
 import 'expense_screen.dart';
+import 'saved_invoice_details_section/detail/document_detail_header.dart';
 
 class ExpenseDetailScreen extends StatelessWidget {
   final String expenseId;
   const ExpenseDetailScreen({super.key, required this.expenseId});
+
+  File? _resolveLogoFile(String? path) {
+    if (path == null || path.isEmpty) return null;
+    final file = File(path);
+    return file.existsSync() ? file : null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,18 +71,27 @@ class ExpenseDetailScreen extends StatelessWidget {
     final category = context.watch<CategoryProvider>().byId(expense.categoryId);
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasLogo = expense.logoPath != null &&
-        expense.logoPath!.isNotEmpty &&
-        File(expense.logoPath!).existsSync();
-    final logoShape = logoShapeFromString(expense.logoShape);
+    final logoFile = _resolveLogoFile(expense.logoPath);
+    final hasLogo = logoFile != null;
+
+    final title = expense.vendor.trim().isEmpty ? '(No vendor)' : expense.vendor.trim();
+
+    final statusLabel = expense.excludeFromReports ? 'Excluded from Reports' : 'Included in Reports';
+    final statusColor = expense.excludeFromReports ? const Color(0xFF9E9E9E) : const Color(0xFF4CAF50);
+    final statusIcon = expense.excludeFromReports ? Icons.visibility_off_rounded : Icons.check_circle_rounded;
+
+    // barColor mirrors saved_document_detail_screen.dart's collapsed/pinned
+    // bar sourcing — same navy in both branches so it never flashes to the
+    // expense accent on scroll.
+    final barColor = kHeroGradient[0];
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 190,
+            expandedHeight: DocumentDetailHeader.heightFor(hasLogo: hasLogo),
             pinned: true,
-            backgroundColor: kExpenseAccent,
+            backgroundColor: barColor,
             elevation: 0,
             leading: Padding(
               padding: const EdgeInsets.all(8),
@@ -99,15 +127,16 @@ class ExpenseDetailScreen extends StatelessWidget {
               const SizedBox(width: 4),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: _ExpenseHeaderBackground(
-                hasLogo: hasLogo,
-                logoPath: expense.logoPath,
-                logoOffset: Offset(expense.logoOffsetDx, expense.logoOffsetDy),
-                logoScale: expense.logoScale,
-                logoShape: logoShape,
-                category: category,
-                title: expense.vendor.trim().isEmpty ? '(No vendor)' : expense.vendor.trim(),
-                excluded: expense.excludeFromReports,
+              background: DocumentDetailHeader(
+                accentColor: kExpenseAccent,
+                logoFile: logoFile,
+                title: title,
+                typeLabel: category.name,
+                typeIcon: category.icon,
+                statusLabel: statusLabel,
+                statusColor: statusColor,
+                statusIcon: statusIcon,
+                createdAt: expense.date,
               ),
             ),
           ),
@@ -306,104 +335,6 @@ class ExpenseDetailScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ExpenseHeaderBackground extends StatelessWidget {
-  final bool hasLogo;
-  final String? logoPath;
-  final Offset logoOffset;
-  final double logoScale;
-  final LogoShape logoShape;
-  final DocumentCategory category;
-  final String title;
-  final bool excluded;
-
-  const _ExpenseHeaderBackground({
-    required this.hasLogo,
-    required this.logoPath,
-    required this.logoOffset,
-    required this.logoScale,
-    required this.logoShape,
-    required this.category,
-    required this.title,
-    required this.excluded,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [kExpenseAccent, Color(0xFFB71C1C)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            top: -50, right: -50,
-            child: Container(
-              width: 160, height: 160,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 56),
-            child: Align(
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    padding: hasLogo ? const EdgeInsets.all(6) : EdgeInsets.zero,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: logoShape.radiusFor(56),
-                      boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: hasLogo
-                        ? SharedLogoThumbnail(
-                            logoPath: logoPath!,
-                            logoOffset: logoOffset,
-                            logoScale: logoScale,
-                            logoShape: logoShape,
-                            boxSize: 44,
-                          )
-                        : Icon(category.icon, color: category.color, size: 28),
-                  ),
-                  const SizedBox(height: 10),
-                  if (excluded)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-                      ),
-                      child: const Text('Excluded from reports',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
-                    ),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

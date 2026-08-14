@@ -1,14 +1,20 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
 //
-// PUSH ALERTS (this pass): closes the last gap in DocumentAlertScheduler
-// coverage — receipts now get real push notifications for stale drafts,
-// the same way InvoiceProvider/QuoteProvider already do. Receipts have no
+// PUSH ALERTS: closes the last gap in DocumentAlertScheduler coverage —
+// receipts now get real push notifications for stale drafts, the same way
+// InvoiceProvider/QuoteProvider already do. Receipts have no
 // overdue/expiring concept (they're already-settled records — see
 // filter_logic.dart's comment on applyQuickFilterToReceipts), so drafts
 // are the only category that applies here. Uses filter_logic.dart's
 // receiptIsDraft() predicate directly, same single-source-of-truth
 // pattern as the other two providers.
+//
+// ADDED (this pass): currentReceiptId getter, exposing the private
+// _currentReceiptId so CreateReceiptScreen can look up the SavedReceipt
+// it just created/updated after calling saveCurrentReceipt() (which
+// returns Future<void>, not the saved object itself — unlike
+// QuoteProvider.saveCurrentQuote()).
 
 import 'dart:async';
 import 'dart:convert';
@@ -28,6 +34,11 @@ class ReceiptProvider extends ChangeNotifier {
 
   ReceiptData get currentReceiptData => _currentReceiptData;
   List<SavedReceipt> get savedReceipts => List.unmodifiable(_savedReceipts);
+
+  // Exposes the id of whatever's currently loaded in the editor (or the id
+  // just assigned by the most recent saveCurrentReceipt() call). Null if
+  // nothing's been saved yet this session.
+  String? get currentReceiptId => _currentReceiptId;
 
   // -- Reset / update current draft ------------------------------------------
 

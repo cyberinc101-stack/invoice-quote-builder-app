@@ -1,16 +1,21 @@
 // receipt_full_preview_screen.dart
 // lib/screens/receipt_full_preview_screen.dart
 //
+// TEMPLATE + A4 FORMAT PASS (this update): the body no longer hardcodes
+// ExecutiveReceiptPreview — it now dispatches on data.layoutTemplateId via
+// buildReceiptPreview() (receipt_template_chooser_01/preview_registry.dart),
+// same as the receipt template chooser grid already uses. Also swapped the
+// fixed-height Transform.scale (which forced a hard kPageH box regardless
+// of the design's actual rendered height) for ScaledPageStack — the same
+// fix already applied to invoice_full_preview_screen.dart and
+// quote_full_preview_screen.dart — so this screen always shows the true
+// A4 proportions of whichever design is selected instead of stretching or
+// clipping it into a fixed box.
+//
 // Mirrors invoice_full_preview_screen.dart, built against the real receipt
 // types: ReceiptProvider, ReceiptData, SavedReceipt, ReceiptPdfService.
 // Lives flat under lib/screens/ (not a subfolder) to match the import path
 // already used by create_receipt_screen.dart.
-//
-// UPDATED (this pass): the old inline _ReceiptDocument widget has been
-// replaced with ExecutiveReceiptPreview from
-// receipt_layout_templates/01_executive_receipt_layout — the same
-// self-scaling A4-page template used for invoices and quotes. Download,
-// share, and the bottom bar are unchanged.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +25,10 @@ import '../models/receipt_data.dart';
 import '../services/receipt_pdf_service.dart';
 import '../receipt_layout_templates/01_executive_receipt_layout/executive_receipt_logic_data.dart';
 import '../receipt_layout_templates/01_executive_receipt_layout/executive_receipt_stationary_layout.dart'
-    show kPageW, kPageH;
+    show kPageW;
+import '../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../create_receipt/receipt_template_chooser_01/preview_registry.dart'
+    show buildReceiptPreview;
 import 'receipt_preview_bottom_bar.dart';
 
 class ReceiptFullPreviewScreen extends StatefulWidget {
@@ -94,15 +102,19 @@ class _ReceiptFullPreviewScreenState extends State<ReceiptFullPreviewScreen> {
     return map[scheme] ?? const Color(0xFF2E7D32);
   }
 
+  // Dispatches on data.layoutTemplateId — falls back to Executive if the
+  // id is unrecognized.
+  Widget _buildPreviewWidget(ReceiptData data) {
+    return buildReceiptPreview(data.layoutTemplateId, data) ??
+        ExecutiveReceiptPreview(data: data);
+  }
+
   @override
   Widget build(BuildContext context) {
     final data   = context.watch<ReceiptProvider>().currentReceiptData;
     final accent = _accentFromScheme(data.colorScheme);
     final screenW = MediaQuery.of(context).size.width;
-    // Page renders at its native A4-ish size (kPageW x kPageH); scale the
-    // whole thing down to fit the available screen width, same idea as
-    // the invoice/quote full preview screens.
-    final fitScale = ((screenW - 40) / kPageW).clamp(0.3, 1.0);
+    final targetWidth = (screenW - 40).clamp(200.0, kPageW);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
@@ -115,14 +127,10 @@ class _ReceiptFullPreviewScreenState extends State<ReceiptFullPreviewScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Center(
-          child: SizedBox(
-            width: kPageW * fitScale,
-            height: kPageH * fitScale,
-            child: Transform.scale(
-              scale: fitScale,
-              alignment: Alignment.topCenter,
-              child: ExecutiveReceiptPreview(data: data),
-            ),
+          child: ScaledPageStack(
+            targetWidth: targetWidth,
+            nativePageWidth: kPageW,
+            child: _buildPreviewWidget(data),
           ),
         ),
       ),

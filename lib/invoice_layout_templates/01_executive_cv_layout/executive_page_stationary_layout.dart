@@ -1,8 +1,16 @@
 // executive_page_stationary_layout.dart
 // lib/invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
 //
-// REWRITE: previously a single monolithic InvoiceExecutiveContent widget
-// that got Transform.scale'd to force everything onto one page. This
+// LOGO SIZER PASS (this update): _Logo now renders through
+// SharedLogoThumbnail instead of a plain centred Image.file cover-fit, so
+// the businessLogoOffsetDx/Dy/Scale/Shape values saved via the Customise
+// step's logo sizer (SharedLogoPicker) actually take visual effect here —
+// previously this widget ignored all four fields entirely, so repositioning/
+// zooming the logo saved data that had no effect on the rendered document.
+// The initial-letter diamond fallback (no logo set) is unchanged.
+//
+// REWRITE (earlier pass): previously a single monolithic InvoiceExecutiveContent
+// widget that got Transform.scale'd to force everything onto one page. This
 // version splits the document into header / line-item-row / footer
 // builder functions consumed by A4Paginator, so real overflow paginates
 // onto additional A4 pages instead of shrinking text. Every builder here
@@ -15,7 +23,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../models/invoice_data.dart';
-import '../../../widgets/shared_logo_picker.dart' show SharedLogoPicker, LogoShape;
+import '../../../widgets/shared_logo_picker.dart'
+    show SharedLogoPicker, SharedLogoThumbnail, LogoShape, LogoShapeX, logoShapeFromString;
 import '../pagination/doc_field.dart';
 
 // ── Page geometry ─────────────────────────────────────────────────────────────
@@ -213,16 +222,16 @@ class _HeaderIdentity extends StatelessWidget {
       children: [
         editable
             ? SizedBox(
-                width: 44,
-                height: 44,
+                width: data.businessLogoDisplaySize,
+                height: data.businessLogoDisplaySize,
                 child: SharedLogoPicker(
                   logoPath: data.businessLogoPath,
-                  logoOffset: Offset.zero,
-                  logoScale: 1.0,
-                  logoShape: LogoShape.roundedSquare,
+                  logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+                  logoScale: data.businessLogoScale,
+                  logoShape: logoShapeFromString(data.businessLogoShape),
                   accent: accent,
                   compact: true,
-                  compactBoxSize: 44,
+                  compactBoxSize: data.businessLogoDisplaySize,
                   onChanged: (path, offset, scale, shape) => edit!.onLogoChanged(path),
                 ),
               )
@@ -309,12 +318,23 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const size = 44.0;
+    final size = data.businessLogoDisplaySize;
     final path = data.businessLogoPath;
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(File(path), width: size, height: size, fit: BoxFit.cover),
+      final shape = logoShapeFromString(data.businessLogoShape);
+      return SizedBox(
+        width: size,
+        height: size,
+        child: ClipRRect(
+          borderRadius: shape.radiusFor(size),
+          child: SharedLogoThumbnail(
+            logoPath: path,
+            logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+            logoScale: data.businessLogoScale,
+            logoShape: shape,
+            boxSize: size,
+          ),
+        ),
       );
     }
     final initial = data.businessName.trim().isNotEmpty

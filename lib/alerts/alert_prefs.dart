@@ -1,13 +1,26 @@
 // alert_prefs.dart
 // lib/alerts/alert_prefs.dart
 //
-// Master on/off switch for the whole alerts feature, plus four per-type
-// toggles (Overdue Invoices / Expiring Quotes / Drafts / Reminders) so a
-// user can silence just one category without losing the others. All five
-// flags persist via SharedPreferences the same way the rest of the app
-// persists settings.
+// Master on/off switch for the whole alerts feature, plus per-type
+// toggles (Overdue Invoices / Expiring Quotes / Drafts / Reminders /
+// Weekly Summary) so a user can silence just one category without losing
+// the others. All flags persist via SharedPreferences the same way the
+// rest of the app persists settings.
 //
-// PER-TYPE TOGGLES (this pass): added overdueInvoicesEnabled /
+// WEEKLY DIGEST TOGGLE (this pass): added weeklyDigestEnabled, defaulting
+// to true so existing users get the new weekly summary notification
+// without needing to opt in — consistent with how the four existing
+// per-type toggles were introduced. Deliberately NOT gated behind the
+// master alertsEnabled switch the way the other four are read in
+// alert_engine.dart — the weekly digest isn't part of buildAlerts()'s
+// live in-app alert list (it's a standalone OS-scheduled notification,
+// see WeeklyDigestScheduler), so it's controlled purely by this one flag.
+// settings_screen.dart is responsible for calling
+// WeeklyDigestScheduler.instance.sync(value) whenever this flag changes,
+// same as it already does for the master alertsEnabled switch's effect
+// on document alerts via each provider's resync.
+//
+// PER-TYPE TOGGLES (earlier pass): added overdueInvoicesEnabled /
 // quotesExpiringEnabled / draftsEnabled / remindersEnabled, each defaulting
 // to true so existing users see no behavior change until they actively
 // turn one off. alert_engine.dart's buildAlerts() reads these same four
@@ -22,6 +35,7 @@ const String _kOverdueInvoicesEnabledKey = 'alerts_overdue_invoices_enabled_v1';
 const String _kQuotesExpiringEnabledKey = 'alerts_quotes_expiring_enabled_v1';
 const String _kDraftsEnabledKey = 'alerts_drafts_enabled_v1';
 const String _kRemindersEnabledKey = 'alerts_reminders_enabled_v1';
+const String _kWeeklyDigestEnabledKey = 'alerts_weekly_digest_enabled_v1';
 
 class AlertPrefs extends ChangeNotifier {
   bool _alertsEnabled = true;
@@ -29,6 +43,7 @@ class AlertPrefs extends ChangeNotifier {
   bool _quotesExpiringEnabled = true;
   bool _draftsEnabled = true;
   bool _remindersEnabled = true;
+  bool _weeklyDigestEnabled = true;
   bool _loaded = false;
 
   bool get alertsEnabled => _alertsEnabled;
@@ -36,6 +51,7 @@ class AlertPrefs extends ChangeNotifier {
   bool get quotesExpiringEnabled => _quotesExpiringEnabled;
   bool get draftsEnabled => _draftsEnabled;
   bool get remindersEnabled => _remindersEnabled;
+  bool get weeklyDigestEnabled => _weeklyDigestEnabled;
   bool get isLoaded => _loaded;
 
   Future<void> load() async {
@@ -45,6 +61,7 @@ class AlertPrefs extends ChangeNotifier {
     _quotesExpiringEnabled = prefs.getBool(_kQuotesExpiringEnabledKey) ?? true;
     _draftsEnabled = prefs.getBool(_kDraftsEnabledKey) ?? true;
     _remindersEnabled = prefs.getBool(_kRemindersEnabledKey) ?? true;
+    _weeklyDigestEnabled = prefs.getBool(_kWeeklyDigestEnabledKey) ?? true;
     _loaded = true;
     notifyListeners();
   }
@@ -82,5 +99,12 @@ class AlertPrefs extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kRemindersEnabledKey, value);
+  }
+
+  Future<void> setWeeklyDigestEnabled(bool value) async {
+    _weeklyDigestEnabled = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kWeeklyDigestEnabledKey, value);
   }
 }

@@ -1,6 +1,18 @@
 // lib/screens/quote_editor_screen.dart
 //
-// UPDATED (this pass): Business Info and Client & Details steps no longer
+// TEMPLATE + LOGO SIZER PASS (this update): _syncToProvider() now also
+// sets layoutTemplateId (widget.layoutTemplateId, chosen on
+// QuoteTemplateChooserScreen — previously stored in _layoutTemplateId but
+// never actually written to QuoteData, so the quote always rendered as
+// Executive regardless of what was picked). A new "Business Logo" section
+// on the Review & Save step lets the logo be repositioned/zoomed/reshaped
+// independently of the saved business profile it came from — local
+// _logoPath/_logoOffset/_logoScale/_logoShape state, seeded from whichever
+// profile is selected in _applyBusinessProfile() but editable afterward
+// via SharedLogoPicker, then written into QuoteData through
+// provider.updateBusinessInfo()'s new optional logo params.
+//
+// UPDATED (earlier pass): Business Info and Client & Details steps no longer
 // show inline manual fields (Logo / Business Name / Email / Phone /
 // Address, and Client Name / Email / Phone / Address). They now match the
 // invoice app's customer step exactly: a saved-items list plus an
@@ -15,7 +27,7 @@
 // has been removed — saving now only ever happens through the sheet's own
 // Save button, which already persists to the library.
 //
-// UPDATED (this pass, 2): Next is now blocked on step 0 until a business
+// UPDATED (earlier pass, 2): Next is now blocked on step 0 until a business
 // profile is selected, and on step 1 until a client is selected (per
 // explicit instruction — Jesse chose "require selection" over "allow
 // empty"). A status strip under each library section shows either a
@@ -31,8 +43,8 @@
 // library by fields, or synthesize a placeholder profile/client from the
 // quote's raw data.
 //
-// Everything below this point (Line Items step, Review & Save step,
-// StepEditorHeader, preview/save flow) is otherwise unchanged from before.
+// Everything below this point (Line Items step, StepEditorHeader,
+// preview/save flow) is otherwise unchanged from before.
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -41,6 +53,7 @@ import '../providers/quote_provider.dart';
 import '../models/quote_data.dart';
 import '../models/invoice_data.dart' show LineItem;
 import '../widgets/step_editor_header.dart';
+import '../widgets/shared_logo_picker.dart';
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'create_quote_section/quote_edit_widgets.dart';
 import 'create_quote_section/quote_full_preview_screen.dart';
@@ -49,7 +62,6 @@ import 'create_quote_section/quote_business_profile_library.dart';
 
 class QuoteEditorScreen extends StatefulWidget {
   /// Visual layout template id chosen on QuoteTemplateChooserScreen.
-  /// Currently stored only — no quote layout exists yet to act on it.
   final int layoutTemplateId;
 
   const QuoteEditorScreen({
@@ -82,6 +94,19 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   // Client — same pattern.
   QuoteClient? _selectedClient;
 
+  // Logo override — seeded from _selectedBizProfile whenever a new profile
+  // is picked, but independently editable afterward via the Business Logo
+  // section on the Review step (SharedLogoPicker), so the logo can be
+  // repositioned/zoomed/reshaped per-quote without altering the saved
+  // profile itself. QuoteBusinessProfile has no shape field of its own, so
+  // shape always starts at roundedSquare (matching InvoiceData's default)
+  // regardless of profile.
+  String? _logoPath;
+  Offset _logoOffset = Offset.zero;
+  double _logoScale = 1.0;
+  LogoShape _logoShape = LogoShape.roundedSquare;
+  double _logoSize = 44.0;
+
   // Quote details — still edited inline, unrelated to the saved-profile
   // pattern above.
   late TextEditingController _quoteNumber;
@@ -110,6 +135,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     super.initState();
     _layoutTemplateId = widget.layoutTemplateId;
     final q = context.read<QuoteProvider>().quoteData;
+    _logoSize = q.businessLogoDisplaySize;
 
     final now = DateTime.now();
     _quoteNumber = TextEditingController(
@@ -175,7 +201,17 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   }
 
   void _applyBusinessProfile(QuoteBusinessProfile? profile) {
-    setState(() => _selectedBizProfile = profile);
+    setState(() {
+      _selectedBizProfile = profile;
+      // Re-seed the logo override from the newly selected profile. Any
+      // manual reposition/zoom done on the Review step for a previous
+      // profile is intentionally discarded here — switching business
+      // profiles is switching businesses, so their logo should come along.
+      _logoPath = profile?.logoPath;
+      _logoOffset = profile?.logoOffset ?? Offset.zero;
+      _logoScale = profile?.logoScale ?? 1.0;
+      _logoShape = LogoShape.roundedSquare;
+    });
   }
 
   void _syncToProvider() {
@@ -185,7 +221,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       businessEmail: _selectedBizProfile?.businessEmail ?? '',
       businessPhone: _selectedBizProfile?.businessPhone ?? '',
       businessAddress: _selectedBizProfile?.businessAddress ?? '',
-      businessLogoPath: _selectedBizProfile?.logoPath,
+      businessLogoPath: _logoPath,
+      clearBusinessLogo: _logoPath == null,
+      businessLogoOffsetDx: _logoOffset.dx,
+      businessLogoOffsetDy: _logoOffset.dy,
+      businessLogoScale: _logoScale,
+      businessLogoShape: _logoShape.storageName,
+      businessLogoDisplaySize: _logoSize,
     );
     provider.updateClientInfo(
       clientName: _selectedClient?.name ?? '',
@@ -204,6 +246,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     );
     provider.updateQuoteData(provider.quoteData.copyWith(lineItems: _currentLineItems));
     provider.updateColorScheme(_colorScheme);
+    provider.updateLayoutTemplateId(_layoutTemplateId);
   }
 
   Future<void> _pickDate({required bool isExpiry}) async {
@@ -538,6 +581,68 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         quoteSectionHeader(context, 'Quote Title', _accent, icon: Icons.title_rounded),
         QuoteField(ctrl: _titleCtrl, label: 'Title (for your records)', accent: _accent, icon: Icons.bookmark_outline_rounded, required: true, max: 80),
         const SizedBox(height: 24),
+
+        // ── Business logo sizer ─────────────────────────────────────────
+        // Reposition/zoom/shape the logo for THIS quote only — the saved
+        // business profile's own logo settings are untouched.
+        quoteSectionHeader(context, 'Business Logo', _accent, icon: Icons.image_rounded),
+        SharedLogoPicker(
+          logoPath: _logoPath,
+          logoOffset: _logoOffset,
+          logoScale: _logoScale,
+          logoShape: _logoShape,
+          accent: _accent,
+          onChanged: (path, offset, scale, shape) {
+            setState(() {
+              _logoPath = path;
+              _logoOffset = offset;
+              _logoScale = scale;
+              _logoShape = shape;
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+
+        quoteSectionHeader(context, 'Logo Size', _accent, icon: Icons.photo_size_select_large_rounded),
+        Opacity(
+          opacity: (_logoPath != null && _logoPath!.isNotEmpty) ? 1.0 : 0.4,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.image_outlined, size: 14, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: _accent,
+                        inactiveTrackColor: _accent.withValues(alpha: 0.2),
+                        thumbColor: _accent,
+                        overlayColor: _accent.withValues(alpha: 0.15),
+                        trackHeight: 4,
+                      ),
+                      child: Slider(
+                        value: _logoSize,
+                        min: 24,
+                        max: 60,
+                        divisions: 9,
+                        onChanged: (_logoPath != null && _logoPath!.isNotEmpty)
+                            ? (v) => setState(() => _logoSize = v)
+                            : null,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.image_outlined, size: 24, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                ],
+              ),
+              Text(
+                (_logoPath != null && _logoPath!.isNotEmpty) ? '${_logoSize.toInt()}px' : 'Add a logo to enable',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _accent),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
         quoteSectionHeader(context, 'Accent Color', _accent, icon: Icons.palette_outlined),
         QuoteColorPicker(selected: _colorScheme, onChanged: (c) => setState(() => _colorScheme = c)),
         const SizedBox(height: 24),

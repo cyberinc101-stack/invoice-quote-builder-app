@@ -1,7 +1,13 @@
 // invoice_provider.dart
 // lib/providers/invoice_provider.dart
 //
-// PUSH ALERTS (this pass): every mutation that can change whether an
+// TEMPLATE + LOGO SIZER PASS (this update): two new methods —
+// updateLayoutTemplateId() and updateBusinessLogo() — mirror the pattern
+// every other data-mutation method here already uses (copyWith the active
+// draft, notifyListeners). See invoice_data.dart for the new fields these
+// write to.
+//
+// PUSH ALERTS (earlier pass): every mutation that can change whether an
 // invoice is overdue-eligible or a draft now calls into
 // DocumentAlertScheduler right after persisting, mirroring the pattern
 // ReminderProvider already uses for custom reminders. Specifically:
@@ -320,6 +326,37 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Business logo path + reposition/zoom/shape, all in one call so a
+  // single SharedLogoPicker.onChanged callback (which always hands back
+  // all four values together) maps directly onto one provider call. Pass
+  // path: null to clear the logo entirely — that's the only way to
+  // actually blank businessLogoPath, since InvoiceData.copyWith's plain
+  // `?? this.x` pattern can't express "set to null" on its own.
+  void updateBusinessLogo({
+    required String? path,
+    required Offset offset,
+    required double scale,
+    required String shape,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      businessLogoPath: path,
+      clearBusinessLogo: path == null,
+      businessLogoOffsetDx: offset.dx,
+      businessLogoOffsetDy: offset.dy,
+      businessLogoScale: scale,
+      businessLogoShape: shape,
+    );
+    notifyListeners();
+  }
+
+  // Logo display size (box width/height in px, default 44.0) � separate
+  // from updateBusinessLogo() so the "Logo Size" slider on the Customise
+  // step can update just this one field.
+  void updateBusinessLogoSize(double size) {
+    _invoiceData = _invoiceData.copyWith(businessLogoDisplaySize: size);
+    notifyListeners();
+  }
+
   void updateClientInfo({
     String? clientName,
     String? clientEmail,
@@ -388,6 +425,16 @@ class InvoiceProvider extends ChangeNotifier {
 
   void updateFontFamily(String font) {
     _invoiceData = _invoiceData.copyWith(fontFamily: font);
+    notifyListeners();
+  }
+
+  // Which visual design (Executive/Nordic/Vibrant/etc — see
+  // preview_registry.dart) this invoice renders with. Set once from
+  // InvoiceTemplateChooserScreen's selection (via StepCreateInvoice), and
+  // changeable again later if a template picker is ever added to the
+  // Customise step.
+  void updateLayoutTemplateId(int id) {
+    _invoiceData = _invoiceData.copyWith(layoutTemplateId: id);
     notifyListeners();
   }
 
