@@ -8,7 +8,7 @@
 // only holds the AppBar, hero banner, and the small widgets specific to
 // those two things (_AlertBellButton, _CtaButton, _MiniDocIcon).
 //
-// PER-TYPE ALERT GATING (this pass): the bell badge count now passes all
+// PER-TYPE ALERT GATING (earlier pass): the bell badge count now passes all
 // four AlertPrefs per-type flags into buildAlerts(), not just the master
 // alertsEnabled switch. Previously a user could turn off, say, "Drafts"
 // alerts on the Alerts screen's future toggle UI and still see the bell
@@ -17,11 +17,20 @@
 // future consumer of buildAlerts() all read from the exact same four
 // flags on AlertPrefs, so they can never disagree.
 //
-// ICON ALIGNMENT FIX (this pass): the Templates CTA button was passing
-// iconSize: 28 while Create Invoice / Create Quote / Create Receipt all
-// use the default 22. That made the Templates icon visibly larger and
-// threw off the row's visual alignment. Removed the override so all
-// four CTA icons render at the same 22px size.
+// ICON ALIGNMENT FIX (this pass): the Templates icon sat lower than the
+// other three CTA icons. Cause: the row uses IntrinsicHeight +
+// CrossAxisAlignment.stretch, so all four buttons share the same total
+// height — but each button's inner Column used
+// mainAxisAlignment: MainAxisAlignment.center, so the icon's vertical
+// position depended on that button's OWN content height (icon + spacing
+// + label). "Create Invoice"/"Create Quote" wrap to two lines at this
+// width, making their content taller, while "Templates" is forced to a
+// single line (singleLine: true), making its content shorter — so with
+// everything centered, the shorter block (and its icon) sat further down
+// from the top than the others. Fixed by changing the Column to
+// mainAxisAlignment: MainAxisAlignment.start, so every icon anchors to
+// the same offset from the top of the button regardless of how many
+// lines its label wraps to.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -420,9 +429,20 @@ class _CtaButton extends StatelessWidget {
             BoxShadow(color: glowColor, blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
+        // NOTE: mainAxisAlignment changed from `center` to `start`.
+        // The Row above wraps each button in IntrinsicHeight +
+        // CrossAxisAlignment.stretch, so every button gets the SAME total
+        // height — but labels wrap to different numbers of lines
+        // ("Create Invoice" / "Create Quote" often wrap to 2 lines at this
+        // width, "Templates" is forced to 1 via singleLine). With `center`,
+        // a shorter content block (fewer label lines) gets pushed further
+        // down from the top to stay centered in the shared height, so its
+        // icon ends up lower than the icons in taller buttons. `start`
+        // anchors every icon to the same offset from the top regardless
+        // of how many lines its label takes, so all four icons line up.
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Icon(icon, color: Colors.white, size: iconSize),
             const SizedBox(height: 6),
