@@ -1,7 +1,28 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// TEMPLATE + LOGO SIZER PASS (this update): updateBusinessInfo() gained
+// CURRENCY DISPLAY PASS (this update): updateQuoteDetails() gained
+// optional currencySymbol/currencyDisplayMode params, passed straight
+// through to QuoteData.copyWith (same as the plain currency field
+// already there). Written from quote_editor_screen.dart's new free-text
+// currency code/symbol fields + Code/Symbol/Both selector on the
+// Client & Details step, replacing the old fixed-list dropdown.
+//
+// ALERTPREFS PUSH WIRING (earlier pass): added applyExpiringAlertsEnabled()
+// and applyDraftAlertsEnabled() — mirrors InvoiceProvider's own version;
+// see that file's header comment for the full rationale. Called from
+// alert_type_toggles.dart's "Expiring Quotes"/"Drafts" switches and
+// settings_screen.dart's master Alerts switch.
+//
+// NO-DUPLICATE-PUSH FIX (earlier pass): _resyncDocumentAlerts(),
+// updateSavedQuote(), and renameQuote() now pass
+// allowImmediateFire: false to syncQuoteExpiringAlert() — same fix as
+// InvoiceProvider's, for the same reason: a quote already inside its
+// expiring-soon window was re-pushing a duplicate notification on every
+// app launch and every unrelated edit. See document_alert_scheduler.dart
+// for the actual fix.
+//
+// TEMPLATE + LOGO SIZER PASS (earlier update): updateBusinessInfo() gained
 // optional businessLogoOffsetDx/Dy/Scale/Shape params (all pass straight
 // through to QuoteData.copyWith, same as the plain fields already there),
 // and a new updateLayoutTemplateId() mirrors InvoiceProvider's own
@@ -72,7 +93,10 @@ class QuoteProvider extends ChangeNotifier {
   Future<void> _resyncDocumentAlerts() async {
     for (final q in _savedQuotes) {
       try {
-        await DocumentAlertScheduler.instance.syncQuoteExpiringAlert(q);
+        // allowImmediateFire: false — this runs on every app launch, so a
+        // quote already inside its expiring-soon window must NOT re-fire
+        // a fresh "notify now" push every single time the app opens.
+        await DocumentAlertScheduler.instance.syncQuoteExpiringAlert(q, allowImmediateFire: false);
         await DocumentAlertScheduler.instance.syncQuoteDraftNudge(q);
       } catch (_) {
         // Best-effort — one bad quote shouldn't stop the rest resyncing.
@@ -87,6 +111,41 @@ class QuoteProvider extends ChangeNotifier {
       await prefs.setString(_kSavedQuotesKey, encoded);
     } catch (e) {
       debugPrint('[QuoteProvider] _persist error: $e');
+    }
+  }
+
+  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
+  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
+  // EFFECTIVE enabled state for a category (alertsEnabled && the per-type
+  // flag) changes. Mirrors InvoiceProvider.applyOverdueAlertsEnabled /
+  // applyDraftAlertsEnabled — see that file's comment for the full
+  // rationale.
+
+  Future<void> applyExpiringAlertsEnabled(bool enabled) async {
+    for (final q in _savedQuotes) {
+      try {
+        if (enabled) {
+          await DocumentAlertScheduler.instance.syncQuoteExpiringAlert(q, allowImmediateFire: false);
+        } else {
+          await DocumentAlertScheduler.instance.cancelQuoteExpiringAlert(q.id);
+        }
+      } catch (_) {
+        // Best-effort — one bad quote shouldn't stop the rest applying.
+      }
+    }
+  }
+
+  Future<void> applyDraftAlertsEnabled(bool enabled) async {
+    for (final q in _savedQuotes) {
+      try {
+        if (enabled) {
+          await DocumentAlertScheduler.instance.syncQuoteDraftNudge(q);
+        } else {
+          await DocumentAlertScheduler.instance.cancelQuoteDraftNudge(q.id);
+        }
+      } catch (_) {
+        // Best-effort — one bad quote shouldn't stop the rest applying.
+      }
     }
   }
 
@@ -130,6 +189,9 @@ class QuoteProvider extends ChangeNotifier {
     _activeQuoteId = quote.id;
     _persist();
     notifyListeners();
+    // First save of this quote — a genuine new-transition moment, so an
+    // already-past expiring window is still allowed to fire almost
+    // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(quote));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(quote));
     return quote;
@@ -146,7 +208,10 @@ class QuoteProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     final updated = _savedQuotes[index];
-    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated));
+    // Routine content edit, not a fresh transition — allowImmediateFire:
+    // false so editing an already-expiring-soon quote doesn't re-push a
+    // duplicate notification.
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
@@ -159,9 +224,10 @@ class QuoteProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     // Title changed -> re-sync so a pending notification's body text
-    // (which embeds the title) doesn't go stale.
+    // (which embeds the title) doesn't go stale. Not a fresh transition —
+    // allowImmediateFire: false, same reasoning as updateSavedQuote.
     final updated = _savedQuotes[index];
-    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
@@ -198,6 +264,8 @@ class QuoteProvider extends ChangeNotifier {
     // A status flip is exactly the case that most needs a resync — e.g.
     // moving to accepted/declined must cancel a pending expiring-soon push
     // immediately, and moving to sent is what makes one eligible at all.
+    // It's also a genuine new transition, so this keeps the default
+    // allowImmediateFire: true.
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(_savedQuotes[index]));
   }
 
@@ -287,12 +355,19 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // currencySymbol/currencyDisplayMode are new (CURRENCY DISPLAY PASS) —
+  // optional so any older call site passing only `currency` keeps
+  // working unchanged. quote_editor_screen.dart's Client & Details step
+  // now passes all three from its free-text fields + Code/Symbol/Both
+  // selector.
   void updateQuoteDetails({
     String? quoteNumber,
     String? issueDate,
     String? expiryDate,
     String? notes,
     String? currency,
+    String? currencySymbol,
+    String? currencyDisplayMode,
     double? taxRate,
     double? discountRate,
   }) {
@@ -302,6 +377,8 @@ class QuoteProvider extends ChangeNotifier {
       expiryDate:   expiryDate,
       notes:        notes,
       currency:     currency,
+      currencySymbol:      currencySymbol,
+      currencyDisplayMode: currencyDisplayMode,
       taxRate:      taxRate,
       discountRate: discountRate,
     );

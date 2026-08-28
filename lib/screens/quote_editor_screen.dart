@@ -1,6 +1,29 @@
 // lib/screens/quote_editor_screen.dart
 //
-// TEMPLATE + LOGO SIZER PASS (this update): _syncToProvider() now also
+// CURRENCY DISPLAY PASS (this update): the "Currency" dropdown
+// (backed by kQuoteCurrencies, a fixed list) on the Client & Details
+// step is replaced with a free-text Currency Code field + free-text
+// Currency Symbol field + a Code/Symbol/Both display-mode selector with
+// a live preview — same pattern already live on the invoice
+// (step_create_invoice.dart's _InvoiceCurrencyDisplayModeSelector) and
+// receipt (create_receipt_screen.dart) create steps. The single
+// `String _currency` field is replaced by
+// `_currencyCodeCtrl` / `_currencySymbolCtrl` / `_currencyDisplayMode`,
+// which map straight onto QuoteData.currency/currencySymbol/
+// currencyDisplayMode (already present on the model — see
+// quote_data.dart) via QuoteProvider.updateQuoteDetails(), which now
+// also accepts currencySymbol/currencyDisplayMode.
+//
+// The Line Items and Review steps previously called the shared
+// `quoteCurrencySymbol(_currency)` helper (a hardcoded code -> symbol
+// lookup) to prefix amounts on screen. That's replaced with a local
+// `_currencyPrefix` getter (symbol first, falling back to code) — the
+// same cosmetic-only pattern used on the invoice step; the actual
+// generated PDF/preview already does the full Code/Symbol/Both
+// formatting off the three model fields, so no changes were needed
+// there.
+//
+// TEMPLATE + LOGO SIZER PASS (earlier update): _syncToProvider() now also
 // sets layoutTemplateId (widget.layoutTemplateId, chosen on
 // QuoteTemplateChooserScreen — previously stored in _layoutTemplateId but
 // never actually written to QuoteData, so the quote always rendered as
@@ -59,14 +82,24 @@ import 'create_quote_section/quote_edit_widgets.dart';
 import 'create_quote_section/quote_full_preview_screen.dart';
 import 'create_quote_section/quote_client_library.dart';
 import 'create_quote_section/quote_business_profile_library.dart';
+import 'create_quote_section/quote_template_chooser_01/preview_registry.dart' show buildQuotePreview;
+import '../document_layout_templates/01_executive/executive_quote_logic_data.dart';
+import '../document_layout_templates/01_executive/executive_quote_stationary_layout.dart' show kPageW;
+import '../document_layout_templates/pagination/scaled_page_stack.dart';
 
 class QuoteEditorScreen extends StatefulWidget {
   /// Visual layout template id chosen on QuoteTemplateChooserScreen.
   final int layoutTemplateId;
 
+  /// Which step to open on (0 = Business Info ... 3 = Review & Save).
+  /// Defaults to 0 for a fresh quote; the "Edit" flow on an existing
+  /// saved quote passes 3 to jump straight to Review & Save.
+  final int initialStep;
+
   const QuoteEditorScreen({
     super.key,
     this.layoutTemplateId = 1,
+    this.initialStep = 0,
   });
 
   @override
@@ -83,7 +116,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     StepMeta(label: 'Review & Save', icon: Icons.rate_review_rounded),
   ];
 
-  int _step = 0;
+  late int _step;
   bool _saving = false;
   late int _layoutTemplateId;
 
@@ -113,7 +146,14 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   late TextEditingController _notes;
   String _issueDate = '';
   String _expiryDate = '';
-  String _currency = 'USD';
+
+  // Currency — free-text code + symbol + Code/Symbol/Both display mode.
+  // No hardcoded currency list; any code/symbol combination is accepted.
+  // These map straight onto QuoteData.currency/currencySymbol/
+  // currencyDisplayMode.
+  late TextEditingController _currencyCodeCtrl;
+  late TextEditingController _currencySymbolCtrl;
+  String _currencyDisplayMode = 'code'; // 'code' | 'symbol' | 'both'
 
   // Line items
   late List<TextEditingController> _descCtrls;
@@ -130,9 +170,23 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   QuoteColor _colorScheme = QuoteColor.purple;
   late TextEditingController _titleCtrl;
 
+  /// Local display prefix used only for the item/totals cards on this
+  /// step (cosmetic while editing) — symbol first, falling back to code.
+  /// The real generated PDF/preview already does the full
+  /// Code/Symbol/Both branching off QuoteData's three currency fields, so
+  /// this doesn't need to replicate that logic exactly.
+  String get _currencyPrefix {
+    final symbol = _currencySymbolCtrl.text.trim();
+    final code = _currencyCodeCtrl.text.trim().toUpperCase();
+    if (symbol.isNotEmpty) return symbol;
+    if (code.isNotEmpty) return '$code ';
+    return '';
+  }
+
   @override
   void initState() {
     super.initState();
+    _step = widget.initialStep.clamp(0, 3);
     _layoutTemplateId = widget.layoutTemplateId;
     final q = context.read<QuoteProvider>().quoteData;
     _logoSize = q.businessLogoDisplaySize;
@@ -144,7 +198,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     _notes        = TextEditingController(text: q.notes);
     _issueDate    = q.issueDate.isNotEmpty ? q.issueDate : DateFormat('d MMM yyyy').format(now);
     _expiryDate   = q.expiryDate.isNotEmpty ? q.expiryDate : DateFormat('d MMM yyyy').format(now.add(const Duration(days: 14)));
-    _currency     = q.currency;
+
+    _currencyCodeCtrl   = TextEditingController(text: q.currency.isNotEmpty ? q.currency : 'USD');
+    _currencySymbolCtrl = TextEditingController(text: q.currencySymbol);
+    _currencyDisplayMode = q.currencyDisplayMode.isNotEmpty ? q.currencyDisplayMode : 'code';
+
     _taxRate      = q.taxRate;
     _discountRate = q.discountRate;
     _colorScheme  = q.colorScheme;
@@ -166,6 +224,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   void dispose() {
     for (final c in [
       _quoteNumber, _notes, _titleCtrl, _taxCtrl, _discountCtrl,
+      _currencyCodeCtrl, _currencySymbolCtrl,
       ..._descCtrls, ..._qtyCtrls, ..._priceCtrls,
     ]) {
       c.dispose();
@@ -186,7 +245,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   double get _taxAmount => (_subtotal - _discountAmount) * (_taxRate / 100);
   double get _total => _subtotal - _discountAmount + _taxAmount;
 
-  // ── Saved-client / saved-business-profile library callbacks ────────────────
+  // ── Saved-client / saved-business-profile library callbacks ─────────────────
   // Fired by QuoteClientLibrarySection / QuoteBusinessProfileLibrarySection
   // when a saved card is tapped (or deselected — profile/client comes back
   // null in that case).
@@ -240,7 +299,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       issueDate: _issueDate,
       expiryDate: _expiryDate,
       notes: _notes.text,
-      currency: _currency,
+      currency: _currencyCodeCtrl.text.trim().isEmpty
+          ? 'USD'
+          : _currencyCodeCtrl.text.trim().toUpperCase(),
+      currencySymbol: _currencySymbolCtrl.text.trim(),
+      currencyDisplayMode: _currencyDisplayMode,
       taxRate: _taxRate,
       discountRate: _discountRate,
     );
@@ -460,7 +523,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Saved clients ────────────────────────────────────────────────
+        // ── Saved clients ──────────────────────────────────────────────────
         QuoteClientLibrarySection(
           accent: _accent,
           onClientSelected: _applyClient,
@@ -479,24 +542,39 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
             Expanded(child: QuoteDateField(label: 'Valid Until', value: _expiryDate, accent: _accent, onTap: () => _pickDate(isExpiry: true))),
           ],
         ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _currency,
-          decoration: InputDecoration(
-            labelText: 'Currency',
-            filled: true,
-            fillColor: Theme.of(context).brightness == Brightness.dark
-                ? Theme.of(context).colorScheme.surfaceContainerHighest
-                : const Color(0xFFF9F9F9),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          ),
-          items: kQuoteCurrencies
-              .map((c) => DropdownMenuItem(value: c['code'], child: Text('${c['code']} (${c['symbol']})')))
-              .toList(),
-          onChanged: (v) => setState(() => _currency = v ?? _currency),
+        const SizedBox(height: 24),
+
+        // ── Currency — free-text code + symbol, no hardcoded currency
+        // list — matches the pattern already live on the invoice and
+        // receipt create steps.
+        quoteSectionHeader(context, 'Currency', _accent, icon: Icons.attach_money_rounded),
+        QuoteField(
+          ctrl: _currencyCodeCtrl,
+          label: 'Currency Code',
+          accent: _accent,
+          icon: Icons.attach_money_rounded,
+          max: 6,
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 12),
+        QuoteField(
+          ctrl: _currencySymbolCtrl,
+          label: 'Currency Symbol',
+          accent: _accent,
+          icon: Icons.currency_exchange_rounded,
+          max: 6,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _QuoteCurrencyDisplayModeSelector(
+          value: _currencyDisplayMode,
+          accent: _accent,
+          onChanged: (mode) => setState(() => _currencyDisplayMode = mode),
+          previewCode: _currencyCodeCtrl.text.trim().isEmpty ? 'USD' : _currencyCodeCtrl.text.trim().toUpperCase(),
+          previewSymbol: _currencySymbolCtrl.text.trim(),
+        ),
+        const SizedBox(height: 24),
+
         QuoteField(ctrl: _notes, label: 'Notes', accent: _accent, icon: Icons.notes_rounded, maxLines: 3, max: 500),
       ],
     );
@@ -516,7 +594,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
             qtyCtrl: _qtyCtrls[i],
             priceCtrl: _priceCtrls[i],
             total: qty * price,
-            currencySymbol: quoteCurrencySymbol(_currency),
+            currencySymbol: _currencyPrefix,
             canRemove: _descCtrls.length > 1,
             accent: _accent,
             onRemove: () => _removeLineItem(i),
@@ -567,7 +645,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
           total: _total,
           taxRate: _taxRate,
           discountRate: _discountRate,
-          currencySymbol: quoteCurrencySymbol(_currency),
+          currencySymbol: _currencyPrefix,
           accent: _accent,
         ),
       ],
@@ -582,7 +660,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         QuoteField(ctrl: _titleCtrl, label: 'Title (for your records)', accent: _accent, icon: Icons.bookmark_outline_rounded, required: true, max: 80),
         const SizedBox(height: 24),
 
-        // ── Business logo sizer ─────────────────────────────────────────
+        quoteSectionHeader(context, 'Live Preview', _accent, icon: Icons.visibility_rounded),
+        const _QuotePreviewCard(),
+        const SizedBox(height: 24),
+
+        // ── Business logo sizer ─────────────────────────────────────────────
         // Reposition/zoom/shape the logo for THIS quote only — the saved
         // business profile's own logo settings are untouched.
         quoteSectionHeader(context, 'Business Logo', _accent, icon: Icons.image_rounded),
@@ -609,6 +691,7 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
                         _logoScale = scale;
                         _logoShape = shape;
                       });
+                      _syncToProvider();
                     },
                   ),
                 ),
@@ -629,7 +712,10 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
                     final selected = s == _logoShape;
                     return GestureDetector(
                       onTap: hasLogo
-                          ? () => setState(() => _logoShape = s)
+                          ? () {
+                              setState(() => _logoShape = s);
+                              _syncToProvider();
+                            }
                           : null,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -683,7 +769,10 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
                         max: 60,
                         divisions: 9,
                         onChanged: (_logoPath != null && _logoPath!.isNotEmpty)
-                            ? (v) => setState(() => _logoSize = v)
+                            ? (v) {
+                                setState(() => _logoSize = v);
+                                _syncToProvider();
+                              }
                             : null,
                       ),
                     ),
@@ -701,7 +790,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         const SizedBox(height: 24),
 
         quoteSectionHeader(context, 'Accent Color', _accent, icon: Icons.palette_outlined),
-        QuoteColorPicker(selected: _colorScheme, onChanged: (c) => setState(() => _colorScheme = c)),
+        QuoteColorPicker(
+          selected: _colorScheme,
+          onChanged: (c) {
+            setState(() => _colorScheme = c);
+            _syncToProvider();
+          },
+        ),
         const SizedBox(height: 24),
         quoteSectionHeader(context, 'Summary', _accent, icon: Icons.summarize_rounded),
         QuoteTotalsCard(
@@ -711,12 +806,12 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
           total: _total,
           taxRate: _taxRate,
           discountRate: _discountRate,
-          currencySymbol: quoteCurrencySymbol(_currency),
+          currencySymbol: _currencyPrefix,
           accent: _accent,
         ),
         const SizedBox(height: 20),
 
-        // ── Preview & Download ──────────────────────────────────────────
+        // ── Preview & Download ──────────────────────────────────────────────
         GestureDetector(
           onTap: _openFullPreview,
           child: Container(
@@ -740,6 +835,208 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuotePreviewCard extends StatelessWidget {
+  const _QuotePreviewCard();
+
+  static Color _accentFromScheme(QuoteColor scheme) {
+    const map = {
+      QuoteColor.blue:   Color(0xFF1565C0),
+      QuoteColor.green:  Color(0xFF2E7D32),
+      QuoteColor.purple: Color(0xFF6A1B9A),
+      QuoteColor.orange: Color(0xFFE65100),
+      QuoteColor.red:    Color(0xFFC62828),
+      QuoteColor.teal:   Color(0xFF00695C),
+      QuoteColor.black:  Color(0xFF212121),
+      QuoteColor.indigo: Color(0xFF283593),
+    };
+    return map[scheme] ?? const Color(0xFF6A1B9A);
+  }
+
+  Widget _buildPreviewWidget(QuoteData data) {
+    return buildQuotePreview(data.layoutTemplateId, data) ??
+        ExecutiveQuotePreview(data: data);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data        = context.watch<QuoteProvider>().quoteData;
+    final accent      = _accentFromScheme(data.colorScheme);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+          ),
+          child: Row(children: [
+            Container(width: 7, height: 7,
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+            const SizedBox(width: 7),
+            Text('Live Preview',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent)),
+          ]),
+        ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 12, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ScaledPageStack(
+                  targetWidth: constraints.maxWidth,
+                  nativePageWidth: kPageW,
+                  child: _buildPreviewWidget(data),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Text('Live preview - changes appear instantly.',
+              style: TextStyle(fontSize: 11,
+                  color: colorScheme.onSurface.withValues(alpha: 0.35),
+                  fontStyle: FontStyle.italic)),
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// Currency display mode selector — segmented Code / Symbol / Both control
+// with a live preview, mirroring step_create_invoice.dart's
+// _InvoiceCurrencyDisplayModeSelector. Kept private/self-contained here
+// rather than shared, matching this app's existing per-flow widget
+// pattern (quote_edit_widgets.dart's old kQuoteCurrencies/
+// quoteCurrencySymbol are no longer used by this screen).
+// =============================================================================
+
+class _QuoteCurrencyDisplayModeSelector extends StatelessWidget {
+  final String value; // 'code' | 'symbol' | 'both'
+  final Color accent;
+  final ValueChanged<String> onChanged;
+  final String previewCode;
+  final String previewSymbol;
+
+  const _QuoteCurrencyDisplayModeSelector({
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+    required this.previewCode,
+    required this.previewSymbol,
+  });
+
+  String _previewFor(String mode) {
+    const amount = '200.00';
+    final hasSymbol = previewSymbol.trim().isNotEmpty;
+    final hasCode = previewCode.trim().isNotEmpty;
+    switch (mode) {
+      case 'symbol':
+        return hasSymbol ? '$previewSymbol$amount' : (hasCode ? '$previewCode $amount' : amount);
+      case 'both':
+        if (hasSymbol && hasCode) return '$previewCode $previewSymbol$amount';
+        if (hasSymbol) return '$previewSymbol$amount';
+        return hasCode ? '$previewCode $amount' : amount;
+      case 'code':
+      default:
+        return hasCode ? '$previewCode $amount' : (hasSymbol ? '$previewSymbol$amount' : amount);
+    }
+  }
+
+  static const _options = [
+    ('code', 'Code'),
+    ('symbol', 'Symbol'),
+    ('both', 'Both'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Display Format',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: _options.map((opt) {
+              final (mode, label) = opt;
+              final selected = value == mode;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(mode),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: selected ? accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _previewFor(mode),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.85)
+                                : colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ),
       ],
