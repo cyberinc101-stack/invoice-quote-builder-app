@@ -8,6 +8,20 @@
 // logoOffsetDx/Dy/Scale/Shape (see lib/models/client_info.dart).
 // _CustomerCard's avatar now renders via SharedLogoThumbnail so saved
 // cards reflect the chosen crop/shape instead of a flat centred cover-fit.
+//
+// CURRENCY DISPLAY PASS: the old single "Default Currency" free-text
+// field is now two fields — currency code and currency symbol, both
+// free text (no hardcoded currency list, so any currency works) — plus
+// a Code/Symbol/Both display-mode selector with a live preview. See
+// models/client_info.dart's ClientInfo.currencySymbol/
+// currencyDisplayMode for the persisted fields this writes to.
+//
+// SCALE PASS (this update): raised the saved-customer cap 12 → 100 and
+// added a search box + sort control (Recently Added / Name A-Z / Name
+// Z-A) above the customer list so a large saved-customer library stays
+// usable. Selection/edit/delete still operate on the real _library
+// index — the search/sort view only reorders/filters what's displayed
+// via _visibleIndices, it never mutates _library's underlying order.
 
 import 'dart:convert';
 import 'dart:io';
@@ -25,7 +39,7 @@ import 'invoice_edit_widgets.dart';
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const int _kMaxCustomers = 12;
+const int _kMaxCustomers = 100;
 const _kPrefCustomerList = 'invoice_customer_list';
 
 // ---------------------------------------------------------------------------
@@ -74,18 +88,34 @@ class StepCustomers extends StatefulWidget {
   State<StepCustomers> createState() => _StepCustomersState();
 }
 
+// Sort modes for the saved-customer list.
+enum _SortMode { recent, nameAsc, nameDesc }
+
 class _StepCustomersState extends State<StepCustomers> {
   bool _loading = true;
   List<Customer> _library = [];
   int? _selectedIndex;
   bool _showLibraryPanel = true;
 
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  _SortMode _sortMode = _SortMode.recent;
+
   static const _accent = Color(0xFF2E7D32); // green accent for customers
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() {
+      setState(() => _searchQuery = _searchCtrl.text);
+    });
     _init();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -102,6 +132,39 @@ class _StepCustomersState extends State<StepCustomers> {
       _selectedIndex = selected;
       _loading = false;
     });
+  }
+
+  // Real _library indices for what's currently displayed, after search
+  // filtering and sort ordering are applied. Cards, edit, and delete all
+  // key off these indices so they keep pointing at the right customer
+  // regardless of how the list is filtered/sorted on screen.
+  List<int> get _visibleIndices {
+    var indices = List<int>.generate(_library.length, (i) => i);
+
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      indices = indices.where((i) {
+        final c = _library[i];
+        return c.name.toLowerCase().contains(q) ||
+            c.email.toLowerCase().contains(q) ||
+            c.phone.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    switch (_sortMode) {
+      case _SortMode.nameAsc:
+        indices.sort((a, b) =>
+            _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase()));
+        break;
+      case _SortMode.nameDesc:
+        indices.sort((a, b) =>
+            _library[b].name.toLowerCase().compareTo(_library[a].name.toLowerCase()));
+        break;
+      case _SortMode.recent:
+        indices = indices.reversed.toList(); // newest added shown first
+        break;
+    }
+    return indices;
   }
 
   void _toggleProfile(int index) {
@@ -170,6 +233,8 @@ class _StepCustomersState extends State<StepCustomers> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atMax = _library.length >= _kMaxCustomers;
+    final visible = _visibleIndices;
+    final isSearching = _searchQuery.trim().isNotEmpty;
 
     return Column(
       children: [
@@ -441,19 +506,35 @@ class _StepCustomersState extends State<StepCustomers> {
                             color: colorScheme.onSurface.withValues(alpha: 0.45),
                           ),
                         ),
+
+                        // ── Search + sort ─────────────────────────────────
+                        if (_showLibraryPanel) ...[
+                          const SizedBox(height: 12),
+                          _CustomerSearchField(
+                            controller: _searchCtrl,
+                            accent: _accent,
+                            onClear: () => _searchCtrl.clear(),
+                          ),
+                          const SizedBox(height: 10),
+                          _SortSelector(
+                            value: _sortMode,
+                            accent: _accent,
+                            onChanged: (mode) => setState(() => _sortMode = mode),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ),
 
               // ── Customer cards ───────────────────────────────────────────
-              if (!_loading && _showLibraryPanel && _library.isNotEmpty)
+              if (!_loading && _showLibraryPanel && visible.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, displayIdx) {
-                        final i = _library.length - 1 - displayIdx;
+                        final i = visible[displayIdx];
                         return _CustomerCard(
                           customer: _library[i],
                           isSelected: _selectedIndex == i,
@@ -463,12 +544,27 @@ class _StepCustomersState extends State<StepCustomers> {
                           onDelete: () => _deleteCustomer(i),
                         );
                       },
-                      childCount: _library.length,
+                      childCount: visible.length,
                     ),
                   ),
                 ),
 
-              // ── Empty state ──────────────────────────────────────────────
+              // ── No search results (library has customers, none match) ──
+              if (!_loading &&
+                  _showLibraryPanel &&
+                  _library.isNotEmpty &&
+                  visible.isEmpty &&
+                  isSearching)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: Icons.search_off_rounded,
+                    message: 'No customers match your search',
+                    sub: 'Try a different name, email, or phone number',
+                  ),
+                ),
+
+              // ── Empty state (no customers saved at all) ─────────────────
               if (!_loading && _library.isEmpty)
                 SliverFillRemaining(
                   child: EmptyState(
@@ -499,6 +595,150 @@ class _StepCustomersState extends State<StepCustomers> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// Search field for the saved-customer list
+// =============================================================================
+
+class _CustomerSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final Color accent;
+  final VoidCallback onClear;
+
+  const _CustomerSearchField({
+    required this.controller,
+    required this.accent,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hasText = controller.text.isNotEmpty;
+        return TextField(
+          controller: controller,
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Search saved customers…',
+            hintStyle: TextStyle(
+                fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+            prefixIcon: Icon(Icons.search_rounded,
+                size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+            suffixIcon: hasText
+                ? GestureDetector(
+                    onTap: onClear,
+                    child: Icon(Icons.close_rounded,
+                        size: 18, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+                  )
+                : null,
+            filled: true,
+            fillColor: isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                : const Color(0xFFF9F9F9),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3))),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: accent, width: 1.5)),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+// Sort selector (segmented chips) for the saved-customer list
+// =============================================================================
+
+class _SortSelector extends StatelessWidget {
+  final _SortMode value;
+  final Color accent;
+  final ValueChanged<_SortMode> onChanged;
+
+  const _SortSelector({
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  static const _options = [
+    (_SortMode.recent, 'Recent', Icons.schedule_rounded),
+    (_SortMode.nameAsc, 'A–Z', Icons.arrow_downward_rounded),
+    (_SortMode.nameDesc, 'Z–A', Icons.arrow_upward_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _options.map((opt) {
+          final (mode, label, icon) = opt;
+          final selected = value == mode;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onChanged(mode),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? accent
+                      : (isDark
+                          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                          : const Color(0xFFF9F9F9)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: selected
+                        ? accent
+                        : colorScheme.outline.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon,
+                        size: 13,
+                        color: selected
+                            ? Colors.white
+                            : colorScheme.onSurface.withValues(alpha: 0.5)),
+                    const SizedBox(width: 4),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: selected
+                            ? Colors.white
+                            : colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -795,7 +1035,9 @@ class _CustomerSheetState extends State<_CustomerSheet> {
   late TextEditingController _phoneCtrl;
   late TextEditingController _addressCtrl;
   late TextEditingController _currencyCtrl;
+  late TextEditingController _currencySymbolCtrl;
   late TextEditingController _taxRateCtrl;
+  String _currencyDisplayMode = 'code'; // 'code' | 'symbol' | 'both'
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
@@ -814,13 +1056,15 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _addressCtrl = TextEditingController(text: e?.address ?? '');
     _currencyCtrl = TextEditingController(text: e?.defaultCurrency ?? 'USD');
+    _currencySymbolCtrl = TextEditingController(text: e?.currencySymbol ?? '');
+    _currencyDisplayMode = e?.currencyDisplayMode ?? 'code';
     _taxRateCtrl = TextEditingController(text: (e == null || e.defaultTaxRate == 0.0) ? '' : e.defaultTaxRate.toString());
     _logoPath = e?.logoPath;
     _logoOffset = e != null ? Offset(e.logoOffsetDx, e.logoOffsetDy) : Offset.zero;
     _logoScale = e?.logoScale ?? 1.0;
     _logoShape = logoShapeFromString(e?.logoShape ?? 'circle');
 
-    for (final c in [_nameCtrl, _emailCtrl, _phoneCtrl, _addressCtrl]) {
+    for (final c in [_nameCtrl, _emailCtrl, _phoneCtrl, _addressCtrl, _currencyCtrl, _currencySymbolCtrl]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -832,6 +1076,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
     _currencyCtrl.dispose();
+    _currencySymbolCtrl.dispose();
     _taxRateCtrl.dispose();
     super.dispose();
   }
@@ -850,6 +1095,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
       logoScale: _logoScale,
       logoShape: _logoShape.storageName,
       defaultCurrency: _currencyCtrl.text.trim().isEmpty ? 'USD' : _currencyCtrl.text.trim().toUpperCase(),
+      currencySymbol: _currencySymbolCtrl.text.trim(),
+      currencyDisplayMode: _currencyDisplayMode,
       defaultTaxRate: double.tryParse(_taxRateCtrl.text.trim()) ?? 0.0,
     ));
     Navigator.pop(context);
@@ -1046,15 +1293,39 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                           accent: _accent,
                         ),
                         _counter(_addressCtrl.text.length, 200),
+                        const SizedBox(height: 12),
+
+                        // ── Currency ───────────────────────────────────────
                         _SheetField(
                           ctrl: _currencyCtrl,
-                          label: 'Default Currency',
+                          label: 'Default Currency Code',
                           hint: 'e.g. USD',
                           icon: Icons.attach_money_rounded,
-                          max: 3,
+                          max: 6,
                           accent: _accent,
                         ),
+                        _counter(_currencyCtrl.text.length, 6),
                         const SizedBox(height: 12),
+                        _SheetField(
+                          ctrl: _currencySymbolCtrl,
+                          label: 'Currency Symbol',
+                          hint: 'e.g. \$, €, kr — optional',
+                          icon: Icons.currency_exchange_rounded,
+                          max: 6,
+                          accent: _accent,
+                        ),
+                        _counter(_currencySymbolCtrl.text.length, 6),
+                        const SizedBox(height: 12),
+                        _CurrencyDisplayModeSelector(
+                          value: _currencyDisplayMode,
+                          accent: _accent,
+                          onChanged: (mode) => setState(() => _currencyDisplayMode = mode),
+                          previewCode: _currencyCtrl.text.trim().isEmpty
+                              ? 'USD' : _currencyCtrl.text.trim().toUpperCase(),
+                          previewSymbol: _currencySymbolCtrl.text.trim(),
+                        ),
+                        const SizedBox(height: 12),
+
                         _SheetField(
                           ctrl: _taxRateCtrl,
                           label: 'Default Tax Rate (%)',
@@ -1189,6 +1460,125 @@ class _SheetField extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(
             horizontal: 14, vertical: 14),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// Currency display mode selector — segmented Code / Symbol / Both control
+// with a live preview using whatever's currently typed in the code/symbol
+// fields above.
+// =============================================================================
+
+class _CurrencyDisplayModeSelector extends StatelessWidget {
+  final String value; // 'code' | 'symbol' | 'both'
+  final Color accent;
+  final ValueChanged<String> onChanged;
+  final String previewCode;
+  final String previewSymbol;
+
+  const _CurrencyDisplayModeSelector({
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+    required this.previewCode,
+    required this.previewSymbol,
+  });
+
+  String _previewFor(String mode) {
+    const amount = '200.00';
+    final hasSymbol = previewSymbol.trim().isNotEmpty;
+    final hasCode = previewCode.trim().isNotEmpty;
+    switch (mode) {
+      case 'symbol':
+        return hasSymbol ? '$previewSymbol$amount' : (hasCode ? '$previewCode $amount' : amount);
+      case 'both':
+        if (hasSymbol && hasCode) return '$previewCode $previewSymbol$amount';
+        if (hasSymbol) return '$previewSymbol$amount';
+        return hasCode ? '$previewCode $amount' : amount;
+      case 'code':
+      default:
+        return hasCode ? '$previewCode $amount' : (hasSymbol ? '$previewSymbol$amount' : amount);
+    }
+  }
+
+  static const _options = [
+    ('code', 'Code'),
+    ('symbol', 'Symbol'),
+    ('both', 'Both'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Display Format',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: _options.map((opt) {
+              final (mode, label) = opt;
+              final selected = value == mode;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(mode),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: selected ? accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _previewFor(mode),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.85)
+                                : colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 }
