@@ -16,12 +16,21 @@
 // models/client_info.dart's ClientInfo.currencySymbol/
 // currencyDisplayMode for the persisted fields this writes to.
 //
-// SCALE PASS (this update): raised the saved-customer cap 12 → 100 and
-// added a search box + sort control (Recently Added / Name A-Z / Name
-// Z-A) above the customer list so a large saved-customer library stays
-// usable. Selection/edit/delete still operate on the real _library
-// index — the search/sort view only reorders/filters what's displayed
-// via _visibleIndices, it never mutates _library's underlying order.
+// SCALE PASS: raised the saved-customer cap 12 → 100 and added a search
+// box + sort control (Recently Added / Name A-Z / Name Z-A) above the
+// customer list so a large saved-customer library stays usable.
+// Selection/edit/delete still operate on the real _library index — the
+// search/sort view only reorders/filters what's displayed via
+// _visibleIndices, it never mutates _library's underlying order.
+//
+// SEARCH RELEVANCE PASS (this update): while the search box has text,
+// _visibleIndices now ranks matches by relevance instead of the chosen
+// sort mode — name starts-with the query first, then name contains it,
+// then email/phone contains it, each tier alphabetical — so typing a
+// few letters brings the closest matches to the top immediately. The
+// sort chips are dimmed/disabled while a search is active since
+// relevance ranking takes over from them, and re-enable once the
+// search box is cleared.
 
 import 'dart:convert';
 import 'dart:io';
@@ -88,7 +97,7 @@ class StepCustomers extends StatefulWidget {
   State<StepCustomers> createState() => _StepCustomersState();
 }
 
-// Sort modes for the saved-customer list.
+// Sort modes for the saved-customer list (used when there's no active search).
 enum _SortMode { recent, nameAsc, nameDesc }
 
 class _StepCustomersState extends State<StepCustomers> {
@@ -134,36 +143,53 @@ class _StepCustomersState extends State<StepCustomers> {
     });
   }
 
-  // Real _library indices for what's currently displayed, after search
-  // filtering and sort ordering are applied. Cards, edit, and delete all
-  // key off these indices so they keep pointing at the right customer
-  // regardless of how the list is filtered/sorted on screen.
+  // Relevance tier for a customer against the current search query, lower
+  // is a closer match. 4 means "doesn't match" and gets filtered out.
+  int _relevance(int i, String q) {
+    final c = _library[i];
+    final name = c.name.toLowerCase();
+    if (name.startsWith(q)) return 0;
+    if (name.contains(q)) return 1;
+    if (c.email.toLowerCase().contains(q)) return 2;
+    if (c.phone.toLowerCase().contains(q)) return 3;
+    return 4;
+  }
+
+  // Real _library indices for what's currently displayed. With no active
+  // search, this applies the chosen sort mode. With an active search, it
+  // ignores the sort mode and ranks by relevance instead (name starts-with
+  // > name contains > email/phone contains, alphabetical within each tier)
+  // so the closest matches surface immediately as the person types.
+  // Either way, cards/edit/delete key off these real indices so they keep
+  // pointing at the right customer regardless of on-screen ordering.
   List<int> get _visibleIndices {
+    final q = _searchQuery.trim().toLowerCase();
     var indices = List<int>.generate(_library.length, (i) => i);
 
-    final q = _searchQuery.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      indices = indices.where((i) {
-        final c = _library[i];
-        return c.name.toLowerCase().contains(q) ||
-            c.email.toLowerCase().contains(q) ||
-            c.phone.toLowerCase().contains(q);
-      }).toList();
+    if (q.isEmpty) {
+      switch (_sortMode) {
+        case _SortMode.nameAsc:
+          indices.sort((a, b) =>
+              _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase()));
+          break;
+        case _SortMode.nameDesc:
+          indices.sort((a, b) =>
+              _library[b].name.toLowerCase().compareTo(_library[a].name.toLowerCase()));
+          break;
+        case _SortMode.recent:
+          indices = indices.reversed.toList(); // newest added shown first
+          break;
+      }
+      return indices;
     }
 
-    switch (_sortMode) {
-      case _SortMode.nameAsc:
-        indices.sort((a, b) =>
-            _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase()));
-        break;
-      case _SortMode.nameDesc:
-        indices.sort((a, b) =>
-            _library[b].name.toLowerCase().compareTo(_library[a].name.toLowerCase()));
-        break;
-      case _SortMode.recent:
-        indices = indices.reversed.toList(); // newest added shown first
-        break;
-    }
+    indices = indices.where((i) => _relevance(i, q) < 4).toList();
+    indices.sort((a, b) {
+      final ra = _relevance(a, q);
+      final rb = _relevance(b, q);
+      if (ra != rb) return ra.compareTo(rb);
+      return _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase());
+    });
     return indices;
   }
 
@@ -516,11 +542,36 @@ class _StepCustomersState extends State<StepCustomers> {
                             onClear: () => _searchCtrl.clear(),
                           ),
                           const SizedBox(height: 10),
-                          _SortSelector(
-                            value: _sortMode,
-                            accent: _accent,
-                            onChanged: (mode) => setState(() => _sortMode = mode),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: IgnorePointer(
+                                  ignoring: isSearching,
+                                  child: AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 150),
+                                    opacity: isSearching ? 0.35 : 1.0,
+                                    child: _SortSelector(
+                                      value: _sortMode,
+                                      accent: _accent,
+                                      onChanged: (mode) =>
+                                          setState(() => _sortMode = mode),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
+                          if (isSearching) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Sorted by relevance to "${_searchCtrl.text.trim()}"',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                                color: colorScheme.onSurface.withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ],
                         ],
                       ],
                     ),
@@ -662,7 +713,9 @@ class _CustomerSearchField extends StatelessWidget {
 }
 
 // =============================================================================
-// Sort selector (segmented chips) for the saved-customer list
+// Sort selector (segmented chips) for the saved-customer list. Disabled
+// (dimmed, non-interactive) by the parent while a search is active, since
+// relevance ranking takes over from the chosen sort mode during a search.
 // =============================================================================
 
 class _SortSelector extends StatelessWidget {
