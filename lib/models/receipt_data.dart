@@ -1,19 +1,29 @@
 // receipt_data.dart
 // lib/models/receipt_data.dart
 //
-// TEMPLATE + LOGO SIZER PASS (this update): added layoutTemplateId (which
-// visual design — Executive/Nordic/Vibrant/etc, see the receipt
-// preview_registry.dart — this receipt actually renders with) and
-// businessLogoOffsetDx/Dy/Scale/Shape (mirrors InvoiceData's/QuoteData's
-// own new fields, driven by the same SharedLogoPicker widget). Previously
-// receipt_full_preview_screen.dart always rendered ExecutiveReceiptPreview
-// regardless of what was picked in the receipt template chooser (per that
-// screen's own header comment), and ReceiptData had no logo reposition/
-// zoom/shape data at all — only businessLogoPath. All new fields fall
-// back to sensible defaults when missing from persisted JSON
-// (layoutTemplateId 1 = Executive, zero offset, scale 1.0, 'roundedSquare'
-// shape), so existing persisted receipts load correctly with no migration
-// step.
+// LOGO FALLBACK MARK PASS (this update): added businessLogoShowInitial
+// (bool, default true) and businessLogoInitialLetter (String, default
+// '') — mirrors InvoiceData/QuoteData's own new fields. See
+// invoice_data.dart's doc comment for the full rationale. Defaults
+// preserve existing render behaviour for every persisted receipt, no
+// migration needed.
+//
+// WEBSITE + SOCIAL PASS (earlier): added businessWebsite/showWebsite
+// and per-platform Facebook/Instagram/Twitter handle + toggle pairs
+// (facebookHandle/showFacebook, etc). Each platform is independently
+// shown/hidden and holds a plain @handle string — not a raw platform ID,
+// per the recommendation that follows: a numeric/internal ID reads as
+// broken on a receipt, an @handle next to an icon reads as normal. All
+// default to off/empty so existing persisted receipts are unaffected.
+//
+// PAPER FORMAT PASS (earlier). THERMAL FIELDS PASS (earlier):
+// cashierName/posId/taxId/paymentReference/authCode/cardLast4/show*/
+// qrData/footerMessage/compactThermalLayout.
+//
+// CURRENCY DISPLAY PASS (earlier): added currencySymbol and
+// currencyDisplayMode, mirroring InvoiceData/QuoteData's own fields —
+// free text, no hardcoded currency list, defaults preserve existing
+// render behaviour for persisted receipts.
 
 import 'invoice_data.dart' show LineItem;
 
@@ -38,14 +48,17 @@ class ReceiptData {
   String businessAddress;
   String? businessLogoPath;
 
-  // Logo reposition/zoom/shape — mirrors InvoiceData's/QuoteData's fields,
-  // driven by the same SharedLogoPicker widget. Only meaningful when
-  // businessLogoPath is set.
   double businessLogoOffsetDx;
   double businessLogoOffsetDy;
   double businessLogoScale;
-  String businessLogoShape; // storage name from LogoShape.storageName
+  String businessLogoShape;
   double businessLogoDisplaySize;
+
+  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above / the same
+  // fields on InvoiceData. Only meaningful when businessLogoPath is NOT
+  // set.
+  bool businessLogoShowInitial;
+  String businessLogoInitialLetter;
 
   String clientName;
   String clientEmail;
@@ -57,6 +70,11 @@ class ReceiptData {
   String notes;
   String currency;
 
+  // Free-text currency symbol + display mode — see InvoiceData for the
+  // full rationale. Not gated by any hardcoded currency list.
+  String currencySymbol;
+  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
+
   List<LineItem> lineItems;
 
   double        taxRate;
@@ -66,13 +84,43 @@ class ReceiptData {
   String        fontFamily;
   ReceiptColor  colorScheme;
 
-  // Which visual design (see the receipt preview_registry.dart's
-  // kReceiptTemplates / buildReceiptPreview) this receipt renders with —
-  // 1 = Executive, 2 = Nordic, etc.
   int layoutTemplateId;
+  String paperFormat;
 
-  // Same escape hatch as InvoiceData.excludeFromReports. See that file's
-  // doc comment for the gating rule.
+  // ── Thermal / POS receipt fields ─────────────────────────────────────────
+  String cashierName;
+  String posId;
+  String taxId;
+  String paymentReference;
+  String authCode;
+  String cardLast4;
+
+  bool showLogo;
+  bool showBusinessDetails;
+  bool showCustomerDetails;
+  bool showReceiptNumber;
+  bool showDateTime;
+  bool showTaxLine;
+  bool showDiscountLine;
+  bool showPaymentMethod;
+  bool showBarcode;
+  bool showQrCode;
+
+  String qrData;
+  String footerMessage;
+  bool compactThermalLayout;
+
+  // ── Website + social — thermal footer only ───────────────────────────────
+  bool showWebsite;
+  String businessWebsite;
+
+  bool showFacebook;
+  String facebookHandle;
+  bool showInstagram;
+  String instagramHandle;
+  bool showTwitter;
+  String twitterHandle;
+
   bool excludeFromReports;
 
   ReceiptData({
@@ -86,6 +134,8 @@ class ReceiptData {
     this.businessLogoScale    = 1.0,
     this.businessLogoShape    = 'roundedSquare',
     this.businessLogoDisplaySize = 40.0,
+    this.businessLogoShowInitial = true,
+    this.businessLogoInitialLetter = '',
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -94,6 +144,8 @@ class ReceiptData {
     this.paymentDate      = '',
     this.notes            = '',
     this.currency         = 'USD',
+    this.currencySymbol      = '',
+    this.currencyDisplayMode = 'code',
     List<LineItem>? lineItems,
     this.taxRate          = 0.0,
     this.discountRate     = 0.0,
@@ -102,17 +154,41 @@ class ReceiptData {
     this.fontFamily       = 'Roboto',
     this.colorScheme      = ReceiptColor.green,
     this.layoutTemplateId = 1,
+    this.paperFormat      = 'a4',
+    this.cashierName        = '',
+    this.posId              = '',
+    this.taxId               = '',
+    this.paymentReference   = '',
+    this.authCode            = '',
+    this.cardLast4           = '',
+    this.showLogo             = true,
+    this.showBusinessDetails  = true,
+    this.showCustomerDetails  = true,
+    this.showReceiptNumber    = true,
+    this.showDateTime         = true,
+    this.showTaxLine          = true,
+    this.showDiscountLine     = true,
+    this.showPaymentMethod    = true,
+    this.showBarcode          = false,
+    this.showQrCode           = false,
+    this.qrData                = '',
+    this.footerMessage         = 'Thank you for your purchase!',
+    this.compactThermalLayout  = false,
+    this.showWebsite          = false,
+    this.businessWebsite      = '',
+    this.showFacebook         = false,
+    this.facebookHandle       = '',
+    this.showInstagram        = false,
+    this.instagramHandle      = '',
+    this.showTwitter          = false,
+    this.twitterHandle        = '',
     this.excludeFromReports = false,
   }) : lineItems = lineItems ?? [];
-
-  // ── Computed totals ────────────────────────────────────────────────────────
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
   double get discountAmount => subtotal * (discountRate / 100);
   double get taxAmount      => (subtotal - discountAmount) * (taxRate / 100);
   double get amountPaid     => subtotal - discountAmount + taxAmount;
-
-  // ── Serialisation ──────────────────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
@@ -125,6 +201,8 @@ class ReceiptData {
         'businessLogoScale':    businessLogoScale,
         'businessLogoShape':    businessLogoShape,
         'businessLogoDisplaySize': businessLogoDisplaySize,
+        'businessLogoShowInitial': businessLogoShowInitial,
+        'businessLogoInitialLetter': businessLogoInitialLetter,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -133,6 +211,8 @@ class ReceiptData {
         'paymentDate':      paymentDate,
         'notes':            notes,
         'currency':         currency,
+        'currencySymbol':      currencySymbol,
+        'currencyDisplayMode': currencyDisplayMode,
         'lineItems':        lineItems.map((i) => i.toJson()).toList(),
         'taxRate':          taxRate,
         'discountRate':     discountRate,
@@ -141,6 +221,34 @@ class ReceiptData {
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
         'layoutTemplateId': layoutTemplateId,
+        'paperFormat':      paperFormat,
+        'cashierName':      cashierName,
+        'posId':            posId,
+        'taxId':            taxId,
+        'paymentReference': paymentReference,
+        'authCode':         authCode,
+        'cardLast4':        cardLast4,
+        'showLogo':             showLogo,
+        'showBusinessDetails':  showBusinessDetails,
+        'showCustomerDetails':  showCustomerDetails,
+        'showReceiptNumber':    showReceiptNumber,
+        'showDateTime':         showDateTime,
+        'showTaxLine':          showTaxLine,
+        'showDiscountLine':     showDiscountLine,
+        'showPaymentMethod':    showPaymentMethod,
+        'showBarcode':          showBarcode,
+        'showQrCode':           showQrCode,
+        'qrData':               qrData,
+        'footerMessage':        footerMessage,
+        'compactThermalLayout': compactThermalLayout,
+        'showWebsite':          showWebsite,
+        'businessWebsite':      businessWebsite,
+        'showFacebook':         showFacebook,
+        'facebookHandle':       facebookHandle,
+        'showInstagram':        showInstagram,
+        'instagramHandle':      instagramHandle,
+        'showTwitter':          showTwitter,
+        'twitterHandle':        twitterHandle,
         'excludeFromReports': excludeFromReports,
       };
 
@@ -155,6 +263,8 @@ class ReceiptData {
         businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
         businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
+        businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
+        businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -163,6 +273,8 @@ class ReceiptData {
         paymentDate:      j['paymentDate']      as String? ?? '',
         notes:            j['notes']            as String? ?? '',
         currency:         j['currency']         as String? ?? 'USD',
+        currencySymbol:      j['currencySymbol'] as String? ?? '',
+        currencyDisplayMode: j['currencyDisplayMode'] as String? ?? 'code',
         lineItems: (j['lineItems'] as List<dynamic>? ?? [])
             .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -182,14 +294,36 @@ class ReceiptData {
           orElse: () => ReceiptColor.green,
         ),
         layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
+        paperFormat: j['paperFormat'] as String? ?? 'a4',
+        cashierName:      j['cashierName']      as String? ?? '',
+        posId:            j['posId']            as String? ?? '',
+        taxId:            j['taxId']            as String? ?? '',
+        paymentReference: j['paymentReference'] as String? ?? '',
+        authCode:         j['authCode']         as String? ?? '',
+        cardLast4:        j['cardLast4']        as String? ?? '',
+        showLogo:             j['showLogo']             as bool? ?? true,
+        showBusinessDetails:  j['showBusinessDetails']  as bool? ?? true,
+        showCustomerDetails:  j['showCustomerDetails']  as bool? ?? true,
+        showReceiptNumber:    j['showReceiptNumber']    as bool? ?? true,
+        showDateTime:         j['showDateTime']         as bool? ?? true,
+        showTaxLine:          j['showTaxLine']          as bool? ?? true,
+        showDiscountLine:     j['showDiscountLine']     as bool? ?? true,
+        showPaymentMethod:    j['showPaymentMethod']    as bool? ?? true,
+        showBarcode:          j['showBarcode']          as bool? ?? false,
+        showQrCode:           j['showQrCode']           as bool? ?? false,
+        qrData:               j['qrData']               as String? ?? '',
+        footerMessage: j['footerMessage'] as String? ?? 'Thank you for your purchase!',
+        compactThermalLayout: j['compactThermalLayout'] as bool? ?? false,
+        showWebsite:     j['showWebsite']     as bool?   ?? false,
+        businessWebsite: j['businessWebsite'] as String? ?? '',
+        showFacebook:    j['showFacebook']    as bool?   ?? false,
+        facebookHandle:  j['facebookHandle']  as String? ?? '',
+        showInstagram:   j['showInstagram']   as bool?   ?? false,
+        instagramHandle: j['instagramHandle'] as String? ?? '',
+        showTwitter:     j['showTwitter']     as bool?   ?? false,
+        twitterHandle:   j['twitterHandle']   as String? ?? '',
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
-
-  // ── copyWith ───────────────────────────────────────────────────────────────
-  //
-  // clearBusinessLogo: explicit clear flag, same reasoning as
-  // SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
-  // never express "set this field to null" once it already has a value.
 
   ReceiptData copyWith({
     String?         businessName,
@@ -203,6 +337,8 @@ class ReceiptData {
     double?         businessLogoScale,
     String?         businessLogoShape,
     double?         businessLogoDisplaySize,
+    bool?           businessLogoShowInitial,
+    String?         businessLogoInitialLetter,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -211,6 +347,8 @@ class ReceiptData {
     String?         paymentDate,
     String?         notes,
     String?         currency,
+    String?         currencySymbol,
+    String?         currencyDisplayMode,
     List<LineItem>? lineItems,
     double?         taxRate,
     double?         discountRate,
@@ -219,6 +357,34 @@ class ReceiptData {
     String?         fontFamily,
     ReceiptColor?   colorScheme,
     int?            layoutTemplateId,
+    String?         paperFormat,
+    String?         cashierName,
+    String?         posId,
+    String?         taxId,
+    String?         paymentReference,
+    String?         authCode,
+    String?         cardLast4,
+    bool?           showLogo,
+    bool?           showBusinessDetails,
+    bool?           showCustomerDetails,
+    bool?           showReceiptNumber,
+    bool?           showDateTime,
+    bool?           showTaxLine,
+    bool?           showDiscountLine,
+    bool?           showPaymentMethod,
+    bool?           showBarcode,
+    bool?           showQrCode,
+    String?         qrData,
+    String?         footerMessage,
+    bool?           compactThermalLayout,
+    bool?           showWebsite,
+    String?         businessWebsite,
+    bool?           showFacebook,
+    String?         facebookHandle,
+    bool?           showInstagram,
+    String?         instagramHandle,
+    bool?           showTwitter,
+    String?         twitterHandle,
     bool?           excludeFromReports,
   }) =>
       ReceiptData(
@@ -232,6 +398,8 @@ class ReceiptData {
         businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
         businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
+        businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
+        businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -240,6 +408,8 @@ class ReceiptData {
         paymentDate:      paymentDate      ?? this.paymentDate,
         notes:            notes            ?? this.notes,
         currency:         currency         ?? this.currency,
+        currencySymbol:      currencySymbol      ?? this.currencySymbol,
+        currencyDisplayMode: currencyDisplayMode ?? this.currencyDisplayMode,
         lineItems:        lineItems        ?? List<LineItem>.from(this.lineItems),
         taxRate:          taxRate          ?? this.taxRate,
         discountRate:     discountRate     ?? this.discountRate,
@@ -248,6 +418,34 @@ class ReceiptData {
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
         layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
+        paperFormat:      paperFormat      ?? this.paperFormat,
+        cashierName:      cashierName      ?? this.cashierName,
+        posId:            posId            ?? this.posId,
+        taxId:            taxId            ?? this.taxId,
+        paymentReference: paymentReference ?? this.paymentReference,
+        authCode:         authCode         ?? this.authCode,
+        cardLast4:        cardLast4        ?? this.cardLast4,
+        showLogo:             showLogo             ?? this.showLogo,
+        showBusinessDetails:  showBusinessDetails  ?? this.showBusinessDetails,
+        showCustomerDetails:  showCustomerDetails  ?? this.showCustomerDetails,
+        showReceiptNumber:    showReceiptNumber    ?? this.showReceiptNumber,
+        showDateTime:         showDateTime         ?? this.showDateTime,
+        showTaxLine:          showTaxLine          ?? this.showTaxLine,
+        showDiscountLine:     showDiscountLine     ?? this.showDiscountLine,
+        showPaymentMethod:    showPaymentMethod    ?? this.showPaymentMethod,
+        showBarcode:          showBarcode          ?? this.showBarcode,
+        showQrCode:           showQrCode           ?? this.showQrCode,
+        qrData:               qrData               ?? this.qrData,
+        footerMessage:        footerMessage        ?? this.footerMessage,
+        compactThermalLayout: compactThermalLayout ?? this.compactThermalLayout,
+        showWebsite:      showWebsite      ?? this.showWebsite,
+        businessWebsite:  businessWebsite  ?? this.businessWebsite,
+        showFacebook:     showFacebook     ?? this.showFacebook,
+        facebookHandle:   facebookHandle   ?? this.facebookHandle,
+        showInstagram:    showInstagram    ?? this.showInstagram,
+        instagramHandle:  instagramHandle  ?? this.instagramHandle,
+        showTwitter:      showTwitter      ?? this.showTwitter,
+        twitterHandle:    twitterHandle    ?? this.twitterHandle,
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 
@@ -320,7 +518,6 @@ class SavedReceipt {
         folderName: j['folderName'] as String?,
       );
 
-  // folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
   SavedReceipt copyWith({
     String?      title,
     String?      templateName,

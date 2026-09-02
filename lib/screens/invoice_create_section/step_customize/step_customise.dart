@@ -1,6 +1,46 @@
 // lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
-// TEMPLATE PASS (this update): _InvoicePreviewCard no longer hardcodes
+// FIELDS SECTION PASS (this update): added the "Invoice Fields" /
+// "Customer Fields" toggle section that was missing from this step
+// entirely (this is why it never showed up on the Invoice screen -- it
+// simply hadn't been built here, unlike Quote/Receipt which already had
+// their own field-toggle sections). Positioned directly under Text Size
+// -- i.e. after every other per-invoice styling control (Logo, Logo
+// Size, Accent Colour, Font, Text Size) and before "Back to Top" -- to
+// match where Quote/Receipt's own field-toggle sections sit relative to
+// their last styling control (Accent Color). Reads/writes
+// InvoiceData.enabledFields directly via
+// InvoiceProvider.updateEnabledFields() (both already existed and were
+// already fully wired to the PDF/preview templates), so this is fully
+// functional immediately -- no further wiring needed for Invoice.
+//
+// LOGO SIZE RANGE PASS (earlier update): the "Logo Size" slider previously
+// topped out at 60px, which was too small a ceiling for people who want
+// a prominent logo. Range widened to 24-96px (was 24-60), and the live
+// preview box's clamp in _LogoSection widened to match (was capped at
+// 220, now 260) so the bigger sizes are actually visible while sizing.
+// NOTE: executive_template.dart's header logo is still rendered at a
+// hardcoded 44px and does not yet read businessLogoDisplaySize -- that
+// still needs doc_template_adapter.dart / shared_doc_widgets.dart wired
+// up before this slider will visibly affect the Executive preview/PDF.
+//
+// COLOR PICKER CONSOLIDATION (earlier update): _ColourSection no longer uses
+// its own small-square Wrap design. It's replaced with the exact
+// grid-tile picker (gradient tile + checkmark overlay + label underneath,
+// 3-column GridView) that used to live on step_create_invoice.dart --
+// that step's Color Scheme section has been removed entirely, since it
+// was a duplicate control writing to the same InvoiceData.colorScheme
+// field as this one. This is now the ONLY place in the wizard to change
+// the invoice's accent color. Added the invoice_color_ext.dart import for
+// the .displayName/.primaryColor/.accentColor extension getters the grid
+// tiles use; the old _kPresetColors list (with its own separate display
+// names, e.g. "Slate"/"Amber" instead of "Charcoal"/"Sunset Orange") is
+// removed so both the tile art and the names now match exactly what used
+// to render on step_create_invoice.dart. _colorForScheme() is kept as-is
+// since _LogoSection/_LogoSizeSection/_FontSection/_SizeSection all still
+// use it for their own accent tinting.
+//
+// TEMPLATE PASS (earlier update): _InvoicePreviewCard no longer hardcodes
 // ExecutiveInvoicePreview — it now dispatches on data.layoutTemplateId via
 // buildInvoicePreview() (preview_registry.dart), the same function the
 // template chooser grid and its full-preview modal already use. This is
@@ -12,12 +52,12 @@
 // counter badge only updates for that template; every other design
 // renders as a single natural-height page.
 //
-// LOGO SIZER PASS (this update): added a new "Business Logo" section
+// LOGO SIZER PASS (earlier update): added a new "Business Logo" section
 // using SharedLogoPicker (same widget step_templates.dart uses for the
 // saved BusinessInfo template's logo) so the actual invoice's logo can be
 // repositioned/zoomed/reshaped right here, without leaving this step.
 // Wired to InvoiceProvider.updateBusinessLogo(). NOTE: the underlying
-// template layout files (executive_page_stationary_layout.dart etc.)
+// template layout files (executive_invoice_stationary_layout.dart etc.)
 // don't yet read businessLogoOffsetDx/Dy/Scale/Shape when painting the
 // logo — this control saves the values, but they won't visually move/
 // zoom the logo in the preview until those layout files are updated to
@@ -36,12 +76,13 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
+import '../../../models/invoice_color_ext.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import 'invoice_full_preview_screen.dart';
-import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
-import '../../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
+import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show kPageW, invoiceAccent;
-import '../../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
 
 // =============================================================================
@@ -140,6 +181,14 @@ class _StepCustomiseState extends State<StepCustomise> {
 
                 // ---- Text size ----
                 const _SizeSection(),
+                const SizedBox(height: 16),
+
+                // ---- Invoice / Customer fields ----
+                // FIELDS SECTION PASS: sits directly under Text Size --
+                // the last styling control -- matching where Quote and
+                // Receipt's own field-toggle sections sit relative to
+                // their last styling control (Accent Color).
+                const _FieldsSection(),
                 const SizedBox(height: 20),
 
                 // ---- Back to top ----
@@ -310,7 +359,9 @@ class _LogoSection extends StatelessWidget {
     final currentShape = logoShapeFromString(data.businessLogoShape);
     // Preview box grows/shrinks live as the Logo Size slider moves, so the
     // user sees the change here without scrolling up to the Live Preview.
-    final previewSize = (90.0 + (data.businessLogoDisplaySize - 40.0) * 3.0).clamp(90.0, 220.0);
+    // LOGO SIZE RANGE PASS: clamp ceiling raised 220 -> 260 to match the
+    // slider's new 96px max so larger sizes are actually visible here.
+    final previewSize = (90.0 + (data.businessLogoDisplaySize - 40.0) * 3.0).clamp(90.0, 260.0);
 
     return _SectionCard(
       icon: Icons.image_rounded,
@@ -429,9 +480,12 @@ class _LogoSizeSection extends StatelessWidget {
                     ),
                     child: Slider(
                       value: data.businessLogoDisplaySize,
+                      // LOGO SIZE RANGE PASS: ceiling raised 60 -> 96 so a
+                      // logo can actually be made prominent. Divisions
+                      // bumped so each step is still a clean whole number.
                       min: 24,
-                      max: 60,
-                      divisions: 9,
+                      max: 96,
+                      divisions: 12,
                       onChanged: hasLogo ? (v) => provider.updateBusinessLogoSize(v) : null,
                     ),
                   ),
@@ -457,18 +511,11 @@ class _LogoSizeSection extends StatelessWidget {
 // Colour section
 // =============================================================================
 
-const _kPresetColors = [
-  ('Ocean Blue',  InvoiceColor.blue),
-  ('Slate',       InvoiceColor.black),
-  ('Emerald',     InvoiceColor.green),
-  ('Crimson',     InvoiceColor.red),
-  ('Violet',      InvoiceColor.purple),
-  ('Amber',       InvoiceColor.orange),
-  ('Teal',        InvoiceColor.teal),
-  ('Indigo',      InvoiceColor.indigo),
-];
-
-// Maps each InvoiceColor to its display Color for the swatch tiles
+// Maps each InvoiceColor to its display Color for accent tinting
+// elsewhere on this step (logo section, logo size slider, font tiles,
+// text size slider). Independent of the grid picker below, which reads
+// primaryColor/accentColor/displayName straight off the InvoiceColor
+// extension in invoice_color_ext.dart.
 Color _colorForScheme(InvoiceColor scheme) {
   const map = {
     InvoiceColor.blue:   Color(0xFF1565C0),
@@ -483,6 +530,10 @@ Color _colorForScheme(InvoiceColor scheme) {
   return map[scheme] ?? const Color(0xFF1565C0);
 }
 
+// Grid-tile picker — same design (gradient tile, checkmark overlay, label
+// underneath, 3-column grid) that previously lived as _ColorSchemePicker
+// on step_create_invoice.dart. This is now the only Color Scheme picker
+// in the wizard.
 class _ColourSection extends StatelessWidget {
   const _ColourSection();
 
@@ -495,53 +546,86 @@ class _ColourSection extends StatelessWidget {
     return _SectionCard(
       icon: Icons.palette_rounded,
       title: 'Accent Colour',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _kPresetColors.map((c) {
-              final isActive = c.$2 == selected;
-              final color    = _colorForScheme(c.$2);
-              return GestureDetector(
-                onTap: () => provider.updateColorScheme(c.$2),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width:  isActive ? 52 : 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(10),
-                    border: isActive
-                        ? Border.all(color: Colors.white, width: 2.5)
-                        : null,
-                    boxShadow: isActive
-                        ? [BoxShadow(
-                            color: color.withValues(alpha: 0.45),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3))]
-                        : [],
-                  ),
-                  child: isActive
-                      ? const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 18)
-                      : null,
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.25,
+        ),
+        itemCount: InvoiceColor.values.length,
+        itemBuilder: (_, i) {
+          final scheme = InvoiceColor.values[i];
+          final isSelected = scheme == selected;
+          return GestureDetector(
+            onTap: () => provider.updateColorScheme(scheme),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSelected
+                      ? const Color(0xFF2196F3)
+                      : colorScheme.outline.withValues(alpha: 0.3),
+                  width: isSelected ? 2 : 1,
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Selected: ${_kPresetColors.firstWhere(
-              (c) => c.$2 == selected,
-              orElse: () => ('Custom', selected),
-            ).$1}',
-            style: TextStyle(
-                fontSize: 11,
-                color: colorScheme.onSurface.withValues(alpha: 0.4)),
-          ),
-        ],
+              ),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Color(scheme.primaryColor),
+                            Color(scheme.accentColor),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(9),
+                          topRight: Radius.circular(9),
+                        ),
+                      ),
+                      child: isSelected
+                          ? const Center(
+                              child: Icon(Icons.check_circle_rounded,
+                                  color: Colors.white, size: 22))
+                          : null,
+                    ),
+                  ),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(9),
+                        bottomRight: Radius.circular(9),
+                      ),
+                    ),
+                    child: Text(
+                      scheme.displayName,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: isSelected
+                            ? FontWeight.w800
+                            : FontWeight.normal,
+                        color: isSelected
+                            ? const Color(0xFF2196F3)
+                            : colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -671,6 +755,117 @@ class _SizeSection extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w600, color: accent),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Fields section — Invoice Fields / Customer Fields toggles
+// =============================================================================
+//
+// FIELDS SECTION PASS: this was the missing piece -- InvoiceData.
+// enabledFields and InvoiceProvider.updateEnabledFields() already
+// existed and were already read by the PDF/preview templates, but no
+// widget on this step ever displayed or wrote to them. Mirrors the
+// design language of every other section on this step (_SectionCard
+// wrapper) rather than Quote/Receipt's plainer sectionHeader+switch-row
+// style, since Invoice is this app's reference layout.
+
+class _FieldsSection extends StatelessWidget {
+  const _FieldsSection();
+
+  Widget _toggleRow(
+    BuildContext context,
+    InvoiceProvider provider,
+    String key,
+    String label, {
+    IconData? icon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = _colorForScheme(provider.invoiceData.colorScheme);
+    final value = provider.invoiceData.enabledFields[key] ?? true;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(10),
+        color: isDark
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+            : Colors.white,
+      ),
+      child: SwitchListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        title: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
+              const SizedBox(width: 10),
+            ],
+            Text(label, style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+          ],
+        ),
+        value: value,
+        activeThumbColor: accent,
+        onChanged: (v) {
+          final updated = Map<String, bool>.from(provider.invoiceData.enabledFields);
+          updated[key] = v;
+          provider.updateEnabledFields(updated);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider    = context.watch<InvoiceProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SectionCard(
+      icon: Icons.tune_rounded,
+      title: 'Invoice Fields',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Toggle which fields appear on the generated invoice.',
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+          ),
+          const SizedBox(height: 10),
+          _toggleRow(context, provider, 'invoiceNumber', 'Invoice Number', icon: Icons.tag_rounded),
+          _toggleRow(context, provider, 'date', 'Issue Date', icon: Icons.calendar_today_rounded),
+          _toggleRow(context, provider, 'dueDate', 'Due Date', icon: Icons.event_rounded),
+          _toggleRow(context, provider, 'businessLogo', 'Business Logo', icon: Icons.image_rounded),
+          _toggleRow(context, provider, 'tax', 'Tax', icon: Icons.percent_rounded),
+          _toggleRow(context, provider, 'discount', 'Discount', icon: Icons.local_offer_rounded),
+          _toggleRow(context, provider, 'notes', 'Notes', icon: Icons.notes_rounded),
+          _toggleRow(context, provider, 'thankYouMessage', 'Thank You Message', icon: Icons.favorite_border_rounded),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.person_rounded, size: 14, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                const SizedBox(width: 6),
+                Text(
+                  'Customer Fields',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _toggleRow(context, provider, 'customerName', 'Customer Name', icon: Icons.person_outline_rounded),
+          _toggleRow(context, provider, 'customerEmail', 'Customer Email', icon: Icons.email_rounded),
+          _toggleRow(context, provider, 'customerPhone', 'Customer Phone', icon: Icons.phone_rounded),
+          _toggleRow(context, provider, 'customerAddress', 'Customer Address', icon: Icons.location_on_rounded),
         ],
       ),
     );

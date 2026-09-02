@@ -3,7 +3,53 @@
 //
 // Month/day picker for the Reports screen — Single date / Date range toggle.
 //
-// FIX (this pass): the day grid was driven by a separate `_selectedYear`
+// DAY-COUNT + LONG-RANGE-YEAR PASS (this update):
+//   - The range status pill now shows how many days the selected range
+//     spans (inclusive of both endpoints — Feb 5 -> Feb 5 reads "1 day",
+//     Feb 5 -> Feb 6 reads "2 days"), right under the start/end date text,
+//     so the length of a range is visible without doing the subtraction
+//     yourself.
+//   - The year strip previously only ever rendered a fixed window of 21
+//     years around whatever "now" was when the sheet first opened
+//     ((now.year - 15) to (now.year + 5)). Tapping the chevrons or typing
+//     a year further back than that (via the year-input dialog, which
+//     already allowed up to 100 years back) moved _displayedYear correctly
+//     but the strip had no chip for it and didn't scroll — the highlighted
+//     year silently fell off the edge of the list. The strip now spans a
+//     full 100 years back / 50 forward (itemCount 151, matching the
+//     dialog's own validator bounds) and _selectYearChip always animates
+//     the strip to bring the newly-selected year chip into view, so
+//     chevron-stepping or typing back a full 10 years (or more) always
+//     keeps the selection visible on-screen instead of just updating a
+//     label above an unscrolled strip.
+//
+// CONNECTED RANGE BAND (earlier pass): the range-mode day grid now renders a
+// thin horizontal band behind each day that falls inside the selected
+// range — start, end, and everything between — so a multi-day range reads
+// as one continuous connected bar, with the start/end days themselves
+// drawn as solid filled circles sitting on top of that band (matching the
+// familiar Airbnb-style date-range picker look). Previously start/end/
+// in-between all shared one rounded-rectangle shape with no visual link
+// between adjacent days; that's replaced here with:
+//   - Strictly-between days: a plain rectangular band segment, no visible
+//     circle, in the accent color at low opacity.
+//   - The start day: a band segment (rounded on the left, square on the
+//     right so it flows into the next day) UNDER a solid accent circle
+//     for the day number itself.
+//   - The end day: mirrored — square on the left, rounded on the right —
+//     under its own solid circle.
+//   - A single-day "range" (start == end, e.g. tapping the same day
+//     twice) renders with no band at all, just the one solid circle.
+// Single-date mode is completely unchanged — still a plain circle, no
+// band logic applies there.
+//
+// TAP-TO-ENTER-YEAR (earlier pass): the year label between the chevrons is
+// tappable — opens a small dialog with a numeric text field so a user can
+// type a year directly instead of scrolling the year strip or tapping the
+// chevrons one year at a time. Routes through the same _selectYearChip()
+// the strip and chevrons already use.
+//
+// FIX (earlier pass): the day grid was driven by a separate `_selectedYear`
 // that only got updated when a month chip was tapped (_selectMonth), NOT
 // when the year strip was tapped. Navigating to a different year via the
 // year strip, then tapping a day WITHOUT first re-tapping a month, meant
@@ -119,6 +165,19 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   ];
   static const _weekdayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+  // Year strip bounds — 100 years back, 50 forward from "now" (fixed once
+  // at the moment the sheet opens, so the strip's item count/positions
+  // don't shift under the user mid-session). Matches the year-input
+  // dialog's own validator bounds exactly, so anything typeable there is
+  // guaranteed to also have a chip in the strip to scroll to.
+  late final int _yearStripFirst;
+  static const int _yearStripYearsBack = 100;
+  static const int _yearStripYearsForward = 50;
+  int get _yearStripCount => _yearStripYearsBack + _yearStripYearsForward + 1;
+
+  static const double _yearChipWidth = 56.0;
+  static const double _yearChipGap = 8.0;
+
   @override
   void initState() {
     super.initState();
@@ -136,12 +195,9 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     _selectedMonth = focusBasis.month;
     _selectedDay = widget.initialMonth.day.clamp(1, _daysInMonth(_displayedYear, _selectedMonth));
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_yearStripController.hasClients) return;
-      final index = _displayedYear - (DateTime.now().year - 15);
-      final target = (index * 64.0) - 100;
-      _yearStripController.jumpTo(target.clamp(0.0, _yearStripController.position.maxScrollExtent));
-    });
+    _yearStripFirst = DateTime.now().year - _yearStripYearsBack;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollYearStripTo(_displayedYear, animate: false));
   }
 
   @override
@@ -151,6 +207,31 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   }
 
   static int _daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
+
+  // Centers (as best it can within scroll bounds) the given year's chip in
+  // the visible strip. Called on init AND every time _displayedYear
+  // changes via chevrons/strip tap/typed-year dialog, so the highlighted
+  // chip is never left scrolled out of view — the bug this pass fixes for
+  // jumps of many years at once (e.g. chevron-stepping or typing back a
+  // decade or more).
+  void _scrollYearStripTo(int year, {bool animate = true}) {
+    if (!_yearStripController.hasClients) return;
+    final index = year - _yearStripFirst;
+    if (index < 0 || index >= _yearStripCount) return;
+    const viewportChipsApprox = 5;
+    final target = (index * (_yearChipWidth + _yearChipGap)) -
+        ((viewportChipsApprox / 2) * (_yearChipWidth + _yearChipGap));
+    final clamped = target.clamp(0.0, _yearStripController.position.maxScrollExtent);
+    if (animate) {
+      _yearStripController.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _yearStripController.jumpTo(clamped);
+    }
+  }
 
   void _selectMonth(int month) {
     setState(() {
@@ -200,6 +281,59 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
       // Re-clamp in case the new year changes days-in-month (leap year).
       _selectedDay = _selectedDay.clamp(1, _daysInMonth(_displayedYear, _selectedMonth));
     });
+    _scrollYearStripTo(year);
+  }
+
+  // Opens a small dialog with a numeric field so a year can be typed
+  // directly (e.g. jumping straight to 1998, or 10+ years back) instead
+  // of scrolling the year strip or tapping the chevrons one year at a
+  // time. Routes through _selectYearChip on confirm — same single source
+  // of truth the strip and chevrons already use, so the strip always
+  // scrolls to reveal the typed year too.
+  Future<void> _openYearInputDialog() async {
+    final controller = TextEditingController(text: '$_displayedYear');
+    final formKey = GlobalKey<FormState>();
+    final now = DateTime.now();
+
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Go to year', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 4,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            decoration: const InputDecoration(counterText: '', hintText: 'YYYY'),
+            validator: (v) {
+              final year = int.tryParse((v ?? '').trim());
+              if (year == null || v!.trim().length != 4) return 'Enter a 4-digit year';
+              if (year < now.year - 100 || year > now.year + 50) return 'Enter a realistic year';
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: widget.accent, foregroundColor: Colors.white),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, int.parse(controller.text.trim()));
+              }
+            },
+            child: const Text('Go', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (entered != null) _selectYearChip(entered);
   }
 
   String _rangeStatusText() {
@@ -207,6 +341,17 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     if (_rangeStartDate == null) return 'Tap a day to pick the start date';
     if (_rangeEndDate == null) return 'Start: ${fmt(_rangeStartDate!)} — now tap an end date';
     return '${fmt(_rangeStartDate!)}  →  ${fmt(_rangeEndDate!)}';
+  }
+
+  // Inclusive day count for the active range — Feb 5 -> Feb 5 is 1 day,
+  // Feb 5 -> Feb 6 is 2 days. Returns null until both endpoints are set,
+  // so callers can hide the "N days" line entirely until there's a
+  // complete range to describe.
+  int? _rangeDayCount() {
+    if (_rangeStartDate == null || _rangeEndDate == null) return null;
+    final start = DateTime(_rangeStartDate!.year, _rangeStartDate!.month, _rangeStartDate!.day);
+    final end = DateTime(_rangeEndDate!.year, _rangeEndDate!.month, _rangeEndDate!.day);
+    return end.difference(start).inDays + 1;
   }
 
   @override
@@ -219,6 +364,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
     final leadingBlanks = DateTime(_displayedYear, _selectedMonth, 1).weekday % 7;
 
     final canConfirm = _mode == _PickerMode.single || (_rangeStartKey != null && _rangeEndKey != null);
+    final rangeDayCount = _mode == _PickerMode.range ? _rangeDayCount() : null;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 20),
@@ -266,7 +412,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
           ),
           const SizedBox(height: 14),
 
-          // Year navigation
+          // Year navigation — the year label itself is tappable, opening a
+          // dialog to type a year directly.
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -275,12 +422,27 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 onPressed: () => _selectYearChip(_displayedYear - 1),
                 color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
-              SizedBox(
-                width: 80,
-                child: Text(
-                  '$_displayedYear',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+              InkWell(
+                onTap: _openYearInputDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: SizedBox(
+                    width: 80,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$_displayedYear',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(Icons.edit_rounded, size: 13, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               IconButton(
@@ -296,36 +458,29 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             child: ListView.builder(
               controller: _yearStripController,
               scrollDirection: Axis.horizontal,
-              itemCount: 21,
+              itemCount: _yearStripCount,
               itemBuilder: (context, index) {
-                final year = (now.year - 15) + index;
+                final year = _yearStripFirst + index;
                 final isDisplayed = year == _displayedYear;
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.only(right: _yearChipGap),
                   child: Material(
                     color: isDisplayed
-                        ? widget.accent.withValues(alpha: 0.14)
+                        ? widget.accent
                         : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
                     borderRadius: BorderRadius.circular(10),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () => _selectYearChip(year),
                       child: Container(
-                        width: 56,
+                        width: _yearChipWidth,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: isDisplayed ? widget.accent : Colors.transparent,
-                            width: 1.2,
-                          ),
-                        ),
                         child: Text(
                           '$year',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: isDisplayed ? widget.accent : colorScheme.onSurface.withValues(alpha: 0.6),
+                            color: isDisplayed ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ),
@@ -338,49 +493,92 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
           const SizedBox(height: 16),
 
           // Month grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 12,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1.6,
-            ),
-            itemBuilder: (context, index) {
-              final month = index + 1;
-              final isSelected = _selectedMonth == month;
-              final isCurrent = _displayedYear == now.year && month == now.month;
+          SizedBox(
+            height: 40,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 12,
+              itemBuilder: (context, index) {
+                final month = index + 1;
+                final isSelected = _selectedMonth == month;
+                final isCurrent = _displayedYear == now.year && month == now.month;
 
-              return Material(
-                color: isSelected
-                    ? widget.accent
-                    : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => _selectMonth(month),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: isCurrent && !isSelected
-                          ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      _monthAbbr[index],
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
+                // Month-level equivalent of the day grid's connecting band —
+                // in range mode, the months strictly between the start
+                // date's month and the end date's month get a light accent
+                // fill so a multi-month range (e.g. May -> December) reads
+                // as one continuous highlighted stretch, not just two
+                // isolated endpoint boxes. Comparable via a plain
+                // (year*100 + month) int key, same reasoning as _dayKey —
+                // no DateTime ordering ambiguity.
+                int monthKey(int year, int mo) => year * 100 + mo;
+                final startMonthKey =
+                    _mode == _PickerMode.range && _rangeStartDate != null
+                        ? monthKey(_rangeStartDate!.year, _rangeStartDate!.month)
+                        : null;
+                final endMonthKey = _mode == _PickerMode.range && _rangeEndDate != null
+                    ? monthKey(_rangeEndDate!.year, _rangeEndDate!.month)
+                    : null;
+                final cellMonthKey = monthKey(_displayedYear, month);
+
+                final isRangeStartMonth = startMonthKey != null && cellMonthKey == startMonthKey;
+                final isRangeEndMonth = endMonthKey != null && cellMonthKey == endMonthKey;
+                final isRangeBetweenMonth = startMonthKey != null &&
+                    endMonthKey != null &&
+                    cellMonthKey > startMonthKey &&
+                    cellMonthKey < endMonthKey;
+
+                // SINGLE-MODE FIX: in Single date mode, "today's month"
+                // must never render as a second solid box alongside
+                // whichever month is actually selected/focused — only one
+                // box should ever appear filled. "Current month" now only
+                // ever earns a thin outline (and only when it isn't
+                // otherwise highlighted), same treatment the day grid
+                // already gives "today". In Date range mode, BOTH the
+                // start month and end month are correctly meant to show
+                // filled — that's intentional, not a bug — so isCurrent
+                // still never contributes a second solid fill there
+                // either, it's irrelevant to range coloring.
+                final isHighlighted = _mode == _PickerMode.single
+                    ? isSelected
+                    : (isSelected || isRangeStartMonth || isRangeEndMonth);
+                final showCurrentOutline = isCurrent && !isHighlighted;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Material(
+                    color: isHighlighted
+                        ? widget.accent
+                        : isRangeBetweenMonth
+                            ? widget.accent.withValues(alpha: 0.18)
+                            : (isDark ? const Color(0xFF1E2235) : const Color(0xFFF3F4F8)),
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _selectMonth(month),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: showCurrentOutline
+                              ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
+                              : null,
+                        ),
+                        child: Text(
+                          _monthAbbr[index],
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: isHighlighted ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
           const SizedBox(height: 18),
 
@@ -391,29 +589,51 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 color: widget.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.date_range_rounded, size: 14, color: widget.accent),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _rangeStatusText(),
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
-                    ),
+                  Row(
+                    children: [
+                      Icon(Icons.date_range_rounded, size: 14, color: widget.accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _rangeStatusText(),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+                        ),
+                      ),
+                      if (_rangeStartKey != null || _rangeEndKey != null)
+                        GestureDetector(
+                          onTap: () => setState(() {
+                            _rangeStartKey = null;
+                            _rangeEndKey = null;
+                            _rangeStartDate = null;
+                            _rangeEndDate = null;
+                          }),
+                          child: Text(
+                            'Clear',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: widget.accent),
+                          ),
+                        ),
+                    ],
                   ),
-                  if (_rangeStartKey != null || _rangeEndKey != null)
-                    GestureDetector(
-                      onTap: () => setState(() {
-                        _rangeStartKey = null;
-                        _rangeEndKey = null;
-                        _rangeStartDate = null;
-                        _rangeEndDate = null;
-                      }),
+                  // Inclusive day count for the completed range — hidden
+                  // until both a start and an end date are picked, same
+                  // as the "now tap an end date" prompt above it.
+                  if (rangeDayCount != null) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 22),
                       child: Text(
-                        'Clear',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: widget.accent),
+                        '$rangeDayCount day${rangeDayCount == 1 ? '' : 's'} selected',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface.withValues(alpha: 0.55),
+                        ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -454,49 +674,130 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   _selectedMonth == now.month &&
                   day == now.day;
 
-              bool isSelected = false;
-              bool isInRange = false;
               if (_mode == _PickerMode.single) {
-                isSelected = _selectedDay == day;
-              } else {
-                final isStart = _rangeStartKey != null && cellKey == _rangeStartKey;
-                final isEnd = _rangeEndKey != null && cellKey == _rangeEndKey;
-                isSelected = isStart || isEnd;
-                isInRange = _rangeStartKey != null &&
-                    _rangeEndKey != null &&
-                    cellKey > _rangeStartKey! &&
-                    cellKey < _rangeEndKey!;
-              }
-
-              return Material(
-                key: ValueKey('day-cell-$cellKey'),
-                color: isSelected
-                    ? widget.accent
-                    : (isInRange ? widget.accent.withValues(alpha: 0.18) : Colors.transparent),
-                shape: isInRange && !isSelected
-                    ? const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(4)))
-                    : const CircleBorder(),
-                child: InkWell(
-                  customBorder: isInRange && !isSelected ? null : const CircleBorder(),
-                  onTap: () => _selectDay(day),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: isInRange && !isSelected ? BoxShape.rectangle : BoxShape.circle,
-                      border: isToday && !isSelected
-                          ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '$day',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
+                final isSelected = _selectedDay == day;
+                return Material(
+                  key: ValueKey('day-cell-$cellKey'),
+                  color: isSelected ? widget.accent : Colors.transparent,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => _selectDay(day),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: isToday && !isSelected
+                            ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '$day',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                );
+              }
+
+              // ── Range mode — connected bar + matching box endpoints ───
+              final isStart = _rangeStartKey != null && cellKey == _rangeStartKey;
+              final isEnd = _rangeEndKey != null && cellKey == _rangeEndKey;
+              final isEndpoint = isStart || isEnd;
+              final isBetween = _rangeStartKey != null &&
+                  _rangeEndKey != null &&
+                  cellKey > _rangeStartKey! &&
+                  cellKey < _rangeEndKey!;
+              // A single-day range (start == end, e.g. tapping the same
+              // day twice) gets no connecting bar — just its own box,
+              // same as an endpoint with nothing to connect to.
+              final isSingleDayRange = isStart && isEnd;
+
+              // Bar is a clearly-visible mid-tone fill (not a faint wash)
+              // so the connection between start and end reads at a
+              // glance, distinct from the solid dark endpoint boxes.
+              final barColor = widget.accent.withValues(alpha: 0.32);
+              // Which half(s) of this cell the bar covers. Strictly-
+              // between days get both halves (bar flows edge-to-edge,
+              // connecting to neighbors on both sides). The start day
+              // gets the right half only (nothing to connect to on the
+              // left); the end day gets the left half only.
+              final barLeft = (isBetween || isEnd) && !isSingleDayRange;
+              final barRight = (isBetween || isStart) && !isSingleDayRange;
+
+              return Stack(
+                key: ValueKey('day-cell-$cellKey'),
+                alignment: Alignment.center,
+                children: [
+                  if (barLeft || barRight)
+                    Positioned.fill(
+                      child: FractionallySizedBox(
+                        heightFactor: 0.85,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: barLeft
+                                  ? Container(
+                                      decoration: BoxDecoration(
+                                        color: barColor,
+                                        borderRadius: isEnd
+                                            ? const BorderRadius.horizontal(left: Radius.circular(8))
+                                            : BorderRadius.zero,
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            Expanded(
+                              child: barRight
+                                  ? Container(
+                                      decoration: BoxDecoration(
+                                        color: barColor,
+                                        borderRadius: isStart
+                                            ? const BorderRadius.horizontal(right: Radius.circular(8))
+                                            : BorderRadius.zero,
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Start and end both render as the SAME solid dark
+                  // rounded-box shape (not a circle) so the two ends of
+                  // the range look identical, sitting on top of the
+                  // lighter connecting bar.
+                  Material(
+                    color: isEndpoint ? widget.accent : Colors.transparent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    child: InkWell(
+                      customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      onTap: () => _selectDay(day),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.rectangle,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isToday && !isEndpoint
+                              ? Border.all(color: widget.accent.withValues(alpha: 0.5), width: 1.2)
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '$day',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isEndpoint ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),

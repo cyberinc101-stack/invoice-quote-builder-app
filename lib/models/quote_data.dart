@@ -1,7 +1,45 @@
 // quote_data.dart
 // lib/models/quote_data.dart
 //
-// TEMPLATE + LOGO SIZER PASS (this update): added layoutTemplateId (which
+// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (this update): added
+// sourceTemplateId and sourceClientId — the id of whichever QuoteTemplate
+// (quote_template_library.dart) / QuoteClient (quote_client_library.dart)
+// was selected when this quote was last saved. Previously QuoteData only
+// stored the raw business/client strings COPIED FROM a template/client at
+// save time, with no record of which saved entry they came from — so
+// re-opening a saved quote to edit it always showed "Select or add a
+// template/client" even though one had already been chosen, forcing a
+// reselect every time. quote_editor_screen.dart now reads these two ids
+// in initState and passes them to QuoteTemplateLibrarySection /
+// QuoteClientLibrarySection as initialSelectedId so the right card is
+// highlighted and the status strip shows "Using X" on open, without
+// re-cascading that template's CURRENT business info/logo/fields over
+// the quote's own already-loaded (and possibly since-diverged) values —
+// see _restoreTemplate()/_restoreClient() there, kept deliberately
+// separate from _applyTemplate()/_applyClient()'s full cascade. Both
+// fields are nullable and default to null, so every existing persisted
+// quote loads exactly as before (falls back to the pre-existing "must
+// reselect" behaviour — nothing regresses).
+//
+// TEMPLATE FIELD VISIBILITY PASS (earlier): added enabledFields — a
+// Map<String, bool> mirroring InvoiceData's own field (see that file's
+// TEMPLATE FIELD VISIBILITY PASS for the full rationale). Quote had no
+// equivalent of InvoiceTemplate's Invoice Fields/Customer Fields toggle
+// sheet at all — this adds the same capability via a new "Template" step
+// in QuoteEditorScreen (quote_editor_screen.dart), synced through
+// QuoteProvider.updateEnabledFields(), read by quoteToAdapter() in
+// doc_template_adapter.dart, and gated in executive_template.dart (which
+// already reads DocTemplateAdapter.enabledFields generically — no changes
+// needed there). Defaults to defaultQuoteEnabledFields() (everything
+// shown), so every existing persisted quote renders exactly as before.
+//
+// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
+// (bool, default true) and businessLogoInitialLetter (String, default
+// '') — mirrors InvoiceData's own new fields. See invoice_data.dart's
+// doc comment for the full rationale. Defaults preserve existing render
+// behaviour for every persisted quote, no migration needed.
+//
+// TEMPLATE + LOGO SIZER PASS (earlier): added layoutTemplateId (which
 // visual design — Executive/Nordic/Vibrant/etc, see the quote
 // preview_registry.dart — this quote actually renders with) and
 // businessLogoOffsetDx/Dy/Scale/Shape (mirrors InvoiceData's own new
@@ -12,6 +50,11 @@
 // persisted JSON (layoutTemplateId 1 = Executive, zero offset, scale 1.0,
 // 'roundedSquare' shape), so existing persisted quotes load correctly
 // with no migration step.
+//
+// CURRENCY DISPLAY PASS (earlier): added currencySymbol and
+// currencyDisplayMode, mirroring InvoiceData's own fields — see that
+// file's doc comment for the full rationale (free text, no hardcoded
+// currency list, defaults preserve existing render behaviour).
 
 import 'invoice_data.dart' show LineItem;
 
@@ -22,6 +65,29 @@ import 'invoice_data.dart' show LineItem;
 enum QuoteStatus { draft, sent, accepted, declined, expired }
 
 enum QuoteColor { blue, green, purple, orange, red, teal, black, indigo }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Default field-visibility map
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// TEMPLATE FIELD VISIBILITY PASS: same key set as
+// defaultInvoiceEnabledFields() (invoice_data.dart) minus the
+// invoice-only business/sender/barcode keys that have no quote toggle UI
+// yet — invoiceNumber/date/dueDate/tax/discount/notes/thankYouMessage
+// (document fields) and customerName/Email/Phone/Address (client
+// fields). These are exactly the keys executive_template.dart's
+// _executiveFullHeader / _ExecutiveMetaRow already gate on generically
+// via docFieldOn(), so a quote's Template step toggles take effect with
+// no further changes to the rendering path. Used whenever QuoteData is
+// constructed without an explicit enabledFields map.
+Map<String, bool> defaultQuoteEnabledFields() => {
+      'invoiceNumber': true, 'date': true, 'dueDate': true,
+      'tax': true, 'discount': true,
+      'notes': true, 'thankYouMessage': true,
+      'customerName': true, 'customerEmail': true, 'customerPhone': true,
+      'customerAddress': true,
+      'businessLogo': true,
+    };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QuoteData
@@ -43,6 +109,12 @@ class QuoteData {
   String businessLogoShape; // storage name from LogoShape.storageName
   double businessLogoDisplaySize;
 
+  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above / the same
+  // fields on InvoiceData. Only meaningful when businessLogoPath is NOT
+  // set.
+  bool businessLogoShowInitial;
+  String businessLogoInitialLetter;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -53,6 +125,11 @@ class QuoteData {
   String expiryDate;
   String notes;
   String currency;
+
+  // Free-text currency symbol + display mode — see InvoiceData for the
+  // full rationale. Not gated by any hardcoded currency list.
+  String currencySymbol;
+  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
 
   List<LineItem> lineItems;
 
@@ -66,6 +143,25 @@ class QuoteData {
   // kQuoteTemplates / buildQuotePreview) this quote renders with —
   // 1 = Executive, 2 = Nordic, etc.
   int layoutTemplateId;
+
+  // TEMPLATE FIELD VISIBILITY PASS: which template-defined fields
+  // actually render on this quote — see defaultQuoteEnabledFields()
+  // above for the key set. Populated from the new Template step in
+  // QuoteEditorScreen; read by quoteToAdapter() (doc_template_adapter.
+  // dart) via `d.enabledFields`, then by executive_template.dart's
+  // docFieldOn() helper, which defaults a missing key to true (shown) —
+  // so a persisted quote saved before this field existed still renders
+  // exactly as before.
+  Map<String, bool> enabledFields;
+
+  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: which saved QuoteTemplate /
+  // QuoteClient this quote's business/client info was last populated
+  // from — see the file-level doc comment above. Null means "no saved
+  // template/client is associated", whether that's because this quote
+  // predates this pass, no selection was ever made, or a prior selection
+  // was explicitly cleared.
+  String? sourceTemplateId;
+  String? sourceClientId;
 
   // Same escape hatch as InvoiceData.excludeFromReports. See that file's
   // doc comment for the gating rule.
@@ -82,6 +178,8 @@ class QuoteData {
     this.businessLogoScale    = 1.0,
     this.businessLogoShape    = 'roundedSquare',
     this.businessLogoDisplaySize = 40.0,
+    this.businessLogoShowInitial = true,
+    this.businessLogoInitialLetter = '',
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -91,6 +189,8 @@ class QuoteData {
     this.expiryDate       = '',
     this.notes            = '',
     this.currency         = 'USD',
+    this.currencySymbol      = '',
+    this.currencyDisplayMode = 'code',
     List<LineItem>? lineItems,
     this.taxRate          = 0.0,
     this.discountRate     = 0.0,
@@ -98,8 +198,12 @@ class QuoteData {
     this.fontFamily       = 'Roboto',
     this.colorScheme      = QuoteColor.purple,
     this.layoutTemplateId = 1,
+    Map<String, bool>? enabledFields,
+    this.sourceTemplateId,
+    this.sourceClientId,
     this.excludeFromReports = false,
-  }) : lineItems = lineItems ?? [];
+  }) : lineItems = lineItems ?? [],
+       enabledFields = enabledFields ?? defaultQuoteEnabledFields();
 
   // ── Computed totals ────────────────────────────────────────────────────────
 
@@ -121,6 +225,8 @@ class QuoteData {
         'businessLogoScale':    businessLogoScale,
         'businessLogoShape':    businessLogoShape,
         'businessLogoDisplaySize': businessLogoDisplaySize,
+        'businessLogoShowInitial': businessLogoShowInitial,
+        'businessLogoInitialLetter': businessLogoInitialLetter,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -130,6 +236,8 @@ class QuoteData {
         'expiryDate':       expiryDate,
         'notes':            notes,
         'currency':         currency,
+        'currencySymbol':      currencySymbol,
+        'currencyDisplayMode': currencyDisplayMode,
         'lineItems':        lineItems.map((i) => i.toJson()).toList(),
         'taxRate':          taxRate,
         'discountRate':     discountRate,
@@ -137,6 +245,9 @@ class QuoteData {
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
         'layoutTemplateId': layoutTemplateId,
+        'enabledFields':    enabledFields,
+        'sourceTemplateId': sourceTemplateId,
+        'sourceClientId':   sourceClientId,
         'excludeFromReports': excludeFromReports,
       };
 
@@ -151,6 +262,8 @@ class QuoteData {
         businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
         businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
+        businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
+        businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -160,6 +273,8 @@ class QuoteData {
         expiryDate:       j['expiryDate']       as String? ?? '',
         notes:            j['notes']            as String? ?? '',
         currency:         j['currency']         as String? ?? 'USD',
+        currencySymbol:      j['currencySymbol'] as String? ?? '',
+        currencyDisplayMode: j['currencyDisplayMode'] as String? ?? 'code',
         lineItems: (j['lineItems'] as List<dynamic>? ?? [])
             .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -175,6 +290,12 @@ class QuoteData {
           orElse: () => QuoteColor.purple,
         ),
         layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
+        enabledFields: (j['enabledFields'] as Map?)?.map(
+              (k, v) => MapEntry(k as String, v as bool? ?? true),
+            ) ??
+            defaultQuoteEnabledFields(),
+        sourceTemplateId: j['sourceTemplateId'] as String?,
+        sourceClientId:   j['sourceClientId']   as String?,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
       );
 
@@ -183,6 +304,14 @@ class QuoteData {
   // clearBusinessLogo: explicit clear flag, same reasoning as
   // SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
   // never express "set this field to null" once it already has a value.
+  // clearSourceTemplateId/clearSourceClientId follow the identical
+  // pattern, for the identical reason: a plain null passed in for either
+  // id must mean "clear it" when a template/client was deselected, not
+  // "leave whatever was already there" — see quote_provider.dart's
+  // updateBusinessInfo/updateClientInfo for how these flags get set.
+  // enabledFields is copied into a fresh Map instance either way, so
+  // callers never accidentally share a mutable Map reference between two
+  // QuoteData instances.
 
   QuoteData copyWith({
     String?         businessName,
@@ -196,6 +325,8 @@ class QuoteData {
     double?         businessLogoScale,
     String?         businessLogoShape,
     double?         businessLogoDisplaySize,
+    bool?           businessLogoShowInitial,
+    String?         businessLogoInitialLetter,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -205,6 +336,8 @@ class QuoteData {
     String?         expiryDate,
     String?         notes,
     String?         currency,
+    String?         currencySymbol,
+    String?         currencyDisplayMode,
     List<LineItem>? lineItems,
     double?         taxRate,
     double?         discountRate,
@@ -212,6 +345,11 @@ class QuoteData {
     String?         fontFamily,
     QuoteColor?     colorScheme,
     int?            layoutTemplateId,
+    Map<String, bool>? enabledFields,
+    String?         sourceTemplateId,
+    bool            clearSourceTemplateId = false,
+    String?         sourceClientId,
+    bool            clearSourceClientId = false,
     bool?           excludeFromReports,
   }) =>
       QuoteData(
@@ -225,6 +363,8 @@ class QuoteData {
         businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
         businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
+        businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
+        businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -234,6 +374,8 @@ class QuoteData {
         expiryDate:       expiryDate       ?? this.expiryDate,
         notes:            notes            ?? this.notes,
         currency:         currency         ?? this.currency,
+        currencySymbol:      currencySymbol      ?? this.currencySymbol,
+        currencyDisplayMode: currencyDisplayMode ?? this.currencyDisplayMode,
         lineItems:        lineItems        ?? List<LineItem>.from(this.lineItems),
         taxRate:          taxRate          ?? this.taxRate,
         discountRate:     discountRate     ?? this.discountRate,
@@ -241,11 +383,15 @@ class QuoteData {
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
         layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
+        enabledFields: Map<String, bool>.from(enabledFields ?? this.enabledFields),
+        sourceTemplateId: clearSourceTemplateId ? null : (sourceTemplateId ?? this.sourceTemplateId),
+        sourceClientId:   clearSourceClientId   ? null : (sourceClientId   ?? this.sourceClientId),
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
       );
 
   QuoteData deepCopy() => copyWith(
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
+        enabledFields: Map<String, bool>.from(enabledFields),
       );
 }
 

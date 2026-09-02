@@ -1,7 +1,51 @@
 // invoice_provider.dart
 // lib/providers/invoice_provider.dart
 //
-// TEMPLATE + LOGO SIZER PASS (this update): two new methods —
+// FIELD VISIBILITY RELOCATION PASS (this update): added
+// updateEnabledFields(), mirroring updateColorScheme()/updateFontFamily()'s
+// shape — a thin pass-through to InvoiceData.copyWith. Backs the new
+// "Invoice Fields"/"Customer Fields" toggle section on the Customise step
+// (step_customise.dart's _FieldVisibilitySection), which replaces the
+// same toggles that used to live on the "New Template"/"Edit Template"
+// sheet (step_templates.dart) and only ever wrote to
+// InvoiceTemplate.enabledFields — a value that was copied onto the actual
+// invoice once, on first template selection, and never again (see
+// step_create_invoice.dart's own pass note). Field visibility is now a
+// genuine per-invoice setting.
+//
+// ALERTPREFS PUSH WIRING (earlier pass): added applyOverdueAlertsEnabled()
+// and applyDraftAlertsEnabled() — called from alert_type_toggles.dart's
+// "Overdue Invoices"/"Drafts" switches and settings_screen.dart's master
+// Alerts switch whenever the effective enabled state (alertsEnabled &&
+// the per-type flag) changes, so turning a category off actually cancels
+// its real push notifications instead of only hiding it from the in-app
+// Alerts screen/bell badge. Both iterate every saved invoice and either
+// resync (allowImmediateFire: false — see document_alert_scheduler.dart's
+// header comment for why) or cancel that invoice's notification for the
+// category.
+//
+// NO-DUPLICATE-PUSH FIX (earlier pass): _resyncDocumentAlerts(),
+// updateSavedInvoice(), and renameInvoice() now pass
+// allowImmediateFire: false to syncOverdueInvoiceAlert(). Previously an
+// already-overdue invoice would get a fresh "Invoice overdue" push
+// notification ~5 seconds after EVERY app launch (via the resync safety
+// net below) and after every unrelated edit/rename — because the
+// scheduler always substituted "fire in 5 seconds" whenever the due
+// date had already passed. Only genuine new-transition moments (first
+// save, an explicit status change via updateSavedInvoiceStatus) still
+// allow that immediate fire — see document_alert_scheduler.dart for the
+// actual fix.
+//
+// STATUS HIDDEN PASS (earlier update): updateSavedInvoiceStatus now also
+// clears statusHidden back to false whenever a real status is selected
+// (picking any of Unpaid/Partial/Paid/Overdue in the status menu implies
+// "show the chip again"). New method updateSavedInvoiceStatusHidden(id,
+// hidden) powers the "None" option in the status menu — it flips
+// InvoiceData.statusHidden without touching paymentStatus, so aging/
+// overdue/reports logic (all of which read paymentStatus) is completely
+// unaffected; only the card-face chip in doc_cards.dart is gated on this.
+//
+// TEMPLATE + LOGO SIZER PASS (earlier): two new methods —
 // updateLayoutTemplateId() and updateBusinessLogo() — mirror the pattern
 // every other data-mutation method here already uses (copyWith the active
 // draft, notifyListeners). See invoice_data.dart for the new fields these
@@ -85,7 +129,11 @@ class InvoiceProvider extends ChangeNotifier {
   Future<void> _resyncDocumentAlerts() async {
     for (final inv in _savedInvoices) {
       try {
-        await DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv);
+        // allowImmediateFire: false — this runs on every app launch, so an
+        // invoice that's already overdue must NOT re-fire a fresh "notify
+        // now" push every single time the app opens. Only re-arms alarms
+        // whose natural due-date fire time is still in the future.
+        await DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv, allowImmediateFire: false);
         await DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv);
       } catch (_) {
         // Best-effort — one bad invoice shouldn't stop the rest resyncing.
@@ -100,6 +148,43 @@ class InvoiceProvider extends ChangeNotifier {
       await prefs.setString(_kSavedInvoicesKey, encoded);
     } catch (e) {
       debugPrint('[InvoiceProvider] _persist error: $e');
+    }
+  }
+
+  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
+  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
+  // EFFECTIVE enabled state for a category (alertsEnabled && the per-type
+  // flag) changes. `enabled: true` resyncs every saved invoice's push for
+  // that category (allowImmediateFire: false — re-enabling isn't a fresh
+  // "just became overdue" moment); `enabled: false` cancels it outright.
+  // These never touch the in-app Alerts list — that's driven live by
+  // buildAlerts() reading AlertPrefs directly on every rebuild.
+
+  Future<void> applyOverdueAlertsEnabled(bool enabled) async {
+    for (final inv in _savedInvoices) {
+      try {
+        if (enabled) {
+          await DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv, allowImmediateFire: false);
+        } else {
+          await DocumentAlertScheduler.instance.cancelOverdueInvoiceAlert(inv.id);
+        }
+      } catch (_) {
+        // Best-effort — one bad invoice shouldn't stop the rest applying.
+      }
+    }
+  }
+
+  Future<void> applyDraftAlertsEnabled(bool enabled) async {
+    for (final inv in _savedInvoices) {
+      try {
+        if (enabled) {
+          await DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv);
+        } else {
+          await DocumentAlertScheduler.instance.cancelInvoiceDraftNudge(inv.id);
+        }
+      } catch (_) {
+        // Best-effort — one bad invoice shouldn't stop the rest applying.
+      }
     }
   }
 
@@ -143,6 +228,9 @@ class InvoiceProvider extends ChangeNotifier {
     _activeInvoiceId = inv.id;
     _persist();
     notifyListeners();
+    // First save of this invoice — a genuine new-transition moment, so
+    // an already-past due date is still allowed to fire almost
+    // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     return inv;
@@ -171,6 +259,7 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices.insert(0, inv);
     _persist();
     notifyListeners();
+    // First save of this invoice — see saveCurrentInvoice()'s comment.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     return inv;
@@ -187,7 +276,10 @@ class InvoiceProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     final updated = _savedInvoices[index];
-    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated));
+    // Routine content edit, not a fresh "just became overdue" moment —
+    // allowImmediateFire: false so editing e.g. a line item on an
+    // already-overdue invoice doesn't re-push a duplicate notification.
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
@@ -200,9 +292,10 @@ class InvoiceProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     // Title changed -> re-sync so a pending notification's body text
-    // (which embeds the title) doesn't go stale.
+    // (which embeds the title) doesn't go stale. Not a fresh transition —
+    // allowImmediateFire: false, same reasoning as updateSavedInvoice.
     final updated = _savedInvoices[index];
-    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated));
+    unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
@@ -233,6 +326,11 @@ class InvoiceProvider extends ChangeNotifier {
   //   - Re-set to paid while already paid (no-op flip)-> leave existing
   //     paidDate untouched, so re-tapping the same status doesn't reset the
   //     original paid timestamp.
+  //
+  // Picking any real status here also clears statusHidden back to false —
+  // choosing Unpaid/Partial/Paid/Overdue implies "show the chip again",
+  // the opposite of the "None" option (see updateSavedInvoiceStatusHidden
+  // below).
 
   void updateSavedInvoiceStatus(String id, PaymentStatus status) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
@@ -247,14 +345,16 @@ class InvoiceProvider extends ChangeNotifier {
       updatedData = current.data.copyWith(
         paymentStatus: status,
         paidDate: DateTime.now(),
+        statusHidden: false,
       );
     } else if (!isNowPaid) {
       updatedData = current.data.copyWith(
         paymentStatus: status,
         clearPaidDate: true,
+        statusHidden: false,
       );
     } else {
-      updatedData = current.data.copyWith(paymentStatus: status);
+      updatedData = current.data.copyWith(paymentStatus: status, statusHidden: false);
     }
 
     _savedInvoices[index] = current.copyWith(
@@ -265,8 +365,28 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
     // A status flip is exactly the case that most needs a resync — e.g.
     // marking paid must cancel a pending overdue push immediately, not
-    // wait for the next app launch's resync pass.
+    // wait for the next app launch's resync pass. It's also a genuine
+    // new transition (e.g. flipping to Overdue), so this keeps the
+    // default allowImmediateFire: true.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(_savedInvoices[index]));
+  }
+
+  // Toggles whether the status chip renders on this invoice's cards,
+  // WITHOUT touching paymentStatus itself — powers the "None" option in
+  // the status menu (document_status_menu.dart). paymentStatus keeps
+  // whatever real value it already held, so aging/overdue/reports logic
+  // (which all read paymentStatus, not this flag) is completely
+  // unaffected; only the card-face chip in doc_cards.dart is gated on
+  // statusHidden.
+  void updateSavedInvoiceStatusHidden(String id, bool hidden) {
+    final index = _savedInvoices.indexWhere((i) => i.id == id);
+    if (index == -1) return;
+    _savedInvoices[index] = _savedInvoices[index].copyWith(
+      data: _savedInvoices[index].data.copyWith(statusHidden: hidden),
+      lastEditedAt: DateTime.now(),
+    );
+    _persist();
+    notifyListeners();
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────
@@ -349,7 +469,7 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Logo display size (box width/height in px, default 44.0) � separate
+  // Logo display size (box width/height in px, default 44.0) — separate
   // from updateBusinessLogo() so the "Logo Size" slider on the Customise
   // step can update just this one field.
   void updateBusinessLogoSize(double size) {
@@ -425,6 +545,23 @@ class InvoiceProvider extends ChangeNotifier {
 
   void updateFontFamily(String font) {
     _invoiceData = _invoiceData.copyWith(fontFamily: font);
+    notifyListeners();
+  }
+
+  // FIELD VISIBILITY RELOCATION PASS: writes the Invoice Fields/Customer
+  // Fields toggle selections onto InvoiceData.enabledFields. Mirrors
+  // updateColorScheme/updateFontFamily's shape — a thin pass-through to
+  // copyWith. Called from step_customise.dart's _FieldVisibilitySection,
+  // which replaces the toggle sheet that used to live on
+  // step_templates.dart (that sheet only ever wrote to
+  // InvoiceTemplate.enabledFields, a value StepCreateInvoice copied onto
+  // the actual invoice once and never again — see that file's own pass
+  // note). This is the single place InvoiceData.enabledFields is now
+  // written from user interaction.
+  void updateEnabledFields(Map<String, bool> enabledFields) {
+    _invoiceData = _invoiceData.copyWith(
+      enabledFields: Map<String, bool>.from(enabledFields),
+    );
     notifyListeners();
   }
 

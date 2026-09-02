@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 // ---------------------------------------------------------------------------
 // Stat card used in the stats row
 //
-// REDESIGN (this pass): made to actually read as the important numbers on
-// the screen rather than small supporting metadata. Value font roughly
-// doubled (13 -> 24) and given negative letter-spacing for a tighter,
-// ledger-style number look; the label moved above the value as a small
-// uppercase caption (formal-document convention — caption above figure)
-// instead of below it; icon badge enlarged and given a subtle border
-// instead of just a flat tint so it reads as a discrete card element
-// rather than a decoration; a thin accent-colored top rule replaces the
-// previous plain white card, giving each stat a quiet category marker
-// without resorting to a loud colored background.
+// FORMAL REDESIGN: dropped the tinted gradient background, colored top
+// rule, and gradient icon badge — those read as consumer-app decoration
+// rather than a financial-document metric. Now a plain neutral card
+// (hairline border, no color wash) with a small gray outline icon. The
+// number itself carries the weight; iconColor is kept as a parameter for
+// call-site compatibility but is no longer used to tint the card.
+//
+// BUGFIX (this pass): call sites in saved_document_detail_screen.dart
+// were already passing `neutralAccent: kHeroGradient[0]`, but this class
+// never declared that parameter — that's what broke the build
+// ("No named parameter with the name 'neutralAccent'"). Added below, and
+// used to tint the hairline border with the app's own navy instead of a
+// flat unrelated gray.
 // ---------------------------------------------------------------------------
 class DetailStatCard extends StatelessWidget {
   final String value;
@@ -20,79 +23,62 @@ class DetailStatCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
 
+  /// The app's own navy (kHeroGradient[0]) — tints the card's hairline
+  /// border so it reads as this app's brand color rather than generic gray.
+  final Color neutralAccent;
+
   const DetailStatCard({
     super.key,
     required this.value,
     required this.label,
     required this.icon,
     required this.iconColor,
+    required this.neutralAccent,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = neutralAccent.withValues(alpha: isDark ? 0.28 : 0.16);
+    final mutedIconColor = colorScheme.onSurface.withValues(alpha: 0.4);
 
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E2235) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.12)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
       ),
-      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 3, color: iconColor.withValues(alpha: 0.75)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 15),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 34, height: 34,
-                      decoration: BoxDecoration(
-                        color: iconColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(color: iconColor.withValues(alpha: 0.22)),
-                      ),
-                      child: Icon(icon, color: iconColor, size: 17),
-                    ),
-                    const Spacer(),
-                    Text(
-                      label.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
-                        color: colorScheme.onSurface.withValues(alpha: 0.42),
-                      ),
-                    ),
-                  ],
+          Row(
+            children: [
+              Icon(icon, size: 16, color: mutedIconColor),
+              const Spacer(),
+              Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: colorScheme.onSurface.withValues(alpha: 0.42),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.4,
-                    color: colorScheme.onSurface,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: colorScheme.onSurface,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -103,9 +89,9 @@ class DetailStatCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Section heading label
 //
-// FORMALIZED (this pass): uppercase + wider letter-spacing, smaller/lighter
-// weight — reads as a document section header (INVOICE / LINE ITEMS style)
-// rather than an app-UI heading.
+// FORMALIZED: uppercase + wider letter-spacing, smaller/lighter weight —
+// reads as a document section header (INVOICE / LINE ITEMS style) rather
+// than an app-UI heading.
 // ---------------------------------------------------------------------------
 class DetailSectionLabel extends StatelessWidget {
   final String label;
@@ -190,6 +176,7 @@ class DetailLineItemRow extends StatelessWidget {
   final double unitPrice;
   final double total;
   final String currency;
+  final bool striped;
 
   const DetailLineItemRow({
     super.key,
@@ -198,6 +185,7 @@ class DetailLineItemRow extends StatelessWidget {
     required this.unitPrice,
     required this.total,
     required this.currency,
+    this.striped = false,
   });
 
   String _qty() =>
@@ -206,9 +194,13 @@ class DetailLineItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return Container(
+      color: striped
+          ? (isDark ? Colors.white.withValues(alpha: 0.025) : const Color(0xFFFAFAFB))
+          : Colors.transparent,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       child: Row(
         children: [
           Expanded(
@@ -257,10 +249,10 @@ class DetailLineItemRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Bottom bar action button (wide)
 //
-// FORMALIZED (this pass): dropped the saturated colored drop-shadow (read
-// as a playful consumer-app "glow") for a plain neutral shadow — the
-// button's own fill color still carries the accent, it just no longer
-// casts colored light.
+// FORMALIZED: dropped the saturated colored drop-shadow (read as a
+// playful consumer-app "glow") for a plain neutral shadow — the button's
+// own fill color still carries the accent, it just no longer casts
+// colored light.
 // ---------------------------------------------------------------------------
 class DetailActionButton extends StatelessWidget {
   final String label;

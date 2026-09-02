@@ -1,6 +1,18 @@
 // alert_type_toggles.dart
 // lib/alerts/alert_type_toggles.dart
 //
+// PUSH WIRING (this pass): each switch's onChanged now does two things
+// instead of one — (1) persists the flag via AlertPrefs, same as before,
+// and (2) applies the resulting EFFECTIVE state (alertPrefs.alertsEnabled
+// && the new per-type value) to that category's real push notifications,
+// via the matching provider's applyXEnabled() method. Previously these
+// switches only changed what buildAlerts() shows in-app — the actual OS
+// push notifications for a "disabled" category kept firing regardless.
+// "Drafts" fans out to all three document providers since one toggle
+// covers invoices/quotes/receipts drafts at once, matching its subtitle
+// text below. See document_alert_scheduler.dart's header comment for the
+// full rationale.
+//
 // Reusable list of the four per-type alert switches (Overdue Invoices /
 // Expiring Quotes / Drafts / Reminders), reading and writing straight from
 // AlertPrefs. Drop this into Settings (nested under the master switch) or
@@ -10,6 +22,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'alert_prefs.dart';
+import 'custom_reminders/reminder_provider.dart';
+import '../providers/invoice_provider.dart';
+import '../providers/quote_provider.dart';
+import '../providers/receipt_provider.dart';
 
 class AlertTypeTogglesList extends StatelessWidget {
   final bool showHeader;
@@ -33,7 +49,12 @@ class AlertTypeTogglesList extends StatelessWidget {
         title: 'Overdue Invoices',
         subtitle: 'Nudge me when an invoice is past its due date',
         value: prefs.overdueInvoicesEnabled,
-        onChanged: prefs.setOverdueInvoicesEnabled,
+        onChanged: (value) {
+          prefs.setOverdueInvoicesEnabled(value);
+          context
+              .read<InvoiceProvider>()
+              .applyOverdueAlertsEnabled(prefs.alertsEnabled && value);
+        },
       ),
       _ToggleItem(
         icon: Icons.hourglass_bottom_rounded,
@@ -41,7 +62,12 @@ class AlertTypeTogglesList extends StatelessWidget {
         title: 'Expiring Quotes',
         subtitle: 'Nudge me when a quote is about to expire',
         value: prefs.quotesExpiringEnabled,
-        onChanged: prefs.setQuotesExpiringEnabled,
+        onChanged: (value) {
+          prefs.setQuotesExpiringEnabled(value);
+          context
+              .read<QuoteProvider>()
+              .applyExpiringAlertsEnabled(prefs.alertsEnabled && value);
+        },
       ),
       _ToggleItem(
         icon: Icons.edit_note_rounded,
@@ -49,7 +75,13 @@ class AlertTypeTogglesList extends StatelessWidget {
         title: 'Drafts',
         subtitle: 'Nudge me about unfinished invoices, quotes & receipts',
         value: prefs.draftsEnabled,
-        onChanged: prefs.setDraftsEnabled,
+        onChanged: (value) {
+          prefs.setDraftsEnabled(value);
+          final effective = prefs.alertsEnabled && value;
+          context.read<InvoiceProvider>().applyDraftAlertsEnabled(effective);
+          context.read<QuoteProvider>().applyDraftAlertsEnabled(effective);
+          context.read<ReceiptProvider>().applyDraftAlertsEnabled(effective);
+        },
       ),
       _ToggleItem(
         icon: Icons.notifications_active_rounded,
@@ -57,7 +89,12 @@ class AlertTypeTogglesList extends StatelessWidget {
         title: 'Reminders',
         subtitle: 'Show my custom reminders once they come due',
         value: prefs.remindersEnabled,
-        onChanged: prefs.setRemindersEnabled,
+        onChanged: (value) {
+          prefs.setRemindersEnabled(value);
+          context
+              .read<ReminderProvider>()
+              .applyRemindersPushEnabled(prefs.alertsEnabled && value);
+        },
       ),
     ];
 

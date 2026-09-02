@@ -1,14 +1,28 @@
 // quote_template_chooser_screen.dart
 // lib/screens/quote_template_chooser_screen.dart
 //
-// Mirrors invoice_template_chooser_screen.dart exactly, including the
-// remembered-selection behaviour: tapping a card just selects it (radio
-// check + highlighted border), a "Save & Continue" bar confirms, and the
-// chosen id persists to SharedPreferences so the next visit pre-selects
-// it.
+// Mirrors invoice_template_chooser_screen.dart, including edit-existing
+// support (pass existingQuoteId). In that mode, "Save & Continue" calls
+// provider.loadSavedQuote(id) before pushing QuoteEditorScreen, so its
+// initState (which seeds from provider.quoteData) picks up the real saved
+// fields.
+//
+// KNOWN GAP (documented in quote_editor_screen.dart itself): the editor's
+// Business Info / Client steps require re-selecting a saved profile/client
+// card — they don't auto-match the loaded quote's raw business/client
+// strings back to a saved profile. Editing an existing quote via this path
+// will land on populated Quote Details/Line Items/Review, but Business
+// Info and Client & Details will show as "not yet selected" until the
+// user re-picks the matching saved card (or adds a new one). Flag if you
+// want this reconciled — it needs either fuzzy-matching against the saved
+// library by field values, or synthesizing a placeholder profile/client
+// from the quote's own stored strings.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/quote_provider.dart';
+import '../widgets/template_full_preview_modal.dart';
 import 'quote_editor_screen.dart';
 import 'create_quote_section/quote_step_template_chooser_registry.dart';
 import 'create_quote_section/quote_template_chooser_01/preview_registry.dart';
@@ -16,7 +30,11 @@ import 'create_quote_section/quote_template_chooser_01/preview_registry.dart';
 const String _kLastQuoteTemplateKey = 'last_quote_template_id';
 
 class QuoteTemplateChooserScreen extends StatefulWidget {
-  const QuoteTemplateChooserScreen({super.key});
+  /// When set, this chooser is being opened to edit an EXISTING saved
+  /// quote rather than start a new one.
+  final String? existingQuoteId;
+
+  const QuoteTemplateChooserScreen({super.key, this.existingQuoteId});
 
   @override
   State<QuoteTemplateChooserScreen> createState() => _QuoteTemplateChooserScreenState();
@@ -25,13 +43,23 @@ class QuoteTemplateChooserScreen extends StatefulWidget {
 class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen> {
   int? _selectedId;
 
+  bool get _isEditingExisting => widget.existingQuoteId != null;
+
   @override
   void initState() {
     super.initState();
-    _loadLastSelected();
+    _loadInitialSelection();
   }
 
-  Future<void> _loadLastSelected() async {
+  Future<void> _loadInitialSelection() async {
+    if (_isEditingExisting) {
+      final provider = context.read<QuoteProvider>();
+      final existing = provider.getQuoteById(widget.existingQuoteId!);
+      if (existing != null && mounted) {
+        setState(() => _selectedId = existing.data.layoutTemplateId);
+        return;
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getInt(_kLastQuoteTemplateKey);
     if (saved != null && mounted) {
@@ -68,6 +96,20 @@ class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen>
       return;
     }
     _persistSelected(_selectedId!);
+
+    if (_isEditingExisting) {
+      final provider = context.read<QuoteProvider>();
+      provider.loadSavedQuote(widget.existingQuoteId!);
+      provider.updateLayoutTemplateId(_selectedId!);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuoteEditorScreen(layoutTemplateId: _selectedId!),
+        ),
+      );
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -98,6 +140,14 @@ class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen>
                   info: info,
                   selected: _selectedId == info.id,
                   onTap: () => _tapCard(info),
+                  onLongPress: () => showGenericTemplateFullPreview(
+                    context,
+                    name: info.name,
+                    description: info.description,
+                    accentColor: info.accentColor,
+                    isPremium: info.isPremium,
+                    preview: buildQuotePreview(info.id, sampleQuoteData()),
+                  ),
                 );
               },
             ),
@@ -161,7 +211,7 @@ class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen>
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+          colors: [Color(0xFF7B1FA2), Color(0xFF4A148C)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -187,12 +237,12 @@ class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen>
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    const Text(
                       'Choose a Design',
                       style: TextStyle(
                         color: Colors.white,
@@ -201,10 +251,12 @@ class _QuoteTemplateChooserScreenState extends State<QuoteTemplateChooserScreen>
                         letterSpacing: 0.3,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Pick a template to start your quote',
-                      style: TextStyle(
+                      _isEditingExisting
+                          ? 'Keep the current design or pick a new one'
+                          : 'Pick a template to start your quote',
+                      style: const TextStyle(
                         color: Color(0x99FFFFFF),
                         fontSize: 12,
                       ),
@@ -228,7 +280,8 @@ class _TemplateCard extends StatelessWidget {
   final QuoteTemplateInfo info;
   final bool selected;
   final VoidCallback onTap;
-  const _TemplateCard({required this.info, required this.selected, required this.onTap});
+  final VoidCallback? onLongPress;
+  const _TemplateCard({required this.info, required this.selected, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +289,7 @@ class _TemplateCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

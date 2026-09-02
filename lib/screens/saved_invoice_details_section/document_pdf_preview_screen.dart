@@ -1,5 +1,16 @@
 // lib/screens/saved_invoice_details_section/document_pdf_preview_screen.dart
 //
+// THERMAL PREVIEW BUG FIX PASS (this update): the real-template path for
+// receipts always rendered via buildReceiptPreview() (the A4 design
+// registry) wrapped in ScaledPageStack — same bug fixed in
+// create_receipt_screen.dart's Live Preview card and
+// receipt_full_preview_screen.dart's Preview screen. This is the third
+// and final occurrence: _buildRealTemplateBody now checks
+// receiptData!.paperFormat first and, when thermal, renders
+// ThermalReceiptLivePreview via FittedBox (ScaledPageStack assumes a
+// fixed A4 aspect ratio, which doesn't apply to a variable-length thermal
+// roll) instead of falling into the invoice/quote/receipt A4 switch below.
+//
 // Full-screen "how this would look as a downloaded PDF" preview.
 // One shared screen for Invoice / Quote / Receipt (see design rationale in
 // saved_document_detail_screen.dart) — takes plain values only, no
@@ -7,38 +18,38 @@
 // both real saved documents AND demo placeholder documents with zero
 // branching logic.
 //
-// FIX (this pass): the previous version always rendered a hand-rolled
-// "letter shape" mockup — a generic header/bill-to/table/totals card that
-// did NOT reproduce the real A4 executive template used everywhere else
-// (Edit screen, invoice_full_preview_screen.dart, and the actual exported
-// PDF via invoice_pdf_service.dart), and was labelled "DUMMY PREVIEW" /
-// "Layout mockup only" accordingly.
+// Invoices/quotes/receipts take an optional [invoiceData]/[quoteData]/
+// [receiptData] (the real model for the document being viewed). When
+// supplied, this screen renders the SAME preview pipeline used by each
+// type's own full-preview screen — real page proportions and pixel-
+// accurate match to both the Edit screen and the exported PDF. The
+// "DUMMY PREVIEW" badge and mockup disclaimer only show when none of
+// those are supplied.
 //
-// Invoices now take an optional [invoiceData] (the real InvoiceData for the
-// document being viewed). When it's supplied, this screen renders the SAME
-// ExecutiveInvoicePreview widget + A4Paginator + ScaledPageStack pipeline
-// used by invoice_full_preview_screen.dart — real A4 page proportions,
-// correct multi-page pagination, and pixel-accurate match to both the Edit
-// screen and the exported PDF. The "DUMMY PREVIEW" badge and mockup
-// disclaimer only show when [invoiceData] is null (currently: quotes and
-// receipts, which don't have their own ExecutiveXxxPreview widgets wired
-// up yet — pass their equivalents here once those exist to remove the
-// fallback for those two types as well).
-//
-// Save / Download / Share logic is UNCHANGED from the previous pass — both
-// buttons call back into the SAME onDownloadPdf/onSharePdf callbacks passed
-// in from saved_document_detail_screen.dart.
+// Save / Download / Share logic is UNCHANGED — both buttons call back
+// into the SAME onDownloadPdf/onSharePdf callbacks passed in from
+// saved_document_detail_screen.dart.
 
 import 'package:flutter/material.dart';
 import '../../widgets/saved_documents_containers.dart'
     show DocType, kInvoiceAccent, kQuoteAccent, kReceiptAccent;
 import '../../models/invoice_data.dart';
-import '../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
-import '../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+import '../../models/quote_data.dart';
+import '../../models/receipt_data.dart';
+import '../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
+import '../../document_layout_templates/01_executive/executive_quote_logic_data.dart';
+import '../../document_layout_templates/01_executive/executive_receipt_logic_data.dart';
+import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show kPageW;
-import '../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_create_section/invoice_template_previews/preview_registry.dart'
     show buildInvoicePreview;
+import '../create_quote_section/quote_template_chooser_01/preview_registry.dart'
+    show buildQuotePreview;
+import '../../create_receipt/receipt_template_chooser_01/preview_registry.dart'
+    show buildReceiptPreview;
+import '../../create_receipt/receipt_paper_format.dart';
+import '../../create_receipt/receipt_thermal_live_preview.dart';
 
 // -----------------------------------------------------------------------------
 // PdfPreviewLineItem — plain line item shape, no model dependency
@@ -79,6 +90,10 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
   // generic mockup below.
   final InvoiceData? invoiceData;
 
+  // Same idea as invoiceData, for quotes and receipts.
+  final QuoteData? quoteData;
+  final ReceiptData? receiptData;
+
   // Optional export actions. When provided (currently wired for all three
   // types — see saved_document_detail_screen.dart), tapping the button
   // runs the real PDF export. When null, tapping shows a "not built yet"
@@ -100,11 +115,30 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
     required this.total,
     required this.notes,
     this.invoiceData,
+    this.quoteData,
+    this.receiptData,
     this.onDownloadPdf,
     this.onSharePdf,
   });
 
-  bool get _usesRealTemplate => type == DocType.invoice && invoiceData != null;
+  bool get _usesRealTemplate {
+    switch (type) {
+      case DocType.invoice:
+        return invoiceData != null;
+      case DocType.quote:
+        return quoteData != null;
+      case DocType.receipt:
+        return receiptData != null;
+    }
+  }
+
+  // Thermal receipts don't fit the A4-shaped real-template pipeline below
+  // (fixed page width/height, ScaledPageStack) — they get their own
+  // variable-length branch in _buildRealTemplateBody.
+  bool get _isThermalReceipt =>
+      type == DocType.receipt &&
+      receiptData != null &&
+      receiptPaperFormatFromString(receiptData!.paperFormat).isThermal;
 
   Color get _accent {
     switch (type) {
@@ -171,8 +205,9 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         title: const Text('PDF Preview', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
-          // Only shown for the generic mockup path — the real A4 template
-          // path matches the actual export exactly, so no disclaimer badge.
+          // Only shown for the generic mockup path — every real-template
+          // path (A4 or thermal) matches the actual export exactly, so no
+          // disclaimer badge.
           if (!_usesRealTemplate)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -197,18 +232,55 @@ class DocumentPdfPreviewScreen extends StatelessWidget {
     );
   }
 
-  // ── Real A4 template path (invoices with invoiceData supplied) ───────────
+  // ── Real template path (invoices/quotes/receipts with data supplied) ─────
 
   Widget _buildRealTemplateBody(BuildContext context) {
+    // Thermal receipts: variable-length roll, not a fixed A4 page — render
+    // via the same live-data thermal widget used on the Review step and
+    // the receipt Preview screen, scaled with FittedBox rather than the
+    // A4-shaped ScaledPageStack below.
+    if (_isThermalReceipt) {
+      final format = receiptPaperFormatFromString(receiptData!.paperFormat);
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: format.widthMm * 4.2,
+              child: ThermalReceiptLivePreview(data: receiptData!, widthMm: format.widthMm),
+            ),
+          ),
+        ),
+      );
+    }
+
     final screenW = MediaQuery.of(context).size.width;
     final targetWidth = (screenW - 32).clamp(200.0, kPageW);
-    final data = invoiceData!;
-    // Dispatches on the invoice's own chosen design (Executive/Nordic/
-    // Vibrant/etc — see preview_registry.dart) instead of always rendering
-    // Executive, so this preview matches whatever was picked in
-    // InvoiceTemplateChooserScreen.
-    final preview = buildInvoicePreview(data.layoutTemplateId, data) ??
-        ExecutiveInvoicePreview(data: data);
+
+    // Dispatches on the document's own chosen design (Executive/Nordic/
+    // Vibrant/etc — see the relevant preview_registry.dart) instead of
+    // always rendering Executive, so this preview matches whatever was
+    // picked in the template chooser for that document type.
+    final Widget preview;
+    switch (type) {
+      case DocType.invoice:
+        final data = invoiceData!;
+        preview = buildInvoicePreview(data.layoutTemplateId, data) ??
+            ExecutiveInvoicePreview(data: data);
+        break;
+      case DocType.quote:
+        final data = quoteData!;
+        preview = buildQuotePreview(data.layoutTemplateId, data) ??
+            ExecutiveQuotePreview(data: data);
+        break;
+      case DocType.receipt:
+        final data = receiptData!;
+        preview = buildReceiptPreview(data.layoutTemplateId, data) ??
+            ExecutiveReceiptPreview(data: data);
+        break;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),

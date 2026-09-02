@@ -5,7 +5,52 @@
 // QuoteTotalsCard, QuoteStepNavBar, quoteSectionHeader) so Receipt, Quote,
 // and Invoice all read the same way.
 //
-// ADDED (this pass): kReceiptCurrencies / receiptCurrencySymbol() and
+// OPTIONAL LABEL PASS (this update): ReceiptField now appends "(Optional)"
+// to a field's label automatically whenever `required` is false — matching
+// the identical pass just applied to QuoteField (quote_edit_widgets.dart)
+// and invoice's step_templates.dart _SheetField. Required fields (already
+// carrying their own "*") are untouched. Since ReceiptField is the shared
+// widget behind nearly every receipt input (template sheet, customer
+// sheet, and the main receipt step screens), this single fix makes every
+// optional field across the receipt flow show "(Optional)" in its label.
+//
+// CHARACTER-LIMIT HARDENING PASS (earlier): ReceiptItemCard's Qty and
+// Price fields had a digit-only formatter (RegExp(r'^\d*\.?\d{0,2}')) but
+// no LengthLimitingTextInputFormatter at all — same gap class as Tax %/
+// Discount % on create_receipt_screen.dart before that fix: the formatter
+// bounds the decimal portion to 2 digits but places no ceiling on the
+// integer part, so an arbitrarily long run of digits could still be typed
+// or pasted in before the decimal point. That unbounded value flows
+// straight into `total` (qty * price) here and then into
+// ReceiptTotalsCard/the live preview/the generated PDF, so an extreme
+// value could still blow out a layout even with the overflow guards
+// already in place from VALIDATION PASS 2. Qty now caps at 6 digits
+// (999999 units is already an unrealistic order size) and Price at 10
+// (comfortably covers any real currency amount without inviting an
+// absurd string). Both use LengthLimitingTextInputFormatter alongside the
+// existing digit-only formatter, same pairing ReceiptField already uses
+// for max + extraFormatters.
+//
+// VALIDATION PASS (earlier): ReceiptField gained an optional
+// extraFormatters param, mirroring step_create_invoice.dart's
+// _InvoiceField.extraFormatters. create_receipt_screen.dart now passes a
+// digit-only RegExp formatter here for Tax %/Discount % — those fields
+// previously had keyboardType: decimal but nothing actually restricting
+// what got typed (unlike ReceiptItemCard's Qty/Price fields, which already
+// had a matching formatter inline). No other field's behavior changes —
+// extraFormatters is additive and defaults to null everywhere else.
+//
+// VALIDATION PASS 2 (earlier): ReceiptItemCard's description field now
+// shows a character counter (maxLength wired up, not just the length
+// limiter formatter) matching the invoice item card, and its Total display
+// is now overflow-guarded (single line + ellipsis) so an unusually large
+// computed total can't blow out the card's fixed-width box. ReceiptTotalsCard
+// got the same overflow guard on every amount value, including the final
+// Amount Paid line — previously unbounded Text widgets there, so a large
+// tax/discount rate slipping past validation could still render a broken
+// layout even though the underlying number was correct.
+//
+// ADDED (earlier pass): kReceiptCurrencies / receiptCurrencySymbol() and
 // ReceiptColorPicker — the receipt equivalents of quote_edit_widgets.dart's
 // kQuoteCurrencies / quoteCurrencySymbol() / QuoteColorPicker, needed by
 // CreateReceiptScreen's Client & Details and Review & Save steps.
@@ -70,6 +115,12 @@ class ReceiptField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final Widget? suffix;
 
+  /// VALIDATION PASS: additional formatters to apply alongside the length
+  /// limiter — e.g. Tax %/Discount % on create_receipt_screen.dart now
+  /// pass a digit-only RegExp formatter here, matching what
+  /// ReceiptItemCard's Qty/Price fields already had inline.
+  final List<TextInputFormatter>? extraFormatters;
+
   const ReceiptField({
     super.key,
     required this.ctrl,
@@ -82,31 +133,47 @@ class ReceiptField extends StatelessWidget {
     this.keyboard,
     this.onChanged,
     this.suffix,
+    this.extraFormatters,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // OPTIONAL LABEL PASS: non-required fields get "(Optional)" appended
+    // to their label automatically, matching QuoteField and invoice's
+    // step_templates.dart _SheetField. Required fields (already carrying
+    // their own "*") are untouched.
+    final displayLabel = required ? label : '$label (Optional)';
 
     return TextFormField(
       controller: ctrl,
       maxLines: maxLines,
+      // CHARACTER-COUNTER DISPLAY FIX: this is what actually turns on
+      // Flutter's built-in "n/max" counter — the LengthLimitingTextInput
+      // Formatter below enforces the cap but never displayed it. Passing
+      // max straight through (null when no cap is set, which shows no
+      // counter, same as before this fix).
+      maxLength: max,
       keyboardType: keyboard,
       style: TextStyle(color: colorScheme.onSurface),
-      inputFormatters:
-          max != null ? [LengthLimitingTextInputFormatter(max!)] : null,
+      inputFormatters: [
+        if (extraFormatters != null) ...extraFormatters!,
+        if (max != null) LengthLimitingTextInputFormatter(max!),
+      ],
       onChanged: onChanged,
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
           : null,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: displayLabel,
         labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         prefixIcon: icon != null
             ? Icon(icon, size: 20, color: colorScheme.onSurface.withValues(alpha: 0.45))
             : null,
         suffixIcon: suffix,
+        counterStyle: TextStyle(
+            fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.4)),
         filled: true,
         fillColor:
             isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
@@ -359,11 +426,14 @@ class ReceiptItemCard extends StatelessWidget {
             TextFormField(
               controller: descCtrl,
               style: TextStyle(color: colorScheme.onSurface),
+              maxLength: 200,
               inputFormatters: [LengthLimitingTextInputFormatter(200)],
               onChanged: (_) => onChanged(),
               decoration: InputDecoration(
                 labelText: 'Description',
                 labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
+                counterStyle: TextStyle(
+                    fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                 filled: true,
                 fillColor:
                     isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
@@ -388,8 +458,15 @@ class ReceiptItemCard extends StatelessWidget {
                     controller: qtyCtrl,
                     style: TextStyle(color: colorScheme.onSurface),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    // CHARACTER-LIMIT HARDENING PASS: added
+                    // LengthLimitingTextInputFormatter(6) alongside the
+                    // existing digit-only formatter — 999999 units is
+                    // already an unrealistic quantity for a line item, and
+                    // the formatter alone never capped the integer part's
+                    // length.
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                      LengthLimitingTextInputFormatter(6),
                     ],
                     onChanged: (_) => onChanged(),
                     decoration: _smallDeco(colorScheme, isDark, 'Qty'),
@@ -402,8 +479,15 @@ class ReceiptItemCard extends StatelessWidget {
                     controller: priceCtrl,
                     style: TextStyle(color: colorScheme.onSurface),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    // CHARACTER-LIMIT HARDENING PASS: same fix as Qty
+                    // above — LengthLimitingTextInputFormatter(10) added,
+                    // comfortably covers any real currency amount without
+                    // letting an unbounded digit string reach `total`
+                    // (qty * price) and downstream into
+                    // ReceiptTotalsCard / the live preview / the PDF.
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                      LengthLimitingTextInputFormatter(10),
                     ],
                     onChanged: (_) => onChanged(),
                     decoration: _smallDeco(colorScheme, isDark, 'Price ($currencySymbol)'),
@@ -426,9 +510,14 @@ class ReceiptItemCard extends StatelessWidget {
                             style: TextStyle(
                                 fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                         const SizedBox(height: 2),
-                        Text('$currencySymbol ${total.toStringAsFixed(2)}',
-                            style: TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w800, color: accent)),
+                        Text(
+                          '$currencySymbol ${total.toStringAsFixed(2)}',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w800, color: accent),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                        ),
                       ],
                     ),
                   ),
@@ -469,8 +558,16 @@ class ReceiptTotalsCard extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
-        Text(value,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
@@ -506,8 +603,16 @@ class ReceiptTotalsCard extends StatelessWidget {
               Text('Amount Paid',
                   style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
-              Text('$currencySymbol ${amountPaid.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '$currencySymbol ${amountPaid.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent),
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ],

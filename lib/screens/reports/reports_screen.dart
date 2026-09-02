@@ -1,7 +1,49 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// PROFIT & LOSS PASS (this update): _sumIncome's single combined total is
+// now backed by a new _incomeBreakdown() helper that returns invoice and
+// receipt revenue as separate numbers (invoice, receipt) — _sumIncome
+// just adds the two together, so every existing caller (income,
+// _incomeForMonth, _buildTrendPoints, _topClientsTotals indirectly via
+// the same gating) is byte-for-byte unchanged in behavior. The new
+// ProfitLossCard (reports_pl_card.dart) needs that split to show
+// "Invoices (paid)" and "Receipts (issued)" as separate revenue lines in
+// a traditional P&L layout, and reuses the same sortedCategoryEntries /
+// categories lookup the existing "Expenses by category" section already
+// computes — so the P&L card can never disagree with any other card on
+// this screen about what counts as revenue or an expense. Rendered as a
+// new section directly under the Net stat card, above Total Unpaid.
+//
+// ── Everything else below is unchanged from the previous pass — see
+// original header comments preserved below. ──
+//
+// MONTH PICKER THEME-COLOR PASS (earlier): _openMonthPicker() now
+// passes Theme.of(context).colorScheme.primary as the picker's accent
+// instead of this screen's own kReportsAccent (teal). colorScheme.primary
+// is derived from the app-wide seed color set in main.dart
+// (ColorScheme.fromSeed(seedColor: Color(0xFF1565C0))) — the same blue
+// used for Invoice accents/buttons elsewhere in the app — so the month/
+// date-range picker's selected-day circles, range band, mode toggle, and
+// "Done" button now match the app's overall theme instead of standing
+// out in Reports' own teal. Nothing else on this screen changes — every
+// other kReportsAccent usage (stat cards, tax card, client statements,
+// etc.) is untouched, since only the picker was reported as
+// mismatched.
+//
+// TOTAL UNPAID PASS (earlier): added a new "Total Unpaid" stat card,
+// rendered directly under the Net card. Sums InvoiceData.grandTotal for
+// every period invoice whose paymentStatus is unpaid or overdue —
+// deliberately excluding paid and partial, and there's no draft status
+// on PaymentStatus itself (drafts are simply invoices with
+// completionPercent < 100, which _isReportable() already filters out,
+// same gate Income/Net/Top Clients use). Gated behind
+// prefs.includeInvoices, same as every other invoice-derived figure on
+// this screen, and computed from periodInvoices so it automatically
+// respects the active month/range and folder scope with zero extra
+// wiring.
+//
+// HOME UI-PARITY PASS (earlier): visual-only change, no data/logic
 // changes. The screen used to open with a solid teal AppBar and a plain
 // flat row for the period/folder/data-source controls — visually
 // inconsistent with HomeScreen's dark-gradient hero banner. Now:
@@ -19,9 +61,6 @@
 // client statements, top clients, category breakdown, document list,
 // status breakdown) — and every computation feeding them — is
 // byte-for-byte unchanged from the previous pass.
-//
-// ── Everything else below is unchanged from the previous pass — see
-// original header comments preserved below. ──
 //
 // GROUPED DOCUMENTS + SHARED LAYOUT (earlier): "Documents in this
 // period" no longer owns its own local layout state (_docsLayoutMode is
@@ -164,7 +203,7 @@ import 'month_picker_sheet.dart';
 import 'reports_client_statement.dart';
 import 'reports_charts.dart';
 import 'reports_document_list.dart';
-import 'reports_item_list.dart';
+import 'reports_pl_card.dart';
 import 'reports_prefs.dart';
 import 'reports_trend_chart.dart';
 import 'reports_widgets.dart';
@@ -186,7 +225,25 @@ const _shortMonths = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
 ];
 String _formatShortDate(DateTime dt) => '${dt.day} ${_shortMonths[dt.month - 1]} ${dt.year}';
-String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+DateTime? _parseFlexibleDate(String s) {
+  final trimmed = s.trim();
+  if (trimmed.isEmpty) return null;
+  final iso = DateTime.tryParse(trimmed);
+  if (iso != null) return iso;
+  final parts = trimmed.split(RegExp(r'\s+'));
+  if (parts.length == 3) {
+    final day = int.tryParse(parts[0]);
+    final monthIdx = _shortMonths.indexWhere(
+      (m) => m.toLowerCase() == parts[1].toLowerCase().substring(0, parts[1].length < 3 ? parts[1].length : 3),
+    );
+    final year = int.tryParse(parts[2]);
+    if (day != null && monthIdx != -1 && year != null) {
+      return DateTime(year, monthIdx + 1, day);
+    }
+  }
+  return null;
+}
 
 // Shared gating rule: a saved document counts toward reporting totals only
 // when it's fully filled out AND the user hasn't manually excluded it.
@@ -280,7 +337,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       initialMonth: _month,
       initialRangeStart: _rangeStart,
       initialRangeEnd: _rangeEnd,
-      accent: kReportsAccent,
+      // Uses the app's overall theme color (colorScheme.primary, seeded
+      // from Color(0xFF1565C0) in main.dart) rather than this screen's
+      // own kReportsAccent teal, so the picker's selected-day circles,
+      // range band, mode toggle, and "Done" button match the rest of the
+      // app instead of standing out in Reports-specific teal.
+      accent: Theme.of(context).colorScheme.primary,
     );
     if (result == null) return;
 
@@ -409,6 +471,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }).toList();
   }
 
+  // ── Income breakdown (PROFIT & LOSS PASS): the single choke point for
+  // "what counts as revenue and how much of it came from invoices vs
+  // receipts". _sumIncome below just adds the two together, so every
+  // existing caller (income, _incomeForMonth, _buildTrendPoints,
+  // _topClientsTotals) keeps behaving exactly as before — this split only
+  // adds a NEW way to read the same numbers, for the P&L card, without
+  // touching what already consumes the combined total.
+  ({double invoice, double receipt}) _incomeBreakdown({
+    required List<SavedInvoice> invoices,
+    required List<SavedReceipt> receipts,
+    required ReportsPrefs prefs,
+  }) {
+    double invoiceTotal = 0;
+    double receiptTotal = 0;
+    if (prefs.includeInvoices) {
+      invoiceTotal = invoices
+          .where((i) =>
+              i.data.paymentStatus == PaymentStatus.paid &&
+              _isReportable(i.completionPercent, i.data.excludeFromReports))
+          .fold(0.0, (s, i) => s + i.data.grandTotal);
+    }
+    if (prefs.includeReceipts) {
+      receiptTotal = receipts
+          .where((r) =>
+              r.data.status == ReceiptStatus.issued &&
+              _isReportable(r.completionPercent, r.data.excludeFromReports))
+          .fold(0.0, (s, r) => s + r.data.amountPaid);
+    }
+    return (invoice: invoiceTotal, receipt: receiptTotal);
+  }
+
   // Gated: paid invoices + issued receipts, but only the ones that are
   // 100% complete and not excluded. This is the single choke point for
   // "does this document count as income" — _incomeForMonth, the range
@@ -420,22 +513,73 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required List<SavedReceipt> receipts,
     required ReportsPrefs prefs,
   }) {
-    double total = 0;
-    if (prefs.includeInvoices) {
-      total += invoices
-          .where((i) =>
-              i.data.paymentStatus == PaymentStatus.paid &&
-              _isReportable(i.completionPercent, i.data.excludeFromReports))
-          .fold(0.0, (s, i) => s + i.data.grandTotal);
+    final breakdown = _incomeBreakdown(invoices: invoices, receipts: receipts, prefs: prefs);
+    return breakdown.invoice + breakdown.receipt;
+  }
+
+  // Gated: unpaid + overdue invoices only (deliberately excludes paid and
+  // partial), 100% complete and not manually excluded — same
+  // _isReportable gate as _sumIncome, so this can never disagree with the
+  // rest of the screen about what counts as a "real" invoice. There's no
+  // separate draft status to exclude here — a draft invoice simply has
+  // completionPercent < 100, which _isReportable already filters out.
+  double _sumUnpaid({
+    required List<SavedInvoice> invoices,
+    required ReportsPrefs prefs,
+  }) {
+    if (!prefs.includeInvoices) return 0.0;
+    return invoices
+        .where((i) =>
+            (i.data.paymentStatus == PaymentStatus.unpaid ||
+                i.data.paymentStatus == PaymentStatus.overdue) &&
+            _isReportable(i.completionPercent, i.data.excludeFromReports))
+        .fold(0.0, (s, i) => s + i.data.grandTotal);
+  }
+
+  // Average days between issue date (falls back to createdAt if issueDate
+  // is unparseable) and paidDate, for paid + reportable invoices in the
+  // given list. Returns null when there's nothing to average.
+  double? _averageDaysToPaid(List<SavedInvoice> invoices) {
+    final durations = <int>[];
+    for (final inv in invoices) {
+      if (inv.data.paymentStatus != PaymentStatus.paid) continue;
+      if (!_isReportable(inv.completionPercent, inv.data.excludeFromReports)) continue;
+      final paid = inv.data.paidDate;
+      if (paid == null) continue;
+      final issued = _parseFlexibleDate(inv.data.issueDate) ?? inv.createdAt;
+      final days = paid.difference(issued).inDays;
+      if (days >= 0) durations.add(days);
     }
-    if (prefs.includeReceipts) {
-      total += receipts
-          .where((r) =>
-              r.data.status == ReceiptStatus.issued &&
-              _isReportable(r.completionPercent, r.data.excludeFromReports))
-          .fold(0.0, (s, r) => s + r.data.amountPaid);
+    if (durations.isEmpty) return null;
+    return durations.reduce((a, b) => a + b) / durations.length;
+  }
+
+  // Unpaid/overdue + reportable invoices in the given list, bucketed by
+  // days past their due date. An invoice with no parseable due date, or a
+  // due date that hasn't passed yet, is skipped here (it still counts in
+  // _sumUnpaid's Total Unpaid figure - this is a breakdown of that same
+  // total, not a separate gate).
+  ({double d0to30, double d31to60, double d61plus}) _overdueAgingBuckets(List<SavedInvoice> invoices) {
+    double b1 = 0, b2 = 0, b3 = 0;
+    final now = DateTime.now();
+    for (final inv in invoices) {
+      final status = inv.data.paymentStatus;
+      if (status != PaymentStatus.unpaid && status != PaymentStatus.overdue) continue;
+      if (!_isReportable(inv.completionPercent, inv.data.excludeFromReports)) continue;
+      final due = _parseFlexibleDate(inv.data.dueDate);
+      if (due == null) continue;
+      final daysOverdue = now.difference(due).inDays;
+      if (daysOverdue <= 0) continue;
+      final amt = inv.data.grandTotal;
+      if (daysOverdue <= 30) {
+        b1 += amt;
+      } else if (daysOverdue <= 60) {
+        b2 += amt;
+      } else {
+        b3 += amt;
+      }
     }
-    return total;
+    return (d0to30: b1, d31to60: b2, d61plus: b3);
   }
 
   double _incomeForMonth(
@@ -753,6 +897,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
       income = _incomeForMonth(_month, invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs);
       expensesThisMonth = prefs.includeExpenses ? expenseProvider.totalForMonth(_month) : 0.0;
     }
+
+    // Revenue split for the P&L card — same gating, same period list as
+    // `income` above, just broken into its two sources instead of one
+    // combined figure. See _incomeBreakdown's doc comment.
+    final incomeBreakdown = _incomeBreakdown(invoices: periodInvoices, receipts: periodReceipts, prefs: prefs);
+
+    // Total unpaid — unpaid + overdue invoices for the active period, same
+    // gating (100% complete, not excluded) and same folder/month/range
+    // scope as everything else above. See _sumUnpaid's doc comment.
+    final totalUnpaid = _sumUnpaid(invoices: periodInvoices, prefs: prefs);
+
+    final agingBuckets = prefs.includeInvoices
+        ? _overdueAgingBuckets(periodInvoices)
+        : (d0to30: 0.0, d31to60: 0.0, d61plus: 0.0);
+    final avgDaysToPaid = prefs.includeInvoices ? _averageDaysToPaid(periodInvoices) : null;
 
     // Gated: only 100%-complete, non-excluded accepted quotes count toward
     // the pipeline figure shown under Net.
@@ -1182,6 +1341,64 @@ class _ReportsScreenState extends State<ReportsScreen> {
               wide: true,
               animationKey: '$animationSignature-net',
               trailing: NetMarginBadge(percentChange: netChangePercent),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Profit & Loss statement — new section, sits right under
+            // Net so the headline number (Net) is immediately followed by
+            // the structured breakdown explaining how it was arrived at.
+            // Fed the exact same income breakdown / category totals every
+            // other card on this screen already computes, so it can never
+            // disagree with Income/Expenses/Net or "Expenses by category"
+            // further down.
+            ProfitLossCard(
+              periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+              invoiceRevenue: incomeBreakdown.invoice,
+              receiptRevenue: incomeBreakdown.receipt,
+              expensesByCategory: [
+                for (final entry in sortedCategoryEntries)
+                  ProfitLossCategoryLine(category: categories.byId(entry.key), amount: entry.value),
+              ],
+              isDark: isDark,
+              accent: kReportsAccent,
+            ),
+            const SizedBox(height: 12),
+
+            if (!_isRangeActive)
+              IncomeGoalCard(
+                income: income,
+                goal: prefs.monthlyIncomeGoal,
+                isDark: isDark,
+                accent: kReportsAccent,
+                onGoalChanged: (v) => prefs.setMonthlyIncomeGoal(v),
+              ),
+            const SizedBox(height: 12),
+
+            // Total Unpaid — unpaid + overdue invoices for the active
+            // period. Sits directly under Net, same wide-card treatment,
+            // amber to match the "Unpaid" status color used elsewhere on
+            // this screen (_reportsInvoiceStatusInfo) and in Saved
+            // Documents.
+            ReportsStatCard(
+              label: 'Total Unpaid',
+              value: totalUnpaid,
+              color: const Color(0xFFFF9800),
+              isDark: isDark,
+              wide: true,
+              animationKey: '$animationSignature-unpaid',
+            ),
+            const SizedBox(height: 12),
+            AgingBucketsCard(
+              d0to30: agingBuckets.d0to30,
+              d31to60: agingBuckets.d31to60,
+              d61plus: agingBuckets.d61plus,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 12),
+            DaysToPaidCard(
+              averageDays: avgDaysToPaid,
+              isDark: isDark,
+              accent: kReportsAccent,
             ),
             const SizedBox(height: 12),
 

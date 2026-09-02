@@ -17,6 +17,14 @@
 //
 // Requires (add if not already present):
 //   flutter pub add file_picker share_plus
+//
+// NAV-BAR PADDING FIX (this pass): the body ListView used a flat
+// `EdgeInsets.all(20)`, so the bottom edge — the "Restore" card's button
+// on most phones — sat right at a fixed 20px with no allowance for the
+// device's on-screen nav bar. Same root cause as document_filter_bar.dart
+// and saved_documents_section.dart: changed the bottom padding to
+// `20 + MediaQuery.of(context).padding.bottom` so it clears the nav bar
+// the same way those two sheets now do.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -179,7 +187,7 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

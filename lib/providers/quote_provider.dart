@@ -1,7 +1,25 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// CURRENCY DISPLAY PASS (this update): updateQuoteDetails() gained
+// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (this update): updateBusinessInfo()
+// and updateClientInfo() each gained a source*Id param plus a matching
+// clearSource*Id flag (same explicit-clear pattern clearBusinessLogo
+// already uses) — passes straight through to QuoteData.copyWith's new
+// sourceTemplateId/sourceClientId fields. See quote_data.dart's doc
+// comment for the full rationale. quote_editor_screen.dart's
+// _syncToProvider() now passes _selectedTemplate?.id /
+// _selectedClient?.id alongside the existing business/client fields on
+// every sync, with the matching clear flag set whenever nothing is
+// selected — so deselecting a template/client actually clears the
+// stored id instead of leaving a stale one behind.
+//
+// TEMPLATE FIELD VISIBILITY PASS (earlier): added
+// updateEnabledFields(), mirroring updateBusinessInfo()/
+// updateClientInfo()'s shape — writes straight onto QuoteData.
+// enabledFields via copyWith. Called from the new "Template" step in
+// quote_editor_screen.dart's _syncToProvider().
+//
+// CURRENCY DISPLAY PASS (earlier): updateQuoteDetails() gained
 // optional currencySymbol/currencyDisplayMode params, passed straight
 // through to QuoteData.copyWith (same as the plain currency field
 // already there). Written from quote_editor_screen.dart's new free-text
@@ -311,6 +329,13 @@ class QuoteProvider extends ChangeNotifier {
   // call site (which only passes the plain business fields) keeps working
   // unchanged; pass them together when updating from a SharedLogoPicker
   // onChanged callback.
+  //
+  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: sourceTemplateId/
+  // clearSourceTemplateId are new — same explicit-clear pattern as
+  // clearBusinessLogo. Pass sourceTemplateId when a template is selected;
+  // pass clearSourceTemplateId: true (instead of just omitting
+  // sourceTemplateId) when nothing is selected, since a plain omitted/
+  // null value would leave whatever id was already stored untouched.
   void updateBusinessInfo({
     String? businessName,
     String? businessEmail,
@@ -323,6 +348,8 @@ class QuoteProvider extends ChangeNotifier {
     double? businessLogoScale,
     String? businessLogoShape,
     double? businessLogoDisplaySize,
+    String? sourceTemplateId,
+    bool clearSourceTemplateId = false,
   }) {
     _quoteData = _quoteData.copyWith(
       businessName:     businessName,
@@ -336,21 +363,30 @@ class QuoteProvider extends ChangeNotifier {
       businessLogoScale: businessLogoScale,
       businessLogoShape: businessLogoShape,
       businessLogoDisplaySize: businessLogoDisplaySize,
+      sourceTemplateId: sourceTemplateId,
+      clearSourceTemplateId: clearSourceTemplateId,
     );
     notifyListeners();
   }
 
+  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: sourceClientId/
+  // clearSourceClientId are new — same shape/reasoning as
+  // updateBusinessInfo's sourceTemplateId/clearSourceTemplateId above.
   void updateClientInfo({
     String? clientName,
     String? clientEmail,
     String? clientPhone,
     String? clientAddress,
+    String? sourceClientId,
+    bool clearSourceClientId = false,
   }) {
     _quoteData = _quoteData.copyWith(
       clientName:    clientName,
       clientEmail:   clientEmail,
       clientPhone:   clientPhone,
       clientAddress: clientAddress,
+      sourceClientId: sourceClientId,
+      clearSourceClientId: clearSourceClientId,
     );
     notifyListeners();
   }
@@ -381,6 +417,16 @@ class QuoteProvider extends ChangeNotifier {
       currencyDisplayMode: currencyDisplayMode,
       taxRate:      taxRate,
       discountRate: discountRate,
+    );
+    notifyListeners();
+  }
+
+  // TEMPLATE FIELD VISIBILITY PASS: writes the Template step's toggle
+  // selections onto QuoteData.enabledFields. Mirrors updateBusinessInfo/
+  // updateClientInfo's shape — a thin pass-through to copyWith.
+  void updateEnabledFields(Map<String, bool> enabledFields) {
+    _quoteData = _quoteData.copyWith(
+      enabledFields: Map<String, bool>.from(enabledFields),
     );
     notifyListeners();
   }

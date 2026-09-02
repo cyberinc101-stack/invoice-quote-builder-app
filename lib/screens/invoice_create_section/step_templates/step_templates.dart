@@ -1,14 +1,38 @@
 // lib/screens/invoice_create_section/step_templates/step_templates.dart
 //
-// UPDATED (this pass): Business Logo picking now uses SharedLogoPicker
-// (lib/widgets/shared_logo_picker.dart) instead of a plain ImagePicker +
-// "Change Logo"/"Remove" buttons, so Reposition/Zoom/Shape are available
-// here the same as the Customer step (step_customers.dart) and the
-// receipt/quote business profiles. BusinessInfo gains
-// logoOffsetDx/Dy/Scale/Shape (see lib/models/client_info.dart).
-// _TemplateCard's logo now renders via SharedLogoThumbnail so saved
-// template cards reflect the chosen crop/shape instead of a flat centred
-// cover-fit circle.
+// LOGO FALLBACK MARK WIRING PASS (this update): the "show letter mark
+// when there's no logo" switch + optional letter override — already
+// live on Quote's and (after this same pass) Receipt's template sheets
+// via SharedLogoPicker's showInitialFallback/onShowInitialFallbackChanged/
+// initialLetterOverride/onInitialLetterOverrideChanged params — was never
+// wired up here, so it silently never rendered on the invoice Template
+// sheet even though BusinessInfo now carries logoShowInitial/
+// logoInitialLetter (see client_info.dart's LOGO FALLBACK MARK PASS).
+// _TemplateSheetState gained _logoShowInitial/_logoInitialLetter state,
+// seeded from the existing template on edit, passed through to
+// SharedLogoPicker, and saved back onto BusinessInfo in _save().
+// _TemplateCard also gained the same no-logo fallback mark rendering
+// Quote's/Receipt's saved-template cards already have (a rotated-square
+// initial mark instead of a bare description icon), respecting
+// logoShowInitial/logoInitialLetter.
+//
+// COUNTERS + OPTIONAL LABELS PASS (earlier): every capped text field
+// in the New/Edit Template sheet shows a live "X / max" character
+// counter underneath it. _SheetField also auto-appends "(Optional)" to
+// a field's label whenever `required` is false.
+//
+// FIELD VISIBILITY RELOCATION PASS (earlier update): the "Invoice Fields" /
+// "Customer Fields" toggle switches have been removed from this sheet
+// entirely. Field visibility is now a genuine per-invoice setting,
+// controlled from step_customise.dart's _FieldVisibilitySection.
+//
+// CURRENCY DISPLAY PASS (earlier update): Currency field is a plain
+// free-text Currency Code field (no hardcoded currency list).
+//
+// UPDATED (earlier pass): Business Logo picking uses SharedLogoPicker
+// (lib/widgets/shared_logo_picker.dart), so Reposition/Zoom/Shape are
+// available here the same as the Customer step and the receipt/quote
+// business profiles.
 
 import 'dart:convert';
 import 'dart:io';
@@ -18,6 +42,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../models/invoice_models.dart';
+import '../../../models/invoice_data.dart' show defaultInvoiceEnabledFields;
 import '../../../services/storage_service.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import '../invoice_edit_widgets.dart';
@@ -175,6 +200,8 @@ class _StepTemplatesState extends State<StepTemplates> {
         logoOffsetDy: orig.businessInfo.logoOffsetDy,
         logoScale: orig.businessInfo.logoScale,
         logoShape: orig.businessInfo.logoShape,
+        logoShowInitial: orig.businessInfo.logoShowInitial,
+        logoInitialLetter: orig.businessInfo.logoInitialLetter,
         senderName: orig.businessInfo.senderName,
         senderEmail: orig.businessInfo.senderEmail,
         senderPhone: orig.businessInfo.senderPhone,
@@ -184,6 +211,7 @@ class _StepTemplatesState extends State<StepTemplates> {
       ),
       currency: orig.currency,
       enabledFields: Map<String, bool>.from(orig.enabledFields),
+      thankYouMessage: orig.thankYouMessage,
     );
     setState(() {
       _library.add(dupe);
@@ -575,7 +603,6 @@ class _TemplateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currencySymbol = CurrencyHelper.getSymbol(template.currency);
     final hasLogo = template.businessInfo.logoPath != null &&
         template.businessInfo.logoPath!.isNotEmpty &&
         File(template.businessInfo.logoPath!).existsSync();
@@ -638,7 +665,12 @@ class _TemplateCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Logo / icon
+              // Logo / fallback mark
+              // LOGO FALLBACK MARK WIRING PASS: when there's no logo, show
+              // the same rotated-square initial mark Quote's/Receipt's
+              // saved-template cards use (or nothing but a plain icon if
+              // logoShowInitial is off), instead of always falling back to
+              // a bare description icon regardless of that setting.
               Container(
                 width: 46,
                 height: 46,
@@ -668,13 +700,15 @@ class _TemplateCard extends StatelessWidget {
                         logoShape: shape,
                         boxSize: 46,
                       )
-                    : Icon(
-                        Icons.description_rounded,
-                        color: isSelected
-                            ? _accent
-                            : colorScheme.onSurface.withValues(alpha: 0.3),
-                        size: 22,
-                      ),
+                    : (template.businessInfo.logoShowInitial
+                        ? _CardFallbackMark(template: template, accent: _accent)
+                        : Icon(
+                            Icons.description_rounded,
+                            color: isSelected
+                                ? _accent
+                                : colorScheme.onSurface.withValues(alpha: 0.3),
+                            size: 22,
+                          )),
               ),
               const SizedBox(width: 12),
 
@@ -717,7 +751,11 @@ class _TemplateCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 4),
-                    // Currency badge
+                    // Currency badge — free-text code only. Previously
+                    // prefixed with CurrencyHelper.getSymbol(), which is
+                    // backed by the same fixed currency list the dropdown
+                    // used; since the code can now be anything, the badge
+                    // just shows the code as typed.
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
@@ -729,7 +767,7 @@ class _TemplateCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '$currencySymbol ${template.currency}',
+                        template.currency,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -823,6 +861,43 @@ class _TemplateCard extends StatelessWidget {
 }
 
 // =============================================================================
+// _CardFallbackMark — rotated-square initial mark shown when no logo is
+// set and logoShowInitial is on. Mirrors Quote's/Receipt's
+// _CardFallbackMark exactly, adapted to InvoiceTemplate's businessInfo
+// nesting.
+// =============================================================================
+
+class _CardFallbackMark extends StatelessWidget {
+  final InvoiceTemplate template;
+  final Color accent;
+  const _CardFallbackMark({required this.template, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final letter = template.businessInfo.logoInitialLetter.trim();
+    final initial = letter.isNotEmpty
+        ? letter[0].toUpperCase()
+        : (template.businessInfo.name.trim().isNotEmpty
+            ? template.businessInfo.name.trim()[0].toUpperCase()
+            : 'B');
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Transform.rotate(
+          angle: 0.785398,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(4)),
+          ),
+        ),
+        Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+      ],
+    );
+  }
+}
+
+// =============================================================================
 // Bottom Sheet – create / edit a template
 // =============================================================================
 
@@ -841,7 +916,13 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
   // Template meta
   late TextEditingController _nameCtrl;
-  String _currency = 'USD';
+
+  // Currency — free-text code, no hardcoded currency list. InvoiceTemplate
+  // only stores a single currency code string (no symbol/display-mode —
+  // those are set later on the actual invoice create step), so this is
+  // just a plain text field rather than the Code/Symbol/Both selector
+  // used on the invoice/quote/receipt create steps.
+  late TextEditingController _currencyCtrl;
 
   // Business info
   late TextEditingController _bizNameCtrl;
@@ -856,6 +937,16 @@ class _TemplateSheetState extends State<_TemplateSheet> {
   double _logoScale = 1.0;
   LogoShape _logoShape = LogoShape.circle;
 
+  // LOGO FALLBACK MARK WIRING PASS: "show letter mark when there's no
+  // logo" switch + optional letter override, now actually passed to
+  // SharedLogoPicker below (was previously declared nowhere on this
+  // sheet at all).
+  bool _logoShowInitial = true;
+  String _logoInitialLetter = '';
+
+  // THANK YOU MESSAGE PASS: the message shown on the generated invoice.
+  late TextEditingController _thankYouCtrl;
+
   // Sender info
   late TextEditingController _senderNameCtrl;
   late TextEditingController _senderPositionCtrl;
@@ -864,23 +955,22 @@ class _TemplateSheetState extends State<_TemplateSheet> {
   late TextEditingController _senderAddressCtrl;
   late TextEditingController _senderWebsiteCtrl;
 
-  // Enabled field toggles
+  // FIELD VISIBILITY RELOCATION PASS: no longer editable from this sheet
+  // (see file header). Carried through unedited to the saved
+  // InvoiceTemplate purely for backward compatibility — a new template
+  // gets defaultInvoiceEnabledFields()'s all-true default, an edited
+  // template keeps whatever was already saved on it.
   late Map<String, bool> _enabledFields;
 
   static const _accent = Color(0xFF1565C0);
   bool get _isEditing => widget.existing != null;
-
-  // For live counters
-  int _bizNameLen = 0;
-  int _bizEmailLen = 0;
-  int _senderNameLen = 0;
 
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
-    _currency = e?.currency ?? 'USD';
+    _currencyCtrl = TextEditingController(text: e?.currency ?? 'USD');
 
     final b = e?.businessInfo ?? BusinessInfo();
     _bizNameCtrl = TextEditingController(text: b.name);
@@ -894,6 +984,8 @@ class _TemplateSheetState extends State<_TemplateSheet> {
     _logoOffset = Offset(b.logoOffsetDx, b.logoOffsetDy);
     _logoScale = b.logoScale;
     _logoShape = logoShapeFromString(b.logoShape);
+    _logoShowInitial = b.logoShowInitial;
+    _logoInitialLetter = b.logoInitialLetter;
 
     _senderNameCtrl = TextEditingController(text: b.senderName ?? '');
     _senderPositionCtrl = TextEditingController(text: b.senderPosition ?? '');
@@ -902,43 +994,37 @@ class _TemplateSheetState extends State<_TemplateSheet> {
     _senderAddressCtrl = TextEditingController(text: b.senderAddress ?? '');
     _senderWebsiteCtrl = TextEditingController(text: b.senderWebsite ?? '');
 
+    _thankYouCtrl = TextEditingController(
+      text: e?.thankYouMessage ?? 'Thank you for your business!',
+    );
+
     _enabledFields = e?.enabledFields != null
         ? Map<String, bool>.from(e!.enabledFields)
-        : _defaultFields();
+        : defaultInvoiceEnabledFields();
 
-    // Live counter listeners
-    _bizNameCtrl.addListener(
-        () => setState(() => _bizNameLen = _bizNameCtrl.text.length));
-    _bizEmailCtrl.addListener(
-        () => setState(() => _bizEmailLen = _bizEmailCtrl.text.length));
-    _senderNameCtrl.addListener(
-        () => setState(() => _senderNameLen = _senderNameCtrl.text.length));
-
-    _bizNameLen = _bizNameCtrl.text.length;
-    _bizEmailLen = _bizEmailCtrl.text.length;
-    _senderNameLen = _senderNameCtrl.text.length;
+    // Live counter listeners — every capped text field rebuilds on change
+    // so its "X / max" counter (rendered via _counter() next to each
+    // field below) stays in sync as the person types. One loop covers
+    // every controller instead of a one-off listener per field.
+    for (final c in [
+      _nameCtrl, _currencyCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _bizAddressCtrl, _bizTaxIdCtrl, _bizGstCtrl, _bizWebsiteCtrl,
+      _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
+      _senderPhoneCtrl, _senderAddressCtrl, _senderWebsiteCtrl,
+      _thankYouCtrl,
+    ]) {
+      c.addListener(() => setState(() {}));
+    }
   }
-
-  Map<String, bool> _defaultFields() => {
-        'businessName': true, 'businessEmail': true, 'businessPhone': true,
-        'businessAddress': true, 'businessWebsite': true, 'businessTaxId': true,
-        'businessGst': true, 'businessLogo': true,
-        'senderName': true, 'senderPosition': true, 'senderEmail': true,
-        'senderPhone': true, 'senderAddress': true, 'senderWebsite': true,
-        'customerName': true, 'customerEmail': true, 'customerPhone': true,
-        'customerAddress': true,
-        'invoiceNumber': true, 'date': true, 'dueDate': true,
-        'barcode': true, 'tax': true, 'discount': true,
-        'notes': true, 'thankYouMessage': true,
-      };
 
   @override
   void dispose() {
     for (final c in [
-      _nameCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _nameCtrl, _currencyCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
       _bizAddressCtrl, _bizTaxIdCtrl, _bizGstCtrl, _bizWebsiteCtrl,
       _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
       _senderPhoneCtrl, _senderAddressCtrl, _senderWebsiteCtrl,
+      _thankYouCtrl,
     ]) {
       c.dispose();
     }
@@ -947,11 +1033,15 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
+    final typedCurrency = _currencyCtrl.text.trim();
     widget.onSaved(InvoiceTemplate(
       id: widget.existing?.id ?? const Uuid().v4(),
       name: _nameCtrl.text.trim(),
-      currency: _currency,
+      currency: typedCurrency.isEmpty ? 'USD' : typedCurrency.toUpperCase(),
       enabledFields: _enabledFields,
+      thankYouMessage: _thankYouCtrl.text.trim().isEmpty
+          ? 'Thank you for your business!'
+          : _thankYouCtrl.text.trim(),
       businessInfo: BusinessInfo(
         name: _bizNameCtrl.text.trim(),
         email: _bizEmailCtrl.text.trim(),
@@ -969,6 +1059,8 @@ class _TemplateSheetState extends State<_TemplateSheet> {
         logoOffsetDy: _logoOffset.dy,
         logoScale: _logoScale,
         logoShape: _logoShape.storageName,
+        logoShowInitial: _logoShowInitial,
+        logoInitialLetter: _logoInitialLetter.trim(),
         senderName: _senderNameCtrl.text.trim().isEmpty
             ? null
             : _senderNameCtrl.text.trim(),
@@ -1036,39 +1128,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                 : colorScheme.onSurface.withValues(alpha: 0.35),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _toggleRow(String key, String label, IconData icon) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final enabled = _enabledFields[key] ?? true;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(10),
-        color: isDark
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
-            : Colors.white,
-      ),
-      child: SwitchListTile(
-        dense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-        title: Row(
-          children: [
-            Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
-            const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13, color: colorScheme.onSurface)),
-          ],
-        ),
-        value: enabled,
-        activeThumbColor: _accent,
-        onChanged: (v) => setState(() => _enabledFields[key] = v),
       ),
     );
   }
@@ -1170,56 +1229,29 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                         _counter(_nameCtrl.text.length, 100),
                         const SizedBox(height: 12),
 
-                        // Currency dropdown
-                        DropdownButtonFormField<String>(
-                          initialValue: _currency,
-                          decoration: InputDecoration(
-                            labelText: 'Currency',
-                            labelStyle: TextStyle(
-                                color: colorScheme.onSurface.withValues(alpha: 0.6)),
-                            prefixIcon: Icon(Icons.attach_money_rounded,
-                                size: 20,
-                                color:
-                                    colorScheme.onSurface.withValues(alpha: 0.45)),
-                            filled: true,
-                            fillColor: isDark
-                                ? colorScheme.surfaceContainerHighest
-                                : const Color(0xFFF9F9F9),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide:
-                                    BorderSide(color: colorScheme.outline)),
-                            enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide:
-                                    BorderSide(color: colorScheme.outline)),
-                            focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                    color: _accent, width: 1.5)),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 14),
-                          ),
-                          isExpanded: true,
-                          items: CurrencyHelper.getAllCurrencies()
-                              .map((c) => DropdownMenuItem<String>(
-                                    value: c['code'],
-                                    child: Text(
-                                      '${c['symbol']}  ${c['code']} – ${c['name']}',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: colorScheme.onSurface),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ))
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) setState(() => _currency = v);
-                          },
+                        // Currency — free-text code, no hardcoded currency
+                        // list. Matches the free-text pattern already live
+                        // on the invoice/quote/receipt create steps; this
+                        // template only carries the code itself (symbol +
+                        // display mode are chosen later on the invoice
+                        // create step).
+                        _SheetField(
+                          ctrl: _currencyCtrl,
+                          label: 'Currency Code',
+                          hint: 'e.g. USD',
+                          icon: Icons.attach_money_rounded,
+                          max: 6,
+                          accent: _accent,
                         ),
+                        _counter(_currencyCtrl.text.length, 6),
                         const SizedBox(height: 20),
 
                         // ── Business logo ─────────────────────────────────
+                        // LOGO FALLBACK MARK WIRING PASS: showInitialFallback/
+                        // onShowInitialFallbackChanged/initialLetterOverride/
+                        // onInitialLetterOverrideChanged now passed through —
+                        // this is what actually makes the "show letter mark"
+                        // switch + letter field render below the picker.
                         _sectionLabel('Business Logo'),
                         SharedLogoPicker(
                           logoPath: _logoPath,
@@ -1233,6 +1265,12 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                             _logoScale = s;
                             _logoShape = shape;
                           }),
+                          showInitialFallback: _logoShowInitial,
+                          onShowInitialFallbackChanged: (v) =>
+                              setState(() => _logoShowInitial = v),
+                          initialLetterOverride: _logoInitialLetter,
+                          onInitialLetterOverrideChanged: (v) =>
+                              setState(() => _logoInitialLetter = v),
                         ),
                         const SizedBox(height: 20),
 
@@ -1247,7 +1285,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           required: true,
                           accent: _accent,
                         ),
-                        _counter(_bizNameLen, 100),
+                        _counter(_bizNameCtrl.text.length, 100),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizEmailCtrl,
@@ -1258,7 +1296,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.emailAddress,
                           accent: _accent,
                         ),
-                        _counter(_bizEmailLen, 100),
+                        _counter(_bizEmailCtrl.text.length, 100),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizPhoneCtrl,
@@ -1269,6 +1307,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.phone,
                           accent: _accent,
                         ),
+                        _counter(_bizPhoneCtrl.text.length, 20),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizAddressCtrl,
@@ -1279,6 +1318,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           maxLines: 2,
                           accent: _accent,
                         ),
+                        _counter(_bizAddressCtrl.text.length, 200),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizWebsiteCtrl,
@@ -1289,6 +1329,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.url,
                           accent: _accent,
                         ),
+                        _counter(_bizWebsiteCtrl.text.length, 100),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizTaxIdCtrl,
@@ -1298,6 +1339,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           max: 30,
                           accent: _accent,
                         ),
+                        _counter(_bizTaxIdCtrl.text.length, 30),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _bizGstCtrl,
@@ -1307,6 +1349,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           max: 30,
                           accent: _accent,
                         ),
+                        _counter(_bizGstCtrl.text.length, 30),
                         const SizedBox(height: 20),
 
                         // ── Sender info ───────────────────────────────────
@@ -1319,7 +1362,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           max: 50,
                           accent: _accent,
                         ),
-                        _counter(_senderNameLen, 50),
+                        _counter(_senderNameCtrl.text.length, 50),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _senderPositionCtrl,
@@ -1329,6 +1372,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           max: 50,
                           accent: _accent,
                         ),
+                        _counter(_senderPositionCtrl.text.length, 50),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _senderEmailCtrl,
@@ -1339,6 +1383,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.emailAddress,
                           accent: _accent,
                         ),
+                        _counter(_senderEmailCtrl.text.length, 100),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _senderPhoneCtrl,
@@ -1349,6 +1394,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.phone,
                           accent: _accent,
                         ),
+                        _counter(_senderPhoneCtrl.text.length, 20),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _senderAddressCtrl,
@@ -1359,6 +1405,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           maxLines: 2,
                           accent: _accent,
                         ),
+                        _counter(_senderAddressCtrl.text.length, 200),
                         const SizedBox(height: 12),
                         _SheetField(
                           ctrl: _senderWebsiteCtrl,
@@ -1369,46 +1416,31 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           keyboard: TextInputType.url,
                           accent: _accent,
                         ),
+                        _counter(_senderWebsiteCtrl.text.length, 100),
                         const SizedBox(height: 20),
 
-                        // ── Invoice field toggles ─────────────────────────
-                        _sectionLabel('Invoice Fields'),
-                        Text(
-                          'Toggle which fields appear on generated invoices.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.45),
-                          ),
+                        // THANK YOU MESSAGE PASS: the message shown on
+                        // the generated invoice when the "Thank You
+                        // Message" toggle is on (Customise step). No
+                        // field existed anywhere to type this before.
+                        _sectionLabel('Thank You Message'),
+                        _SheetField(
+                          ctrl: _thankYouCtrl,
+                          label: 'Message',
+                          hint: 'e.g. Thank you for your business!',
+                          icon: Icons.favorite_border_rounded,
+                          max: 150,
+                          maxLines: 2,
+                          accent: _accent,
                         ),
-                        const SizedBox(height: 10),
-                        _toggleRow('invoiceNumber', 'Invoice Number',
-                            Icons.tag_rounded),
-                        _toggleRow('date', 'Invoice Date',
-                            Icons.calendar_today_rounded),
-                        _toggleRow(
-                            'dueDate', 'Due Date', Icons.event_rounded),
-                        _toggleRow(
-                            'barcode', 'Barcode', Icons.qr_code_2_rounded),
-                        _toggleRow('tax', 'Tax', Icons.percent_rounded),
-                        _toggleRow('discount', 'Discount',
-                            Icons.local_offer_rounded),
-                        _toggleRow('notes', 'Notes / Payment Terms',
-                            Icons.note_rounded),
-                        _toggleRow('thankYouMessage', 'Thank You Message',
-                            Icons.favorite_outline_rounded),
-                        const SizedBox(height: 8),
-
-                        _sectionLabel('Customer Fields'),
-                        _toggleRow('customerName', 'Customer Name',
-                            Icons.person_outline_rounded),
-                        _toggleRow('customerEmail', 'Customer Email',
-                            Icons.email_outlined),
-                        _toggleRow('customerPhone', 'Customer Phone',
-                            Icons.phone_outlined),
-                        _toggleRow('customerAddress', 'Customer Address',
-                            Icons.location_on_outlined),
+                        _counter(_thankYouCtrl.text.length, 150),
                         const SizedBox(height: 28),
+
+                        // NOTE: the "Invoice Fields" / "Customer Fields"
+                        // toggle switches previously lived here. They now
+                        // live on the Customise step (step_customise.dart)
+                        // as a genuine per-invoice setting — see file
+                        // header comment above for why.
 
                         // Save button
                         SizedBox(
@@ -1448,6 +1480,12 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
 // =============================================================================
 // Reusable text field (shared with customer sheet)
+//
+// COUNTERS + OPTIONAL LABELS PASS: `required` now also drives the label
+// text — non-required fields get "(Optional)" appended automatically
+// (see `displayLabel` below), so every call site doesn't need to spell
+// it out by hand. Required fields (which already carry their own "*")
+// are untouched.
 // =============================================================================
 
 class _SheetField extends StatelessWidget {
@@ -1480,6 +1518,10 @@ class _SheetField extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atLimit = max != null && ctrl.text.length >= max!;
+    // Required fields keep their label exactly as given (e.g. it already
+    // carries a trailing "*"). Optional fields get "(Optional)" appended
+    // automatically so every non-mandatory input is labelled as such.
+    final displayLabel = required ? label : '$label (Optional)';
 
     return TextFormField(
       controller: ctrl,
@@ -1494,7 +1536,7 @@ class _SheetField extends StatelessWidget {
               ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
               : null),
       decoration: InputDecoration(
-        labelText: label,
+        labelText: displayLabel,
         labelStyle:
             TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,

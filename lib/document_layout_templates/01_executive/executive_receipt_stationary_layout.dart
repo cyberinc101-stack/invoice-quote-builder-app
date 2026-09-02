@@ -1,20 +1,38 @@
 // executive_receipt_stationary_layout.dart
-// lib/receipt_layout_templates/01_executive_receipt_layout/executive_receipt_stationary_layout.dart
+// lib/document_layout_templates/01_executive/executive_receipt_stationary_layout.dart
 //
-// LOGO SIZER PASS (this update): _Logo now renders through
+// FIELD VISIBILITY PASS (this update): every section now checks its
+// matching pre-existing ReceiptData show* toggle before rendering —
+// _Logo gated on showLogo, business email/phone/address on
+// showBusinessDetails (businessName itself has no dedicated toggle and
+// always shows), the RECEIVED FROM block on showCustomerDetails, the
+// receipt number on showReceiptNumber, the Payment Date/Payment Method
+// meta rows on showDateTime/showPaymentMethod respectively, and the
+// discount/tax rows in totals on showDiscountLine/showTaxLine. These
+// show* fields already existed on ReceiptData and were already wired up
+// end-to-end for thermal receipts (ThermalReceiptLivePreview,
+// ReceiptPdfService._buildThermalPdf both already gated on them) — this
+// A4 layout (used by the editable canvas and, via
+// executive_receipt_logic_data.dart, the Review step's live A4 preview)
+// simply never checked them, so a receipt saved with e.g. showTaxLine =
+// false would still show its tax line here even though the toggle
+// existed and was persisted correctly. receipt_pdf_service.dart's A4
+// export (_buildExecutivePdf) has the matching fix in that file.
+//
+// LOGO SIZER PASS (earlier): _Logo now renders through
 // SharedLogoThumbnail instead of a plain centred Image.file cover-fit, so
 // the businessLogoOffsetDx/Dy/Scale/Shape values saved via the Review
 // step's logo sizer (SharedLogoPicker, create_receipt_screen.dart)
 // actually take visual effect here — previously this widget ignored all
 // four fields entirely. Mirrors the identical fix in
-// executive_page_stationary_layout.dart (invoice) and
+// executive_invoice_stationary_layout.dart (invoice) and
 // executive_quote_stationary_layout.dart (quote). The initial-letter
 // diamond fallback (no logo set) is unchanged.
 //
 // Minimal, single-page receipt template. Diamond-logo mark, generous
 // whitespace, no sidebar — mirrors
-// invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
-// and quote_layout_templates/01_executive_quote_layout/executive_quote_stationary_layout.dart
+// document_layout_templates/01_executive/executive_invoice_stationary_layout.dart
+// and document_layout_templates/01_executive/executive_quote_stationary_layout.dart
 // exactly in structure and geometry. Receipt-specific differences only:
 // "RECEIPT" heading, "RECEIVED FROM" instead of "BILLED TO"/"PREPARED FOR",
 // a single Payment Date + Payment Method meta row instead of
@@ -133,11 +151,20 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // FIELD VISIBILITY PASS: businessName has no dedicated toggle and
+    // always shows; email/phone/address are gated together by
+    // showBusinessDetails (the one toggle that already covers all three
+    // — see ReceiptThermalSettingsSection's identical grouping).
+    final showDetails = data.showBusinessDetails;
+    final showReceiptNumber = data.showReceiptNumber;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Logo(data: data, accent: accent),
-        const SizedBox(width: 14),
+        if (data.showLogo) ...[
+          _Logo(data: data, accent: accent),
+          const SizedBox(width: 14),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,10 +175,10 @@ class _Header extends StatelessWidget {
                       color: kInk, fontFamily: ff),
                   softWrap: true, overflow: TextOverflow.visible),
               const SizedBox(height: 4),
-              if (data.businessAddress.isNotEmpty)
+              if (showDetails && data.businessAddress.isNotEmpty)
                 Text(data.businessAddress, style: TextStyle(fontSize: 9, color: kGrey,
                     height: 1.4, fontFamily: ff), softWrap: true),
-              if (data.businessEmail.isNotEmpty || data.businessPhone.isNotEmpty)
+              if (showDetails && (data.businessEmail.isNotEmpty || data.businessPhone.isNotEmpty))
                 Text([data.businessEmail, data.businessPhone]
                         .where((s) => s.isNotEmpty).join('   ·   '),
                     style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff)),
@@ -164,10 +191,12 @@ class _Header extends StatelessWidget {
           children: [
             Text('RECEIPT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                 color: kInk, letterSpacing: 3.0, fontFamily: ff)),
-            const SizedBox(height: 6),
-            Text('#${data.receiptNumber.isEmpty ? '—' : data.receiptNumber}',
-                style: TextStyle(fontSize: 10.5, color: accent,
-                    fontWeight: FontWeight.w600, fontFamily: ff)),
+            if (showReceiptNumber) ...[
+              const SizedBox(height: 6),
+              Text('#${data.receiptNumber.isEmpty ? '—' : data.receiptNumber}',
+                  style: TextStyle(fontSize: 10.5, color: accent,
+                      fontWeight: FontWeight.w600, fontFamily: ff)),
+            ],
           ],
         ),
       ],
@@ -228,37 +257,47 @@ class _BillToMetaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // FIELD VISIBILITY PASS: the whole RECEIVED FROM block is gated by
+    // showCustomerDetails (matches the thermal preview/PDF's identical
+    // gating of the customer block). Payment Date/Payment Method rows
+    // are gated individually by showDateTime/showPaymentMethod.
+    final showCustomer = data.showCustomerDetails;
+    final showDate = data.showDateTime;
+    final showMethod = data.showPaymentMethod;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('RECEIVED FROM', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                  color: accent, letterSpacing: 1.6, fontFamily: ff)),
-              const SizedBox(height: 8),
-              Text(data.clientName.isEmpty ? 'Client name' : data.clientName,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                      color: kInk, fontFamily: ff),
-                  softWrap: true, overflow: TextOverflow.visible),
-              if (data.clientAddress.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(data.clientAddress, style: TextStyle(fontSize: 9.5, color: kGrey,
-                    height: 1.4, fontFamily: ff), softWrap: true),
-              ],
-              if (data.clientEmail.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(data.clientEmail, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
-              ],
-              if (data.clientPhone.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(data.clientPhone, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
-              ],
-            ],
-          ),
+          child: showCustomer
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('RECEIVED FROM', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                        color: accent, letterSpacing: 1.6, fontFamily: ff)),
+                    const SizedBox(height: 8),
+                    Text(data.clientName.isEmpty ? 'Client name' : data.clientName,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                            color: kInk, fontFamily: ff),
+                        softWrap: true, overflow: TextOverflow.visible),
+                    if (data.clientAddress.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(data.clientAddress, style: TextStyle(fontSize: 9.5, color: kGrey,
+                          height: 1.4, fontFamily: ff), softWrap: true),
+                    ],
+                    if (data.clientEmail.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(data.clientEmail, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
+                    ],
+                    if (data.clientPhone.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(data.clientPhone, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
+                    ],
+                  ],
+                )
+              : const SizedBox.shrink(),
         ),
         const SizedBox(width: 24),
         Expanded(
@@ -267,9 +306,12 @@ class _BillToMetaRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _metaRow('Payment Date', data.paymentDate, ff),
-              const SizedBox(height: 6),
-              _metaRow('Payment Method', _paymentMethodLabel(data.paymentMethod), ff),
+              if (showDate) ...[
+                _metaRow('Payment Date', data.paymentDate, ff),
+                const SizedBox(height: 6),
+              ],
+              if (showMethod)
+                _metaRow('Payment Method', _paymentMethodLabel(data.paymentMethod), ff),
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -372,15 +414,18 @@ class _TotalsBlock extends StatelessWidget {
       ]),
     );
 
+    // FIELD VISIBILITY PASS: discount/tax rows gated on
+    // showDiscountLine/showTaxLine (already the source of truth on the
+    // thermal side), in addition to the existing ">0" check.
     return Align(
       alignment: Alignment.centerRight,
       child: SizedBox(
         width: kContentW * 0.42,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           row('Subtotal', data.subtotal),
-          if (data.discountRate > 0)
+          if (data.showDiscountLine && data.discountRate > 0)
             row('Discount (${data.discountRate.toStringAsFixed(0)}%)', data.discountAmount, negative: true),
-          if (data.taxRate > 0)
+          if (data.showTaxLine && data.taxRate > 0)
             row('Tax (${data.taxRate.toStringAsFixed(0)}%)', data.taxAmount),
           const Padding(padding: EdgeInsets.symmetric(vertical: 4), child: Divider(height: 1, color: kRule)),
           row('Amount Paid', data.amountPaid, bold: true),

@@ -2,7 +2,39 @@
 //
 // Generates and exports invoice PDFs.
 //
-// FOLLOW UP (this pass): generateAndSharePDF gained an optional
+// TEMPLATE FIELD VISIBILITY FIX (this update): _buildExecutivePdf now
+// gates the same fields as the live preview/edit canvas
+// (executive_invoice_stationary_layout.dart) behind
+// InvoiceData.enabledFields via the new _on() helper — business logo/
+// name/email/phone/address, invoice number, issue/due dates, Bill To
+// block (client name/email/phone/address), tax row, discount row, and
+// notes. Previously the exported PDF ignored enabledFields entirely (it
+// didn't exist on InvoiceData at all), so toggling a field off in the
+// template sheet never affected what actually printed. Missing keys
+// default to true, so invoices saved before this field existed still
+// export exactly as before.
+//
+// LOGO PARITY PASS (earlier): the Executive builder's logo was
+// already present (unlike the other 9 styles — see pdf_templates.dart's
+// own LOGO PARITY PASS for that fix) but hardcoded to pw.ClipOval on a
+// solid white background regardless of what LogoShape the user actually
+// picked via the Logo Sizer. Now clips to the real shape (circle/square/
+// roundedSquare, mirroring LogoShape.radiusFor() on the Flutter side) and
+// sits on a very light neutral background with BoxFit.contain, matching
+// pdf_templates.dart's _logoWidget and the Flutter-side DocLogoAvatar's
+// own contain-fit treatment, so a non-square logo isn't stretched/cropped
+// to fill a circle it was never meant to fill.
+//
+// CURRENCY DISPLAY PASS (earlier): _currencySymbol()'s hardcoded
+// switch-based lookup is gone. The Executive builder now uses
+// InvoiceData's own currency/currencySymbol/currencyDisplayMode fields
+// directly via a small _fmtMoney(d, v) helper (mirrors
+// DocTemplateAdapter.fmtMoney() on the Flutter preview side, and
+// PdfDocData.fmtMoney() used by the styled-template path below) — so
+// exported PDFs respect whatever the user actually typed for currency
+// symbol/format, not a fixed 8-currency list.
+//
+// FOLLOW UP (earlier pass): generateAndSharePDF gained an optional
 // [shareText] parameter — a pre-filled message body passed straight
 // through to Share.shareXFiles' `text` field. Used by the Alerts screen's
 // "Follow Up" action (alerts_screen.dart) to open the OS share sheet with
@@ -49,6 +81,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/invoice_data.dart';
+import 'pdf_doc_adapter.dart';
+import 'pdf_templates.dart' as styled;
 
 class InvoicePdfService {
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -109,12 +143,19 @@ class InvoicePdfService {
     SavedInvoice invoice, {
     int? layoutTemplateId,
   }) async {
-    switch (layoutTemplateId) {
-      case 1:
-      default:
-        return _buildExecutivePdf(invoice);
-    }
+    final id = layoutTemplateId ?? 1;
+    if (id == 1) return _buildExecutivePdf(invoice);
+    final data = await invoiceToPdfData(invoice.data);
+    final bytes = await styled.buildStyledDocument(data, id);
+    return Uint8List.fromList(bytes);
   }
+
+  // TEMPLATE FIELD VISIBILITY FIX: single read helper for
+  // InvoiceData.enabledFields, mirroring the identical helper in
+  // executive_invoice_stationary_layout.dart — missing keys default to
+  // true (shown), so this stays correct for invoices saved before this
+  // field existed.
+  static bool _on(InvoiceData d, String key) => d.enabledFields[key] ?? true;
 
   // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
 
@@ -122,27 +163,42 @@ class InvoicePdfService {
     final pdf   = pw.Document();
     final d     = invoice.data;
     final color = _pdfColor(d.colorScheme);
-    final sym   = _currencySymbol(d.currency);
 
     final subtotal      = d.subtotal;
     final discountAmount = d.discountAmount;
     final taxAmount      = d.taxAmount;
     final grandTotal     = d.grandTotal;
 
-    // Optionally load logo
+    // Optionally load logo — gated by the businessLogo toggle same as the
+    // live preview.
     pw.MemoryImage? logoImage;
     final logoPath = d.businessLogoPath;
-    if (logoPath != null && logoPath.isNotEmpty) {
+    if (_on(d, 'businessLogo') && logoPath != null && logoPath.isNotEmpty) {
       final f = File(logoPath);
       if (await f.exists()) {
         logoImage = pw.MemoryImage(await f.readAsBytes());
       }
     }
 
-    final hasCustomer = d.clientName.isNotEmpty ||
-        d.clientEmail.isNotEmpty ||
-        d.clientPhone.isNotEmpty ||
-        d.clientAddress.isNotEmpty;
+    final showBusinessName = _on(d, 'businessName');
+    final showBusinessEmail = _on(d, 'businessEmail');
+    final showBusinessPhone = _on(d, 'businessPhone');
+    final showBusinessAddress = _on(d, 'businessAddress');
+    final showInvoiceNumber = _on(d, 'invoiceNumber');
+    final showDate = _on(d, 'date');
+    final showDueDate = _on(d, 'dueDate');
+    final showClientName = _on(d, 'customerName');
+    final showClientEmail = _on(d, 'customerEmail');
+    final showClientPhone = _on(d, 'customerPhone');
+    final showClientAddress = _on(d, 'customerAddress');
+    final showTax = _on(d, 'tax');
+    final showDiscount = _on(d, 'discount');
+    final showNotes = _on(d, 'notes');
+
+    final hasCustomer = (showClientName && d.clientName.isNotEmpty) ||
+        (showClientEmail && d.clientEmail.isNotEmpty) ||
+        (showClientPhone && d.clientPhone.isNotEmpty) ||
+        (showClientAddress && d.clientAddress.isNotEmpty);
 
     pdf.addPage(
       pw.MultiPage(
@@ -160,36 +216,29 @@ class InvoicePdfService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 if (logoImage != null) ...[
-                  pw.ClipOval(
-                    child: pw.Container(
-                      width: 64,
-                      height: 64,
-                      color: PdfColors.white,
-                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                    ),
-                  ),
+                  _executiveLogoWidget(logoImage, d.businessLogoShape),
                   pw.SizedBox(width: 16),
                 ],
                 pw.Expanded(
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      if (d.businessName.isNotEmpty)
+                      if (showBusinessName && d.businessName.isNotEmpty)
                         pw.Text(d.businessName,
                             style: pw.TextStyle(
                               fontSize: 22,
                               fontWeight: pw.FontWeight.bold,
                               color: PdfColors.white,
                             )),
-                      if (d.businessEmail.isNotEmpty)
+                      if (showBusinessEmail && d.businessEmail.isNotEmpty)
                         pw.Text(d.businessEmail,
                             style: const pw.TextStyle(
                                 fontSize: 10, color: PdfColors.white)),
-                      if (d.businessPhone.isNotEmpty)
+                      if (showBusinessPhone && d.businessPhone.isNotEmpty)
                         pw.Text(d.businessPhone,
                             style: const pw.TextStyle(
                                 fontSize: 10, color: PdfColors.white)),
-                      if (d.businessAddress.isNotEmpty)
+                      if (showBusinessAddress && d.businessAddress.isNotEmpty)
                         pw.Text(d.businessAddress,
                             style: const pw.TextStyle(
                                 fontSize: 10, color: PdfColors.white)),
@@ -205,15 +254,15 @@ class InvoicePdfService {
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
                         )),
-                    if (d.invoiceNumber.isNotEmpty)
+                    if (showInvoiceNumber && d.invoiceNumber.isNotEmpty)
                       pw.Text('#${d.invoiceNumber}',
                           style: const pw.TextStyle(
                               fontSize: 11, color: PdfColors.white)),
-                    if (d.issueDate.isNotEmpty)
+                    if (showDate && d.issueDate.isNotEmpty)
                       pw.Text(d.issueDate,
                           style: const pw.TextStyle(
                               fontSize: 10, color: PdfColors.white)),
-                    if (d.dueDate.isNotEmpty)
+                    if (showDueDate && d.dueDate.isNotEmpty)
                       pw.Text('Due: ${d.dueDate}',
                           style: const pw.TextStyle(
                               fontSize: 10, color: PdfColors.white)),
@@ -243,17 +292,17 @@ class InvoicePdfService {
                         letterSpacing: 1,
                       )),
                   pw.SizedBox(height: 4),
-                  if (d.clientName.isNotEmpty)
+                  if (showClientName && d.clientName.isNotEmpty)
                     pw.Text(d.clientName,
                         style: pw.TextStyle(
                             fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                  if (d.clientEmail.isNotEmpty)
+                  if (showClientEmail && d.clientEmail.isNotEmpty)
                     pw.Text(d.clientEmail,
                         style: const pw.TextStyle(fontSize: 10)),
-                  if (d.clientPhone.isNotEmpty)
+                  if (showClientPhone && d.clientPhone.isNotEmpty)
                     pw.Text(d.clientPhone,
                         style: const pw.TextStyle(fontSize: 10)),
-                  if (d.clientAddress.isNotEmpty)
+                  if (showClientAddress && d.clientAddress.isNotEmpty)
                     pw.Text(d.clientAddress,
                         style: const pw.TextStyle(fontSize: 10)),
                 ],
@@ -290,8 +339,8 @@ class InvoicePdfService {
                           : item.quantity.toStringAsFixed(2),
                       align: pw.TextAlign.center,
                     ),
-                    _td('$sym${_fmt(item.unitPrice)}', align: pw.TextAlign.right),
-                    _td('$sym${_fmt(item.total)}', align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.unitPrice), align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.total), align: pw.TextAlign.right),
                   ],
                 ),
               ),
@@ -306,13 +355,13 @@ class InvoicePdfService {
               width: 220,
               child: pw.Column(
                 children: [
-                  _totalRow('Subtotal', '$sym${_fmt(subtotal)}'),
-                  if (d.taxRate > 0)
+                  _totalRow('Subtotal', _fmtMoney(d, subtotal)),
+                  if (showTax && d.taxRate > 0)
                     _totalRow('Tax (${_fmtPct(d.taxRate)}%)',
-                        '+$sym${_fmt(taxAmount)}'),
-                  if (d.discountRate > 0)
+                        '+${_fmtMoney(d, taxAmount)}'),
+                  if (showDiscount && d.discountRate > 0)
                     _totalRow('Discount (${_fmtPct(d.discountRate)}%)',
-                        '-$sym${_fmt(discountAmount)}'),
+                        '-${_fmtMoney(d, discountAmount)}'),
                   pw.Divider(color: PdfColors.grey400),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -320,7 +369,7 @@ class InvoicePdfService {
                       pw.Text('TOTAL',
                           style: pw.TextStyle(
                               fontWeight: pw.FontWeight.bold, fontSize: 14)),
-                      pw.Text('$sym${_fmt(grandTotal)}',
+                      pw.Text(_fmtMoney(d, grandTotal),
                           style: pw.TextStyle(
                               fontWeight: pw.FontWeight.bold,
                               fontSize: 14,
@@ -333,7 +382,7 @@ class InvoicePdfService {
           ),
 
           // ── Notes ──────────────────────────────────────────────────────
-          if (d.notes.isNotEmpty) ...[
+          if (showNotes && d.notes.isNotEmpty) ...[
             pw.SizedBox(height: 20),
             pw.Text('Notes / Payment Terms',
                 style: pw.TextStyle(
@@ -365,20 +414,55 @@ class InvoicePdfService {
     }
   }
 
-  /// Small self-contained currency symbol map — avoids depending on any
-  /// external CurrencyHelper class that hasn't been confirmed to exist
-  /// for the real InvoiceData model.
-  String _currencySymbol(String code) {
-    switch (code.toUpperCase()) {
-      case 'USD': return '\$';
-      case 'EUR': return '€';
-      case 'GBP': return '£';
-      case 'NZD': return 'NZ\$';
-      case 'AUD': return 'A\$';
-      case 'CAD': return 'C\$';
-      case 'JPY': return '¥';
-      case 'INR': return '₹';
-      default:    return '$code ';
+  /// Renders the Executive header logo respecting the document's real
+  /// LogoShape (circle/square/roundedSquare) instead of a hardcoded
+  /// ClipOval, with BoxFit.contain on a soft neutral background instead
+  /// of solid white — mirrors pdf_templates.dart's own _logoWidget (used
+  /// by the other 9 styles) and the Flutter-side DocLogoAvatar, so a
+  /// non-square logo isn't stretched/cropped to fill a circle it was
+  /// never meant to fill.
+  static pw.Widget _executiveLogoWidget(pw.MemoryImage logoImage, String logoShape, {double size = 64}) {
+    final radius = switch (logoShape) {
+      'circle' => size / 2,
+      'square' => 0.0,
+      _ => size * 0.22, // roundedSquare + fallback
+    };
+    return pw.ClipRRect(
+      horizontalRadius: radius,
+      verticalRadius: radius,
+      child: pw.Container(
+        width: size,
+        height: size,
+        color: PdfColors.grey50,
+        alignment: pw.Alignment.center,
+        padding: pw.EdgeInsets.all(size * 0.08),
+        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+      ),
+    );
+  }
+
+  /// Formats money using InvoiceData's own currency/currencySymbol/
+  /// currencyDisplayMode fields — free text, no hardcoded currency list.
+  /// Mirrors DocTemplateAdapter.fmtMoney() (Flutter preview side) exactly,
+  /// so exported PDFs match what the user saw in the preview.
+  static String _fmtMoney(InvoiceData d, double v) {
+    final amount = _fmt(v);
+    final hasSymbol = d.currencySymbol.trim().isNotEmpty;
+    final hasCode = d.currency.trim().isNotEmpty;
+
+    switch (d.currencyDisplayMode) {
+      case 'symbol':
+        if (hasSymbol) return '${d.currencySymbol}$amount';
+        return hasCode ? '${d.currency} $amount' : amount;
+      case 'both':
+        if (hasSymbol && hasCode) return '${d.currency} ${d.currencySymbol}$amount';
+        if (hasSymbol) return '${d.currencySymbol}$amount';
+        if (hasCode) return '${d.currency} $amount';
+        return amount;
+      case 'code':
+      default:
+        if (hasCode) return '${d.currency} $amount';
+        return hasSymbol ? '${d.currencySymbol}$amount' : amount;
     }
   }
 

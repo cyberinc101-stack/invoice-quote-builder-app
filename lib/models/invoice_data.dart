@@ -1,6 +1,44 @@
 // invoice_data.dart
 // lib/models/invoice_data.dart
 //
+// TEMPLATE FIELD VISIBILITY PASS (this update): added enabledFields — a
+// Map<String, bool> keyed by the same field-id strings used in
+// step_templates.dart's toggle rows (see defaultInvoiceEnabledFields()
+// below, which mirrors that file's _defaultFields() exactly). Previously
+// InvoiceTemplate.enabledFields was saved on the template but never
+// copied anywhere InvoiceData could read it, so the Invoice Fields /
+// Customer Fields toggles in the template sheet had no effect on the
+// actual rendered invoice or exported PDF. Populated from
+// InvoiceTemplate.enabledFields in StepCreateInvoice._syncToProvider(),
+// and read by executive_invoice_stationary_layout.dart (preview/edit
+// canvas) and invoice_pdf_service.dart (exported PDF) to decide what
+// actually renders. Missing keys default to true via `?? true` at each
+// read site, so persisted invoices saved before this field existed still
+// render exactly as before.
+//
+// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
+// (bool, default true) and businessLogoInitialLetter (String, default
+// '') alongside the existing logo fields. When no real logo image is
+// set, every template renders a small rotated-square initial-letter mark
+// (the "blue diamond") instead of leaving blank space — these two fields
+// let the user turn that mark off entirely (businessLogoShowInitial =
+// false), or override which letter it shows instead of always
+// auto-deriving the first letter of businessName
+// (businessLogoInitialLetter). Both are read by buildSharedLogo() in
+// shared_doc_widgets.dart via DocTemplateAdapter. Defaults preserve
+// existing behaviour exactly (mark shown, auto letter) for every
+// persisted invoice, no migration needed.
+//
+// STATUS HIDDEN PASS (earlier): statusHidden — a plain bool, default
+// false — lets the status chip be hidden on the card faces without
+// touching paymentStatus itself. Backs the new "None" radio option in the
+// status menu (document_status_menu.dart / InvoiceProvider.
+// updateSavedInvoiceStatusHidden): picking "None" sets this true and
+// leaves paymentStatus exactly as it was; picking any real status sets it
+// back to false. Kept separate from paymentStatus rather than adding a
+// 5th enum value, since paymentStatus still needs to hold a real, valid
+// status for aging/reports/overdue logic even while the chip is hidden.
+//
 // TEMPLATE + LOGO SIZER PASS: layoutTemplateId (which visual design —
 // Executive/Nordic/Vibrant/etc, see preview_registry.dart — this invoice
 // renders with) and businessLogoOffsetDx/Dy/Scale/Shape (driven by
@@ -10,6 +48,15 @@
 // (layoutTemplateId 1 = Executive, zero offset, scale 1.0, 'roundedSquare'
 // shape, size 40.0), so existing persisted invoices load correctly with
 // no migration step.
+//
+// CURRENCY DISPLAY PASS (this update): added currencySymbol and
+// currencyDisplayMode alongside currency (the code, e.g. "USD"). Both are
+// free text / free choice — no hardcoded currency list gates what can be
+// entered here, since a fixed dropdown would cap which currencies the app
+// can invoice in. currencyDisplayMode is 'code' | 'symbol' | 'both' and
+// controls how shared_doc_widgets.dart's fmtMoney() renders amounts.
+// Defaults ('' symbol, 'code' mode) mean existing persisted invoices
+// render exactly as before this field existed.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LineItem
@@ -61,6 +108,29 @@ enum PaymentStatus { unpaid, partial, paid, overdue }
 enum InvoiceColor { blue, green, purple, orange, red, teal, black, indigo }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Default field-visibility map
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// TEMPLATE FIELD VISIBILITY PASS: mirrors step_templates.dart's
+// _defaultFields() exactly (same key set, same defaults). Used whenever
+// InvoiceData is constructed without an explicit enabledFields map — new
+// invoices with no template selected, or persisted invoices saved before
+// this field existed. Kept as a plain top-level function (not a const)
+// so each caller gets its own fresh, independently-mutable Map instance.
+Map<String, bool> defaultInvoiceEnabledFields() => {
+      'businessName': true, 'businessEmail': true, 'businessPhone': true,
+      'businessAddress': true, 'businessWebsite': true, 'businessTaxId': true,
+      'businessGst': true, 'businessLogo': true,
+      'senderName': true, 'senderPosition': true, 'senderEmail': true,
+      'senderPhone': true, 'senderAddress': true, 'senderWebsite': true,
+      'customerName': true, 'customerEmail': true, 'customerPhone': true,
+      'customerAddress': true,
+      'invoiceNumber': true, 'date': true, 'dueDate': true,
+      'barcode': true, 'tax': true, 'discount': true,
+      'notes': true, 'thankYouMessage': true,
+    };
+
+// ─────────────────────────────────────────────────────────────────────────────
 // InvoiceData
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -83,6 +153,12 @@ class InvoiceData {
   // is the zoom/crop level *within* the box).
   double businessLogoDisplaySize;
 
+  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above. Only
+  // meaningful when businessLogoPath is NOT set (once a real logo exists,
+  // these two fields are simply ignored).
+  bool businessLogoShowInitial;
+  String businessLogoInitialLetter;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -93,6 +169,12 @@ class InvoiceData {
   String dueDate;
   String notes;
   String currency;
+
+  // Free-text currency symbol (e.g. "$", "€", "kr") and how it combines
+  // with `currency` (the code) when rendered — see fmtMoney() in
+  // shared_doc_widgets.dart. Not gated by any hardcoded currency list.
+  String currencySymbol;
+  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
 
   List<LineItem> lineItems;
 
@@ -108,6 +190,19 @@ class InvoiceData {
   // carried through the wizard by StepCreateInvoice._syncToProvider().
   int layoutTemplateId;
 
+  // TEMPLATE FIELD VISIBILITY PASS: which template-defined fields should
+  // actually render on this invoice — keyed by the same field-id strings
+  // used in step_templates.dart's toggle rows (invoiceNumber, date,
+  // dueDate, barcode, tax, discount, notes, thankYouMessage,
+  // customerName/Email/Phone/Address, businessName/Email/Phone/Address/
+  // Logo, etc — see defaultInvoiceEnabledFields() above for the full
+  // key set). Populated from InvoiceTemplate.enabledFields when a
+  // template is selected (see StepCreateInvoice._syncToProvider());
+  // read by executive_invoice_stationary_layout.dart and
+  // invoice_pdf_service.dart via `d.enabledFields[key] ?? true`, so a
+  // missing key (older persisted invoices) always defaults to shown.
+  Map<String, bool> enabledFields;
+
   // System-stamped (not user-typed, unlike issueDate/dueDate) — set the
   // moment paymentStatus flips to PaymentStatus.paid, cleared if it's ever
   // changed away from paid. See InvoiceProvider.updateSavedInvoiceStatus.
@@ -120,6 +215,14 @@ class InvoiceData {
   // reports_screen.dart's _isReportable().
   bool excludeFromReports;
 
+  // When true, every card layout hides the colored status chip/pill for
+  // this invoice (see doc_cards.dart) even though paymentStatus still
+  // holds a real value underneath — set via the "None" option in the
+  // status menu. Purely a display toggle; never affects aging, overdue
+  // pushes, or reports gating, which all still read paymentStatus as
+  // normal.
+  bool statusHidden;
+
   InvoiceData({
     this.businessName     = '',
     this.businessEmail    = '',
@@ -131,6 +234,8 @@ class InvoiceData {
     this.businessLogoScale    = 1.0,
     this.businessLogoShape    = 'roundedSquare',
     this.businessLogoDisplaySize = 40.0,
+    this.businessLogoShowInitial = true,
+    this.businessLogoInitialLetter = '',
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -140,6 +245,8 @@ class InvoiceData {
     this.dueDate           = '',
     this.notes            = '',
     this.currency         = 'USD',
+    this.currencySymbol      = '',
+    this.currencyDisplayMode = 'code',
     List<LineItem>? lineItems,
     this.taxRate          = 0.0,
     this.discountRate     = 0.0,
@@ -147,9 +254,12 @@ class InvoiceData {
     this.fontFamily       = 'Roboto',
     this.colorScheme      = InvoiceColor.blue,
     this.layoutTemplateId = 1,
+    Map<String, bool>? enabledFields,
     this.paidDate,
     this.excludeFromReports = false,
-  }) : lineItems = lineItems ?? [];
+    this.statusHidden       = false,
+  }) : lineItems = lineItems ?? [],
+       enabledFields = enabledFields ?? defaultInvoiceEnabledFields();
 
   // ── Computed totals ────────────────────────────────────────────────────────
 
@@ -171,6 +281,8 @@ class InvoiceData {
         'businessLogoScale':    businessLogoScale,
         'businessLogoShape':    businessLogoShape,
         'businessLogoDisplaySize': businessLogoDisplaySize,
+        'businessLogoShowInitial': businessLogoShowInitial,
+        'businessLogoInitialLetter': businessLogoInitialLetter,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -180,6 +292,8 @@ class InvoiceData {
         'dueDate':          dueDate,
         'notes':            notes,
         'currency':         currency,
+        'currencySymbol':      currencySymbol,
+        'currencyDisplayMode': currencyDisplayMode,
         'lineItems':        lineItems.map((i) => i.toJson()).toList(),
         'taxRate':          taxRate,
         'discountRate':     discountRate,
@@ -187,8 +301,10 @@ class InvoiceData {
         'fontFamily':       fontFamily,
         'colorScheme':      colorScheme.name,
         'layoutTemplateId': layoutTemplateId,
+        'enabledFields':    enabledFields,
         'paidDate':         paidDate?.toIso8601String(),
         'excludeFromReports': excludeFromReports,
+        'statusHidden':     statusHidden,
       };
 
   factory InvoiceData.fromJson(Map<String, dynamic> j) => InvoiceData(
@@ -202,6 +318,8 @@ class InvoiceData {
         businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
         businessLogoShape:    j['businessLogoShape']      as String? ?? 'roundedSquare',
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
+        businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
+        businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -211,6 +329,8 @@ class InvoiceData {
         dueDate:          j['dueDate']          as String? ?? '',
         notes:            j['notes']            as String? ?? '',
         currency:         j['currency']         as String? ?? 'USD',
+        currencySymbol:      j['currencySymbol'] as String? ?? '',
+        currencyDisplayMode: j['currencyDisplayMode'] as String? ?? 'code',
         lineItems: (j['lineItems'] as List<dynamic>? ?? [])
             .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -226,10 +346,15 @@ class InvoiceData {
           orElse: () => InvoiceColor.blue,
         ),
         layoutTemplateId: (j['layoutTemplateId'] as num?)?.toInt() ?? 1,
+        enabledFields: (j['enabledFields'] as Map?)?.map(
+              (k, v) => MapEntry(k as String, v as bool? ?? true),
+            ) ??
+            defaultInvoiceEnabledFields(),
         paidDate: j['paidDate'] != null
             ? DateTime.tryParse(j['paidDate'] as String)
             : null,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
+        statusHidden: j['statusHidden'] as bool? ?? false,
       );
 
   // ── copyWith ───────────────────────────────────────────────────────────────
@@ -237,8 +362,11 @@ class InvoiceData {
   // clearPaidDate / clearBusinessLogo: explicit clear flags, same reasoning
   // as SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
   // never express "set this field to null" once it already has a value.
-  // excludeFromReports is a plain bool, so it doesn't need a clear flag —
-  // `false` passes straight through the `?? this.x` pattern.
+  // excludeFromReports/statusHidden are plain bools, so they don't need a
+  // clear flag — `false` passes straight through the `?? this.x` pattern.
+  // enabledFields is copied into a fresh Map instance either way (whether
+  // a new map is passed in or not) so callers never accidentally share a
+  // mutable Map reference between two InvoiceData instances.
 
   InvoiceData copyWith({
     String?         businessName,
@@ -252,6 +380,8 @@ class InvoiceData {
     double?         businessLogoScale,
     String?         businessLogoShape,
     double?         businessLogoDisplaySize,
+    bool?           businessLogoShowInitial,
+    String?         businessLogoInitialLetter,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -261,6 +391,8 @@ class InvoiceData {
     String?         dueDate,
     String?         notes,
     String?         currency,
+    String?         currencySymbol,
+    String?         currencyDisplayMode,
     List<LineItem>? lineItems,
     double?         taxRate,
     double?         discountRate,
@@ -268,9 +400,11 @@ class InvoiceData {
     String?         fontFamily,
     InvoiceColor?   colorScheme,
     int?            layoutTemplateId,
+    Map<String, bool>? enabledFields,
     DateTime?       paidDate,
     bool            clearPaidDate = false,
     bool?           excludeFromReports,
+    bool?           statusHidden,
   }) =>
       InvoiceData(
         businessName:     businessName     ?? this.businessName,
@@ -283,6 +417,8 @@ class InvoiceData {
         businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
         businessLogoShape:    businessLogoShape    ?? this.businessLogoShape,
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
+        businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
+        businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -292,6 +428,8 @@ class InvoiceData {
         dueDate:          dueDate          ?? this.dueDate,
         notes:            notes            ?? this.notes,
         currency:         currency         ?? this.currency,
+        currencySymbol:      currencySymbol      ?? this.currencySymbol,
+        currencyDisplayMode: currencyDisplayMode ?? this.currencyDisplayMode,
         lineItems:        lineItems        ?? List<LineItem>.from(this.lineItems),
         taxRate:          taxRate          ?? this.taxRate,
         discountRate:     discountRate     ?? this.discountRate,
@@ -299,12 +437,15 @@ class InvoiceData {
         fontFamily:       fontFamily       ?? this.fontFamily,
         colorScheme:      colorScheme      ?? this.colorScheme,
         layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
+        enabledFields: Map<String, bool>.from(enabledFields ?? this.enabledFields),
         paidDate: clearPaidDate ? null : (paidDate ?? this.paidDate),
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
+        statusHidden: statusHidden ?? this.statusHidden,
       );
 
   InvoiceData deepCopy() => copyWith(
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
+        enabledFields: Map<String, bool>.from(enabledFields),
       );
 }
 

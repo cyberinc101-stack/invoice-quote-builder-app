@@ -1,9 +1,9 @@
 // executive_quote_logic_data.dart
-// lib/quote_layout_templates/01_executive_quote_layout/executive_quote_logic_data.dart
+// lib/document_layout_templates/01_executive/executive_quote_logic_data.dart
 //
-// Mirrors invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart
+// Mirrors document_layout_templates/01_executive/executive_invoice_logic_data.dart
 // exactly. No pagination — quotes are always a single page, same as
-// invoices. This file's only job is: render QuoteExecutiveContent
+// invoices. ThisA file's only job is: render QuoteExecutiveContent
 // off-screen, measure its natural height, and apply a uniform
 // Transform.scale so it always fits within one page.
 //

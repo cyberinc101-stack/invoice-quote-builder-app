@@ -1,11 +1,27 @@
 // lib/screens/invoice_create_section/editor_screen.dart
+//
+// STEP-TAP BYPASS FIX (this update): the step bar's tab onTap used to
+// jump straight to any step regardless of whether earlier steps were
+// actually completed — e.g. tapping "Customise" with no template
+// selected, or with a blank invoice number, skipped the validation
+// StepCreateInvoice._continue() runs before calling onNext(). Same bug
+// class already fixed in the quote/receipt editors. Since each step's
+// own validation lives inside that step's widget (not here), this file
+// can't re-run field-level checks directly — instead it now tracks
+// _maxReachedStep, the furthest index ever reached via a legitimate
+// onNext() call (i.e. one that already passed whatever validation that
+// step's widget enforces, such as StepCreateInvoice's invoice-number/
+// customer-name/line-item checks). The step bar's onTap now refuses a
+// forward jump past _maxReachedStep, showing a snack bar instead;
+// backward jumps and jumps to already-reached steps are always allowed,
+// same as before.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/invoice_provider.dart';
 import 'step_customers.dart';
 import 'step_templates/step_templates.dart';
-import 'step_create_invoice.dart';
+import 'step_create_invoice/step_create_invoice.dart';
 import 'step_customize/step_customise.dart'; // ← NEW
 
 class EditorScreen extends StatefulWidget {
@@ -37,6 +53,11 @@ class _EditorScreenState extends State<EditorScreen> {
   late int _currentStep;
   late int _layoutTemplateId;
 
+  // STEP-TAP BYPASS FIX: furthest step index ever reached via a
+  // legitimate onNext() call from a child step widget. A tap on a step
+  // tab beyond this is refused — see _buildStepBar()'s onTap below.
+  late int _maxReachedStep;
+
   final ScrollController _stepBarController = ScrollController();
   late final List<GlobalKey> _stepKeys =
       List.generate(_stepMeta.length, (_) => GlobalKey());
@@ -60,7 +81,23 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _currentStep = widget.initialStep.clamp(0, _stepMeta.length - 1);
+    // STEP-TAP BYPASS FIX: if EditorScreen is opened directly at a later
+    // step (e.g. resuming an edit), treat that step as already reached
+    // so the tabs up to it stay navigable — only forward-of-here jumps
+    // need a fresh legitimate onNext() to unlock.
+    _maxReachedStep = _currentStep;
     _layoutTemplateId = widget.layoutTemplateId;
+    // Sync the chosen template into the provider's actual invoiceData —
+    // step_customise.dart's live preview reads data.layoutTemplateId from
+    // the PROVIDER, not from this widget's local _layoutTemplateId field,
+    // so without this the preview always shows whatever the provider
+    // already had (default 1 / Executive for a new invoice) regardless of
+    // what was picked in the chooser.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<InvoiceProvider>().updateLayoutTemplateId(_layoutTemplateId);
+      }
+    });
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _scrollToStep(_currentStep));
   }
@@ -77,9 +114,15 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  // STEP-TAP BYPASS FIX: every legitimate forward advance goes through
+  // here, so _maxReachedStep only ever grows via a step whose own widget
+  // already validated its own fields before calling this.
   void _goNext() {
     if (_currentStep < _stepMeta.length - 1) {
-      setState(() => _currentStep++);
+      setState(() {
+        _currentStep++;
+        if (_currentStep > _maxReachedStep) _maxReachedStep = _currentStep;
+      });
       _scrollToStep(_currentStep);
     }
   }
@@ -122,7 +165,7 @@ class _EditorScreenState extends State<EditorScreen> {
           onBack: _goPrev,
           selectedCustomer: _selectedCustomer,
           selectedTemplate: _selectedTemplate,
-          // layoutTemplateId: _layoutTemplateId, // ← uncomment once
+          layoutTemplateId: _layoutTemplateId, // ← uncomment once
           // StepCreateInvoice accepts this param and wires it through to
           // invoice_pdf_service.dart's template selection.
         );
@@ -254,6 +297,23 @@ class _EditorScreenState extends State<EditorScreen> {
             final isDone   = i < _currentStep;
             return GestureDetector(
               onTap: () {
+                // STEP-TAP BYPASS FIX: forward taps beyond the furthest
+                // legitimately-reached step are refused — the tapped
+                // step's own prerequisites (e.g. Create Invoice's
+                // invoice number / customer name / line items) haven't
+                // been validated yet. Backward taps and taps within
+                // already-reached territory are unaffected.
+                if (i > _maxReachedStep) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Finish "${_stepMeta[_currentStep].label}" before jumping ahead',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
                 setState(() => _currentStep = i);
                 _scrollToStep(i);
               },

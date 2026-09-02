@@ -1,39 +1,70 @@
 ﻿// home_screen.dart
 // lib/screens/home_screen.dart
 //
+// HERO CLUSTER FIT + RECEIPT TEXTURE FIX (this pass): two problems with
+// the new _MiniDocCluster illustration. (1) The RECEIPT label on the
+// green card used overflow: TextOverflow.visible with no clipping
+// container around it, so on narrower screens the tail of the word spilled
+// out past the card AND past the hero banner's own right edge, where it
+// got abruptly hard-cut by the screen bound instead of the card's own
+// shape -- visually reading as a rendering bug ("EIPT"). (2) The green
+// card was just a plain rounded rectangle in the app's accent green with
+// no actual receipt-like texture, unlike the torn-thermal-roll shape used
+// in the app icon artwork (app_icon_store_listing.png). Both fixed here:
+//   - _FanCard (red QUOTE card) now wraps its content in ClipRRect, so
+//     text is clipped to the card's own rounded shape rather than able to
+//     spill past it.
+//   - The green card is now built by a dedicated _ReceiptFanCard, clipped
+//     with a custom zigzag ClipPath (_TornEdgeClipper) that gives it the
+//     same jagged top/bottom "torn thermal roll" silhouette as the icon
+//     artwork, instead of a plain rectangle -- and its own text is
+//     likewise contained within that clipped shape.
+//   - The whole cluster is also ~15% smaller and repositioned closer to
+//     the banner's own top-right corner (was hanging off the edge at
+//     right:-6) so it sits fully inside the container at every supported
+//     screen width, instead of relying on the fan angle/label length
+//     never being wide enough to reach the edge.
+//
+// HERO ILLUSTRATION REDESIGN + SHARE BUTTON (earlier pass): the hero
+// banner's top-right illustration was three plain colored rectangles
+// (_MiniDocIcon, blue/purple/blue) with no connection to the app's actual
+// brand identity -- and the app icon/store listing artwork was separately
+// redesigned into a red QUOTE card + white INVOICE card + green RECEIPT
+// card fan. That pass replaced _MiniDocIcon's stack with _MiniDocCluster,
+// a compact recreation of that exact three-card composition (same
+// red/white/green palette, same QUOTE/INVOICE/RECEIPT labels, same
+// %/$/check badges, same PAID pill on the invoice card) at hero-banner
+// scale, so the app's icon and its own home screen actually look like the
+// same product. The cluster is wrapped in a GestureDetector that calls
+// Share.share() with a short promo blurb, with a small semi-transparent
+// share-icon badge on its bottom-left corner as the tap affordance.
+// share_plus was already a project dependency (used by invoice/quote/
+// receipt PDF services for their own share sheets), so no new package
+// was needed.
+//
 // SLIMMED (earlier pass): _SavedDocumentsSection and every List/Grid/
 // Compact/Kanban card renderer that used to live in this file were
 // extracted to lib/widgets/saved_documents/saved_documents_section.dart
 // (exported as the public SavedDocumentsSection widget). This file now
 // only holds the AppBar, hero banner, and the small widgets specific to
-// those two things (_AlertBellButton, _CtaButton, _MiniDocIcon).
+// those two things (_AlertBellButton, _CtaButton, _MiniDocCluster).
 //
 // PER-TYPE ALERT GATING (earlier pass): the bell badge count now passes all
 // four AlertPrefs per-type flags into buildAlerts(), not just the master
-// alertsEnabled switch. Previously a user could turn off, say, "Drafts"
-// alerts on the Alerts screen's future toggle UI and still see the bell
-// badge count include draft nudges, since this call site only knew about
-// the master switch. Now the badge, the Alerts screen, and any other
+// alertsEnabled switch, so the badge, the Alerts screen, and any other
 // future consumer of buildAlerts() all read from the exact same four
-// flags on AlertPrefs, so they can never disagree.
+// flags on AlertPrefs and can never disagree.
 //
-// ICON ALIGNMENT FIX (this pass): the Templates icon sat lower than the
-// other three CTA icons. Cause: the row uses IntrinsicHeight +
-// CrossAxisAlignment.stretch, so all four buttons share the same total
-// height — but each button's inner Column used
-// mainAxisAlignment: MainAxisAlignment.center, so the icon's vertical
-// position depended on that button's OWN content height (icon + spacing
-// + label). "Create Invoice"/"Create Quote" wrap to two lines at this
-// width, making their content taller, while "Templates" is forced to a
-// single line (singleLine: true), making its content shorter — so with
-// everything centered, the shorter block (and its icon) sat further down
-// from the top than the others. Fixed by changing the Column to
-// mainAxisAlignment: MainAxisAlignment.start, so every icon anchors to
-// the same offset from the top of the button regardless of how many
-// lines its label wraps to.
+// ICON ALIGNMENT FIX (earlier pass): the Templates icon sat lower than the
+// other three CTA icons because the shared IntrinsicHeight row gave every
+// button the same total height, but MainAxisAlignment.center made each
+// icon's position depend on that button's own (label-line-count-dependent)
+// content height. Fixed by switching to MainAxisAlignment.start so every
+// icon anchors to the same offset from the top regardless of label length.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../providers/invoice_provider.dart';
 import '../providers/quote_provider.dart';
 import '../providers/receipt_provider.dart';
@@ -57,10 +88,6 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    // Watched here (not just read) so the badge count on the bell updates
-    // live as invoices/quotes/receipts are saved, paid, or edited — same
-    // predicates as the quick-filter chips, via filter_logic.dart, so this
-    // number can never disagree with what "Needs Action"/"Overdue" show.
     final alertPrefs = context.watch<AlertPrefs>();
     final alertsEnabled = alertPrefs.alertsEnabled;
     final invoices = context.watch<InvoiceProvider>().savedInvoices;
@@ -163,11 +190,6 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        // Stack instead of Row. The illustration is a decorative Positioned
-        // overlay in the top-right corner — it no longer takes a column
-        // slot in the layout. The text + button Column below is the
-        // Stack's base child and gets the FULL container width, so the
-        // three CTA buttons (each Expanded) span edge-to-edge.
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -193,8 +215,11 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // Right padding matches _MiniDocCluster's new (shrunk)
+                // footprint (94 wide + a little clearance) so headline
+                // text still wraps clear of the illustration.
                 Padding(
-                  padding: EdgeInsets.only(right: showIllustration ? 90 : 0),
+                  padding: EdgeInsets.only(right: showIllustration ? 96 : 0),
                   child: const Text(
                     'Create Your\nInvoice or Quote',
                     style: TextStyle(
@@ -209,7 +234,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Padding(
-                  padding: EdgeInsets.only(right: showIllustration ? 90 : 0),
+                  padding: EdgeInsets.only(right: showIllustration ? 96 : 0),
                   child: const Text(
                     'Send professional invoices & quotes instantly',
                     style: TextStyle(
@@ -293,44 +318,19 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ),
+            // Illustration -> the app's QUOTE/INVOICE/RECEIPT card-fan
+            // artwork (matching the app icon), tappable as a share button.
+            // Positioned inset from the corner (was right:-6/top:-4,
+            // hanging off the edge) so the smaller cluster sits fully
+            // inside the banner at every supported width.
             if (showIllustration)
               Positioned(
-                right: 0,
-                top: 0,
-                child: SizedBox(
-                  width: 80,
-                  height: 100,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned(
-                        right: 0,
-                        top: 10,
-                        child: _MiniDocIcon(
-                          color: const Color(0xFF7B1FA2),
-                          rotateAngle: 0.15,
-                          isQuote: true,
-                        ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        top: 20,
-                        child: _MiniDocIcon(
-                          color: const Color(0xFF1565C0),
-                          rotateAngle: -0.1,
-                          isQuote: false,
-                        ),
-                      ),
-                      Positioned(
-                        left: 12,
-                        top: 0,
-                        child: _MiniDocIcon(
-                          color: const Color(0xFF2196F3),
-                          rotateAngle: 0.0,
-                          isQuote: false,
-                        ),
-                      ),
-                    ],
+                right: 2,
+                top: 2,
+                child: _MiniDocCluster(
+                  onShare: () => Share.share(
+                    'Check out Invoice, Quote & Receipt Maker Pro — create '
+                    'professional invoices, quotes and receipts in minutes!',
                   ),
                 ),
               ),
@@ -429,17 +429,6 @@ class _CtaButton extends StatelessWidget {
             BoxShadow(color: glowColor, blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
-        // NOTE: mainAxisAlignment changed from `center` to `start`.
-        // The Row above wraps each button in IntrinsicHeight +
-        // CrossAxisAlignment.stretch, so every button gets the SAME total
-        // height — but labels wrap to different numbers of lines
-        // ("Create Invoice" / "Create Quote" often wrap to 2 lines at this
-        // width, "Templates" is forced to 1 via singleLine). With `center`,
-        // a shorter content block (fewer label lines) gets pushed further
-        // down from the top to stay centered in the shared height, so its
-        // icon ends up lower than the icons in taller buttons. `start`
-        // anchors every icon to the same offset from the top regardless
-        // of how many lines its label takes, so all four icons line up.
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.start,
@@ -482,70 +471,233 @@ class _CtaButton extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// _MiniDocIcon
+// _MiniDocCluster — hero-banner-scale recreation of the app icon's own
+// QUOTE (red) / INVOICE (white) / RECEIPT (green) card fan, doubling as a
+// share button. Shrunk ~15% and inset from the corner (vs. the previous
+// pass) so it can never hang off the banner's edge, and both side cards
+// now clip their own content to their own shape so an overflowing label
+// gets cut by the card, not by the screen.
 // -----------------------------------------------------------------------------
 
-class _MiniDocIcon extends StatelessWidget {
-  final Color  color;
-  final double rotateAngle;
-  final bool   isQuote;
-
-  const _MiniDocIcon({
-    required this.color,
-    required this.rotateAngle,
-    required this.isQuote,
-  });
+class _MiniDocCluster extends StatelessWidget {
+  final VoidCallback onShare;
+  const _MiniDocCluster({required this.onShare});
 
   @override
   Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: rotateAngle,
-      child: Container(
-        width: 50,
-        height: 64,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      onTap: onShare,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 98,
+        height: 112,
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
+            // RED — QUOTE, tilted left
+            Positioned(
+              left: 0,
+              top: 20,
+              child: Transform.rotate(
+                angle: -0.30, // ~-17deg
+                child: _FanCard(
+                  width: 49,
+                  height: 71,
+                  gradientColors: const [Color(0xFFFF5A52), Color(0xFFC21E17)],
+                  label: 'QUOTE',
+                  badgeSymbol: '%',
+                  badgeTextColor: const Color(0xFFC21E17),
+                ),
               ),
-              child: Center(
-                child: Text(
-                  isQuote ? '?' : '\$',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
+            ),
+            // GREEN — RECEIPT, tilted right, real torn-roll silhouette
+            Positioned(
+              right: 0,
+              top: 20,
+              child: Transform.rotate(
+                angle: 0.30, // ~+17deg
+                child: _ReceiptFanCard(
+                  width: 49,
+                  height: 71,
+                  label: 'RECEIPT',
+                ),
+              ),
+            ),
+            // WHITE — INVOICE, upright, on top
+            Positioned(
+              left: 22,
+              top: 0,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 54,
+                  height: 85,
+                  padding: const EdgeInsets.fromLTRB(7, 7, 7, 7),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFFFFFFFF), Color(0xFFF3F1EC)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x47000000),
+                        blurRadius: 7,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'INVOICE',
+                        style: TextStyle(
+                          color: Color(0xFF1A1A1A),
+                          fontSize: 7.8,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 15,
+                        height: 15,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE8332B),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          '\$',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8332B),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'PAID',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 5.8,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 5),
-            ...List.generate(
-              4,
-              (i) => Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                height: 3,
-                width: i == 0 ? 32 : (i == 1 ? 24 : (i == 2 ? 28 : 18)),
+            // Small share-icon badge — the only visual hint that this
+            // decorative-looking cluster is actually tappable.
+            Positioned(
+              left: -2,
+              bottom: -2,
+              child: Container(
+                width: 21,
+                height: 21,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(2),
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 1.1),
+                ),
+                child: const Icon(Icons.share_rounded, color: Colors.white, size: 11),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Shared card shape for the red QUOTE side card — a rounded rect with a
+// corner badge + bold label. Content is wrapped in ClipRRect so the label
+// is guaranteed to be clipped to the card's own rounded shape rather than
+// able to spill past it into the rest of the Stack (which is what caused
+// the RECEIPT label's tail to get hard-cut by the screen edge before).
+class _FanCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final List<Color> gradientColors;
+  final String label;
+  final String badgeSymbol;
+  final Color badgeTextColor;
+
+  const _FanCard({
+    required this.width,
+    required this.height,
+    required this.gradientColors,
+    required this.label,
+    required this.badgeSymbol,
+    required this.badgeTextColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: width,
+        height: height,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradientColors,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 6.6,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
+            const Spacer(),
+            Container(
+              width: 15,
+              height: 15,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              child: Text(
+                badgeSymbol,
+                style: TextStyle(
+                  color: badgeTextColor,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -554,4 +706,117 @@ class _MiniDocIcon extends StatelessWidget {
       ),
     );
   }
+}
+
+// Green RECEIPT card — same idea as _FanCard but clipped to a jagged
+// zigzag top/bottom edge (_TornEdgeClipper) instead of a rounded rect, so
+// it actually reads as a torn thermal-paper receipt rather than a plain
+// colored rectangle. The checkmark is hand-drawn with two joined line
+// segments (not a Unicode glyph) so it renders identically across every
+// device font instead of depending on how a given font draws "check".
+class _ReceiptFanCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final String label;
+
+  const _ReceiptFanCard({required this.width, required this.height, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipPath(
+      clipper: _TornEdgeClipper(),
+      child: Container(
+        width: width,
+        height: height,
+        padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF3ADB76), Color(0xFF189249)],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 6.6,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
+            const Spacer(),
+            Container(
+              width: 15,
+              height: 15,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              child: CustomPaint(size: const Size(8, 8), painter: _CheckPainter()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Draws a simple checkmark as two joined line segments -- used instead of
+// a Unicode check glyph so it renders identically regardless of the
+// device's default font (some fonts draw check glyphs inconsistently
+// thin/heavy or off-center at very small sizes).
+class _CheckPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF189249)
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(size.width * 0.05, size.height * 0.55)
+      ..lineTo(size.width * 0.4, size.height * 0.9)
+      ..lineTo(size.width * 0.95, size.height * 0.15);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Zigzag top/bottom clip -- gives the receipt card a torn-paper-roll
+// silhouette matching the app icon artwork's own thermal-roll shape,
+// instead of a plain rectangle. Six teeth per edge, amplitude scaled to
+// the card's own height so it looks proportional at any size this card
+// is used at.
+class _TornEdgeClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    const teeth = 6;
+    final segment = size.width / teeth;
+    final amp = size.height * 0.035;
+
+    final path = Path()..moveTo(0, amp);
+    for (int i = 0; i <= teeth; i++) {
+      final x = i * segment;
+      final y = (i.isEven) ? 0.0 : amp * 2;
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height - amp * 2);
+    for (int i = teeth; i >= 0; i--) {
+      final x = i * segment;
+      final y = size.height - ((i.isEven) ? 0.0 : amp * 2);
+      path.lineTo(x, y);
+    }
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

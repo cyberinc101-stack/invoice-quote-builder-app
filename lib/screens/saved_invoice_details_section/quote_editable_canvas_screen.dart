@@ -1,6 +1,15 @@
 // quote_editable_canvas_screen.dart
 // lib/screens/saved_invoice_details_section/quote_editable_canvas_screen.dart
 //
+// CRASH SAFETY PASS (this update): _loadStackTrace was captured in
+// _loadData()'s catch block but never read anywhere — it only ever went
+// to debugPrint (console-only). _buildErrorScreen now includes a
+// collapsible "Technical details" section (ExpansionTile) that renders
+// the full stack trace via SelectableText, so a real load failure is
+// actually diagnosable in production instead of the trace being silently
+// discarded. Identical fix applied to invoice_editable_canvas_screen.dart
+// and receipt_editable_canvas_screen.dart.
+//
 // Quote counterpart to InvoiceEditableCanvasScreen — same tap-to-edit
 // pattern, mirrored field-for-field against QuoteData/QuoteProvider:
 //   invoiceNumber -> quoteNumber
@@ -22,24 +31,23 @@
 // Back/cancel discards via resetQuoteData() without ever calling
 // updateSavedQuote(), so the saved record on disk is untouched.
 //
-// FIX (previous pass): same root-cause fix as the invoice canvas.
-// loadSavedQuote() calls notifyListeners() on QuoteProvider, and calling it
-// synchronously inside initState() is illegal mid-build in Flutter — that
-// caused "setState() or markNeedsBuild() called during build." and the
-// resulting blank/crashed screen. The provider load is now deferred to a
-// post-frame callback via _loadData(), and a new `_loading` flag keeps
-// build() from touching the TextEditingControllers until that load
-// completes. The existing try/catch (-> _loadError) is unchanged and still
-// surfaces a real error screen for any other load failure.
+// FIX (earlier pass): loadSavedQuote() calls notifyListeners() on
+// QuoteProvider, and calling it synchronously inside initState() is
+// illegal mid-build in Flutter — that caused "setState() or
+// markNeedsBuild() called during build." and the resulting blank/crashed
+// screen. The provider load is now deferred to a post-frame callback via
+// _loadData(), and a new `_loading` flag keeps build() from touching the
+// TextEditingControllers until that load completes. The existing
+// try/catch (-> _loadError) is unchanged and still surfaces a real error
+// screen for any other load failure.
 //
-// FIX (this pass): SharedLogoPicker is now used in compact mode (just the
-// tappable logo box, no inline chip row) instead of being force-wrapped in
-// a fixed-width SizedBox — cleaner header, no more guessing at a width.
-// Also added cursorColor/cursorHeight/cursorWidth to _EditableText's
-// TextField, since the previously auto-calculated cursor could render
-// oversized/mispositioned relative to these fields' small custom font
-// sizes (visible as stray accent-colored vertical bars near each field
-// when unfocused/idle under some renderer conditions).
+// FIX (earlier pass): SharedLogoPicker is now used in compact mode (just
+// the tappable logo box, no inline chip row) instead of being force-
+// wrapped in a fixed-width SizedBox — cleaner header, no more guessing
+// at a width. Also added cursorColor/cursorHeight/cursorWidth to
+// _EditableText's TextField, since the previously auto-calculated cursor
+// could render oversized/mispositioned relative to these fields' small
+// custom font sizes.
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -103,7 +111,7 @@ class _QuoteEditableCanvasScreenState
   StackTrace? _loadStackTrace;
   bool _initialized = false;
 
-  // FIX: build() must not touch the controllers below until the deferred
+  // build() must not touch the controllers below until the deferred
   // load in _loadData() has actually run and created them.
   bool _loading = true;
 
@@ -135,7 +143,7 @@ class _QuoteEditableCanvasScreenState
   @override
   void initState() {
     super.initState();
-    // FIX: defer the provider load until after the first frame finishes
+    // Defer the provider load until after the first frame finishes
     // building, instead of calling it synchronously here.
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
@@ -185,7 +193,7 @@ class _QuoteEditableCanvasScreenState
       _loadError = e;
       _loadStackTrace = st;
     }
-    // FIX: flip _loading off (and trigger a rebuild) now that the load
+    // Flip _loading off (and trigger a rebuild) now that the load
     // attempt has finished, whichever way it went.
     if (mounted) setState(() => _loading = false);
   }
@@ -344,7 +352,7 @@ class _QuoteEditableCanvasScreenState
         ),
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -363,6 +371,35 @@ class _QuoteEditableCanvasScreenState
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
               ),
+              // Captured in _loadData()'s catch block — previously
+              // discarded after debugPrint. Collapsed by default; expanding
+              // gives a copy-pasteable trace for a bug report.
+              if (_loadStackTrace != null) ...[
+                const SizedBox(height: 12),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text('Technical details',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: SelectableText(
+                          '$_loadStackTrace',
+                          style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -377,7 +414,7 @@ class _QuoteEditableCanvasScreenState
 
   @override
   Widget build(BuildContext context) {
-    // FIX: while the deferred load hasn't finished yet, show a spinner
+    // While the deferred load hasn't finished yet, show a spinner
     // instead of touching controllers/data that don't exist yet.
     if (_loading) {
       return const Scaffold(
@@ -456,11 +493,11 @@ class _QuoteEditableCanvasScreenState
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // FIX: SharedLogoPicker now used in compact mode
-                          // — just the tappable logo box, no inline chip
-                          // row, no need to guess a wrapping SizedBox
-                          // width. Tap still opens the full bottom sheet
-                          // (Gallery/Camera/Reposition/Remove).
+                          // SharedLogoPicker used in compact mode — just
+                          // the tappable logo box, no inline chip row, no
+                          // need to guess a wrapping SizedBox width. Tap
+                          // still opens the full bottom sheet (Gallery/
+                          // Camera/Reposition/Remove).
                           SharedLogoPicker(
                             logoPath: data.businessLogoPath,
                             logoOffset: Offset.zero,
@@ -967,11 +1004,10 @@ class _EditableText extends StatelessWidget {
       maxLines: maxLines,
       keyboardType: keyboard,
       onChanged: onChanged,
-      // FIX: pin cursor size/color explicitly instead of letting Flutter
+      // Pin cursor size/color explicitly instead of letting Flutter
       // auto-calculate it. These fields use small custom font sizes with
       // isCollapsed:true; an auto-sized cursor can end up oversized/
-      // mispositioned relative to the tiny text, showing as a stray
-      // accent-colored vertical bar near the field.
+      // mispositioned relative to the tiny text.
       cursorColor: style.color ?? Colors.black87,
       cursorHeight: (style.fontSize ?? 14) * 1.15,
       cursorWidth: 1.5,

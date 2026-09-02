@@ -1,4 +1,4 @@
-// lib/invoice_layout_templates/pagination/doc_field.dart
+// lib/document_layout_templates/pagination/doc_field.dart
 //
 // Shared inline text primitive so Preview and Edit render from the exact
 // same widget tree. Read-only mode = plain Text; editable mode = a

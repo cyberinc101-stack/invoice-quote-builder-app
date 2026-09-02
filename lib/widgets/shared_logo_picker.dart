@@ -22,9 +22,26 @@
 //   tight header layouts (e.g. saved-document editable canvas screens) where
 //   there isn't enough horizontal room for the chip row's Expanded content.
 //   Defaults to false, so every existing call site keeps the chip row.
+//
+// FALLBACK MARK SETTINGS PASS (this update): added four new optional
+// params — showInitialFallback, onShowInitialFallbackChanged,
+// initialLetterOverride, onInitialLetterOverrideChanged. When
+// onShowInitialFallbackChanged is provided (opt-in — every existing call
+// site that doesn't pass it renders exactly as before), a small settings
+// block appears below the picker (full/non-compact mode only): a switch
+// to hide the no-logo rotated-square mark ("the blue diamond") entirely,
+// and — while it's on — a one-character text field to override which
+// letter it shows instead of always auto-deriving the first letter of the
+// business name. These two values are meant to be persisted alongside
+// logoPath/logoOffset/logoScale/logoShape on whatever business-profile
+// model the caller uses, and ultimately land on InvoiceData/QuoteData/
+// ReceiptData's own businessLogoShowInitial/businessLogoInitialLetter
+// fields (see those files' doc comments) so buildSharedLogo() in
+// shared_doc_widgets.dart can honour them when rendering every template.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 // =============================================================================
@@ -160,6 +177,16 @@ class SharedLogoPicker extends StatelessWidget {
   /// always uses its original 90px box to preserve existing layouts).
   final double compactBoxSize;
 
+  // FALLBACK MARK SETTINGS PASS — all four optional and default to the
+  // pre-existing behaviour (mark shown, auto-derived letter, no settings
+  // UI rendered). Only shown in full (non-compact) mode, and only when
+  // onShowInitialFallbackChanged is provided — that's the opt-in signal;
+  // a caller that doesn't pass it gets exactly the old picker.
+  final bool showInitialFallback;
+  final ValueChanged<bool>? onShowInitialFallbackChanged;
+  final String initialLetterOverride;
+  final ValueChanged<String>? onInitialLetterOverrideChanged;
+
   const SharedLogoPicker({
     super.key,
     required this.logoPath,
@@ -170,6 +197,10 @@ class SharedLogoPicker extends StatelessWidget {
     required this.onChanged,
     this.compact = false,
     this.compactBoxSize = 56.0,
+    this.showInitialFallback = true,
+    this.onShowInitialFallbackChanged,
+    this.initialLetterOverride = '',
+    this.onInitialLetterOverrideChanged,
   });
 
   bool get _hasLogo =>
@@ -330,56 +361,171 @@ class SharedLogoPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     if (compact) {
       // Just the tappable box — no Row, no Expanded chip content, so this
-      // has no minimum-width requirement from its parent.
+      // has no minimum-width requirement from its parent. Fallback-mark
+      // settings are full-mode only (see field doc comment above).
       return _logoBox(context, compactBoxSize);
     }
 
     const double boxSize = 90.0;
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _logoBox(context, boxSize),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+        Row(
+          children: [
+            _logoBox(context, boxSize),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Chip(
-                    icon: Icons.photo_library_rounded,
-                    label: 'Gallery',
-                    accent: accent,
-                    onTap: () => _pickImage(context, ImageSource.gallery),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _Chip(
+                        icon: Icons.photo_library_rounded,
+                        label: 'Gallery',
+                        accent: accent,
+                        onTap: () => _pickImage(context, ImageSource.gallery),
+                      ),
+                      _Chip(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Camera',
+                        accent: accent,
+                        onTap: () => _pickImage(context, ImageSource.camera),
+                      ),
+                      if (_hasLogo)
+                        _Chip(
+                          icon: Icons.crop_rotate_rounded,
+                          label: 'Reposition',
+                          accent: const Color(0xFF9C27B0),
+                          onTap: () => _openReposition(context),
+                        ),
+                      if (_hasLogo)
+                        _Chip(
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Remove',
+                          accent: const Color(0xFFF44336),
+                          onTap: () => onChanged(null, Offset.zero, 1.0, logoShape),
+                        ),
+                    ],
                   ),
-                  _Chip(
-                    icon: Icons.camera_alt_rounded,
-                    label: 'Camera',
-                    accent: accent,
-                    onTap: () => _pickImage(context, ImageSource.camera),
-                  ),
-                  if (_hasLogo)
-                    _Chip(
-                      icon: Icons.crop_rotate_rounded,
-                      label: 'Reposition',
-                      accent: const Color(0xFF9C27B0),
-                      onTap: () => _openReposition(context),
-                    ),
-                  if (_hasLogo)
-                    _Chip(
-                      icon: Icons.delete_outline_rounded,
-                      label: 'Remove',
-                      accent: const Color(0xFFF44336),
-                      onTap: () => onChanged(null, Offset.zero, 1.0, logoShape),
-                    ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+        // FALLBACK MARK SETTINGS PASS: only rendered when the caller opts
+        // in by providing onShowInitialFallbackChanged. Relevant
+        // regardless of whether a real logo is currently set, since it
+        // controls what shows if the logo is later removed — so it's not
+        // gated on _hasLogo.
+        if (onShowInitialFallbackChanged != null) ...[
+          const SizedBox(height: 16),
+          _FallbackMarkSettings(
+            accent: accent,
+            showInitial: showInitialFallback,
+            onShowInitialChanged: onShowInitialFallbackChanged!,
+            letterOverride: initialLetterOverride,
+            onLetterOverrideChanged: onInitialLetterOverrideChanged,
+          ),
+        ],
       ],
+    );
+  }
+}
+
+// =============================================================================
+// _FallbackMarkSettings — "no logo? show a letter mark" switch + optional
+// one-character override field. Lives directly under the logo picker row.
+// =============================================================================
+
+class _FallbackMarkSettings extends StatelessWidget {
+  final Color accent;
+  final bool showInitial;
+  final ValueChanged<bool> onShowInitialChanged;
+  final String letterOverride;
+  final ValueChanged<String>? onLetterOverrideChanged;
+
+  const _FallbackMarkSettings({
+    required this.accent,
+    required this.showInitial,
+    required this.onShowInitialChanged,
+    required this.letterOverride,
+    required this.onLetterOverrideChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            activeThumbColor: accent,
+            title: Text('Show letter mark when there\'s no logo',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface)),
+            subtitle: Text(
+              'A small colored mark with a letter, shown until a logo is uploaded.',
+              style: TextStyle(fontSize: 11.5, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+            ),
+            value: showInitial,
+            onChanged: onShowInitialChanged,
+          ),
+          if (showInitial && onLetterOverrideChanged != null) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Letter (optional)',
+                        style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface.withValues(alpha: 0.6))),
+                  ),
+                  SizedBox(
+                    width: 64,
+                    child: TextFormField(
+                      initialValue: letterOverride,
+                      textAlign: TextAlign.center,
+                      maxLength: 1,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [LengthLimitingTextInputFormatter(1)],
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        counterText: '',
+                        hintText: 'Auto',
+                        hintStyle: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+                        filled: true,
+                        fillColor: isDark ? colorScheme.surfaceContainerHighest : Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: accent, width: 1.5)),
+                      ),
+                      onChanged: onLetterOverrideChanged,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else
+            const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }

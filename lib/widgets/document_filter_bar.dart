@@ -1,102 +1,53 @@
 // document_filter_bar.dart
 // lib/widgets/document_filter_bar.dart
 //
-// STATUS QUICK-CHIPS (this pass): Paid (invoices) / Accepted (quotes) /
-// Declined (quotes) join the always-visible quick-access row, alongside
-// the existing needsAction/overdue/aging-bucket/drafts chips. All three
-// route through the exact same QuickFilter plumbing filter_logic.dart
-// already had wired (applyQuickFilterToInvoices/Quotes/Receipts,
-// countPaid/countAccepted/countDeclined) — no new filtering logic here,
-// just new required count params (paidCount, acceptedCount,
-// declinedCount) and two contextual visibility booleans.
+// AUTO-CENTER PILL PASS (this update): tapping a type pill (All/Invoices/
+// Quotes/Receipts/Expenses) selects it but previously left the horizontal
+// scroll position untouched — on a narrow screen, selecting a pill near
+// the right edge (e.g. "Receipts") could leave it partially under the
+// fade mask or off the visible area entirely, with no indication where
+// the newly-selected pill went. Each type pill now carries its own
+// GlobalKey (_pillKeys, one per DocTypeFilter); didUpdateWidget detects
+// a selectedType change and, on the next frame (once the new pill's
+// RenderBox exists), calls Scrollable.ensureVisible(alignment: 0.5) to
+// smoothly scroll the row so the selected pill centers itself in the
+// visible strip. _Pill now accepts and forwards `key` so these GlobalKeys
+// can actually attach to the right widget instance. Quick-filter chips
+// and the Folders/Drafts chips are unaffected — this only centers the
+// five main type pills, which is what was asked for.
 //
-// Visibility is contextual, matching the exact pattern the Status
-// dropdowns inside the Filters sheet already use: Paid only shows when
-// Invoices (or All, with invoices present) is the selected type; Accepted
-// and Declined only show when Quotes (or All, with quotes present) is
-// selected. This keeps the row from permanently carrying chips that don't
-// apply to whatever's currently in view. Each new chip still hides itself
-// at count 0 (unless currently selected), same as the existing
-// needsAction/overdue chips — reusing _QuickEntry's existing
-// `.where((e) => e.count > 0 || selected)` filter rather than adding a
-// second visibility mechanism.
+// BOTTOM SAFE-AREA FIX (earlier pass): the Filters bottom sheet's content
+// padding was a fixed EdgeInsets.fromLTRB(20, 12, 20, 24) -- on devices
+// with an on-screen (gesture or 3-button) Android nav bar, that fixed
+// 24px wasn't enough to clear it, so the "Done" button at the bottom of
+// the sheet sat partially behind the nav bar. Now adds
+// MediaQuery.of(context).padding.bottom on top of the fixed 24px, same
+// fix applied to the "Move to Folder" sheet in
+// saved_documents_section.dart. The existing
+// Padding(bottom: viewInsets.bottom) wrapping the whole sheet is
+// unchanged -- that one handles the on-screen keyboard, this handles the
+// nav bar; they're two different insets and both are needed.
 //
-// EXPENSES (earlier pass): DocTypeFilter gained a fifth value, `expenses`,
-// and this bar gained a required `expensesCount` param. The "All" pill's
-// count now sums invoices+quotes+receipts+expenses so it reads as the
-// true total of everything Home can show. A new Expenses quick-access
-// pill sits in the scrollable row immediately before the Folders chip
-// (per Jesse's ask: "add the expense filter into the filter bar next to
-// folders") — tapping it calls onTypeChanged(DocTypeFilter.expenses),
-// same mechanism as the four existing type pills, so
-// SavedDocumentsSection's existing type-filter branch just gets a fifth
-// case rather than a whole separate code path. There's no Expense
-// "Status" section in the Filters sheet — expenses have no payment/quote/
-// receipt-style status field, only the existing Folder/Date/Sort/Amount
-// sections, which already apply to expenses too via
-// filterExpensesByFolder/DateRange/AmountRange/sortExpenses in
-// filter_logic.dart.
+// SWIPE-FADE (earlier pass): the single scrollable row of type pills
+// (All/Invoices/Quotes/Receipts/Expenses) + quick-filter chips + Folders +
+// Drafts previously gave no visual cue that it scrolls horizontally --
+// Jesse felt it wasn't obvious more content was swipable off to the
+// right, and wanted the row's pills to always render in full rather than
+// looking potentially cut off. The ListView itself was never actually
+// clipping a pill mid-render (each pill sizes to its own content), but
+// with no scroll affordance the trailing pill sitting flush against the
+// screen edge read as "cut off" even when it wasn't.
 //
-// REDESIGN v5 + FOLDERS: v5's structure (single scrollable quick-access
-// row, everything else behind one "Filters" bottom sheet) is unchanged.
-// The Filters sheet has a Folder dropdown (added in an earlier pass) —
-// NOT the quick-access row, so the always-visible row stayed exactly as
-// compact as before. New constructor params from that pass: selectedFolder,
-// onFolderChanged, availableFolders. "Clear all" also resets the folder
-// filter.
-//
-// NEW (earlier pass): two small params so the caller (SavedDocumentsSection)
-// can keep this ENTIRE bar mounted and unchanged while folder-browsing
-// mode is active, instead of swapping it out for a separate header:
-//   - isBrowsingFolders: when true, the "Folders" quick chip renders in
-//     its active/selected state (same highlighted look a type pill gets
-//     when selected), even if no selectedFolder is set yet. Previously the
-//     chip only highlighted once a folder had actually been picked, which
-//     gave no feedback that folder-browsing mode was currently active.
-//   - searchHint: optional override for the search field's placeholder
-//     text (e.g. "Search folders" while browsing folders). Defaults to the
-//     usual "Search by title, client, or number" when omitted. Only the
-//     text changes — the field's position, size, and styling are
-//     untouched, so switching in/out of folder-browsing mode never causes
-//     a layout jump.
-// Both are purely cosmetic — this widget still just reports taps via
-// onFoldersChipTap/onSearchChanged and lets the caller decide what they
-// mean, same as before.
-//
-// CHANGED (earlier pass): the quick-access "Folders" chip no longer
-// navigates anywhere itself — it now calls the required onFoldersChipTap
-// callback, letting the parent (SavedDocumentsSection) decide what
-// "tapping Folders" means. In practice that now means toggling an inline
-// _browsingFolders flag so the folder grid renders in the content area
-// below this same bar, instead of pushing a new screen or swapping this
-// bar out. The folders_overview_screen.dart import is gone since this
-// widget no longer references it directly.
-//
-// FIX (earlier pass): the needsAction/overdue/overdue1to30/overdue31to60/
-// overdue61plus quick-filter chips each hide themselves (SizedBox.shrink())
-// when their count is 0 and they're not selected — but the row used to
-// always insert a SizedBox(width: 8) after every one of them regardless,
-// plus the divider before the whole group, even when every single one of
-// them was hidden. With all five sitting at 0 (a common state — most users
-// don't have overdue/needs-action items constantly), that left a visible
-// dead strip of empty spacing between the Receipts pill and the Folders
-// chip, with nothing tappable in it. The quick-filter chips are now built
-// into a filtered list first (only entries with count > 0 or currently
-// selected survive), and the divider + inter-chip spacing is only emitted
-// around chips that actually render — so a fully-empty state collapses to
-// zero extra width instead of leaving a gap.
-//
-// FIX (earlier pass): the Status section (Payment/Quote/Receipt) only used to
-// render when selectedType matched that exact pill, so with "All" selected
-// — the default — no status dropdown ever showed, even when documents
-// existed. Now each status dropdown shows whenever its type is selected OR
-// "All" is selected and that type has documents.
-//
-// NEW (earlier pass): a quick-access "Folders" chip in the always-visible
-// scrollable row itself, positioned immediately to the left of the Drafts
-// chip. Filtering by folder was previously only reachable via the full
-// Filters sheet, which buries a feature that gets used constantly once a
-// user starts organizing documents.
+// Fix: wrap the row in a ShaderMask that fades opacity to zero over the
+// last ~28px on the right edge only (left edge stays fully opaque, since
+// the row always starts scrolled to the left with nothing hidden behind
+// it). This uses BlendMode.dstIn against a horizontal gradient going
+// white -> transparent -- a widely-used, lightweight signal that a
+// horizontal list continues off-screen. Purely visual: doesn't change
+// hit-testing, scroll physics, or any pill's actual layout. A trailing
+// SizedBox(width: 24) was also added after the last chip so it clears the
+// fade zone with room to spare, rather than the fade eating into the last
+// real chip right at the end of the row.
 
 import 'package:flutter/material.dart';
 import '../models/invoice_data.dart' show PaymentStatus;
@@ -131,11 +82,6 @@ class DocumentFilterBar extends StatefulWidget {
   final int overdue31to60Count;
   final int overdue61plusCount;
 
-  // NEW: counts backing the Paid / Accepted / Declined quick chips.
-  // Contextual visibility (Paid needs Invoices/All; Accepted+Declined need
-  // Quotes/All) is computed in build() from selectedType + invoiceCount/
-  // quoteCount, same pattern the Filters sheet's Status dropdowns already
-  // use — no separate "show" params needed here.
   final int paidCount;
   final int acceptedCount;
   final int declinedCount;
@@ -143,10 +89,6 @@ class DocumentFilterBar extends StatefulWidget {
   final String searchQuery;
   final ValueChanged<String> onSearchChanged;
 
-  // NEW: optional placeholder override for the search field — lets the
-  // caller relabel it (e.g. "Search folders") without altering its
-  // position, size, or style. Falls back to the standard document-search
-  // hint when null.
   final String? searchHint;
 
   final DateRangePreset selectedDateRange;
@@ -162,21 +104,12 @@ class DocumentFilterBar extends StatefulWidget {
   final double? maxAmount;
   final void Function(double? min, double? max) onAmountRangeChanged;
 
-  // Folder filter.
   final String? selectedFolder;
   final ValueChanged<String?> onFolderChanged;
   final List<String> availableFolders;
 
-  // Called when the quick-access "Folders" chip is tapped. This widget no
-  // longer navigates on its own — the parent decides (e.g.
-  // SavedDocumentsSection toggles its inline _browsingFolders flag).
   final VoidCallback onFoldersChipTap;
 
-  // NEW: true while the caller's folder-browsing content is showing, so
-  // the Folders chip can render in its active/selected state even before
-  // any individual folder has been picked — giving the same "this pill is
-  // currently driving what's below" feedback every other pill already
-  // gives.
   final bool isBrowsingFolders;
 
   const DocumentFilterBar({
@@ -233,6 +166,13 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
   late final TextEditingController _minController;
   late final TextEditingController _maxController;
 
+  // AUTO-CENTER PILL PASS: one GlobalKey per type pill, so
+  // Scrollable.ensureVisible can locate the newly-selected pill's
+  // RenderBox after a rebuild and scroll it into the center of the row.
+  final Map<DocTypeFilter, GlobalKey> _pillKeys = {
+    for (final f in DocTypeFilter.values) f: GlobalKey(),
+  };
+
   @override
   void initState() {
     super.initState();
@@ -243,19 +183,31 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
         text: widget.maxAmount == null ? '' : widget.maxAmount!.toStringAsFixed(0));
   }
 
-  // NEW: the search field is now shared between document search and
-  // folder-name search (SavedDocumentsSection reuses the same
-  // _searchQuery for both). When the caller toggles folder-browsing mode
-  // it also clears that shared query, so this controller needs to follow
-  // widget.searchQuery on external changes rather than only tracking its
-  // own onChanged calls — otherwise the field would keep showing stale
-  // text after the caller cleared it out from under this widget.
   @override
   void didUpdateWidget(covariant DocumentFilterBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.searchQuery != _searchController.text &&
         widget.searchQuery != oldWidget.searchQuery) {
       _searchController.text = widget.searchQuery;
+    }
+
+    // AUTO-CENTER PILL PASS: the parent only re-renders this widget with
+    // a new selectedType after its own setState has run, so by the next
+    // frame the newly-selected pill's key has a live context to scroll
+    // to. alignment: 0.5 centers it in the ListView's viewport rather
+    // than just scrolling it minimally into view at an edge.
+    if (widget.selectedType != oldWidget.selectedType) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _pillKeys[widget.selectedType]?.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            alignment: 0.5,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 
@@ -310,14 +262,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
           builder: (context, setSheetState) {
             final cs = Theme.of(context).colorScheme;
 
-            // FIX: previously each Status dropdown only rendered when
-            // selectedType matched that EXACT pill (Invoices/Quotes/
-            // Receipts). With "All" selected — the default — none of the
-            // three matched, so the whole Status section silently vanished
-            // even when documents existed. Now each dropdown shows
-            // whenever its type is the selected pill OR "All" is selected
-            // and that type actually has documents. Expenses have no
-            // status field, so there's no fourth dropdown here.
             final showInvoiceStatus = widget.selectedType == DocTypeFilter.invoices ||
                 (widget.selectedType == DocTypeFilter.all && widget.invoiceCount > 0);
             final showQuoteStatus = widget.selectedType == DocTypeFilter.quotes ||
@@ -334,12 +278,18 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                   color: Theme.of(context).scaffoldBackgroundColor,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                // BOTTOM SAFE-AREA FIX: was a fixed 24px, which sat the
+                // Done button behind the on-screen Android nav bar on
+                // devices that have one. Adds the device's own bottom
+                // safe-area inset on top of the fixed 24px so the button
+                // always clears it -- this is separate from the
+                // viewInsets.bottom padding above (that one is for the
+                // keyboard), both are needed together.
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + MediaQuery.of(context).padding.bottom),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Grab handle ──────────────────────────────────────
                     Center(
                       child: Container(
                         width: 36,
@@ -351,8 +301,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         ),
                       ),
                     ),
-
-                    // ── Header ───────────────────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -391,11 +339,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Status (contextual to selected type) ─────────────
-                    // Labeled per-type (not just "Status") because with
-                    // "All" selected, more than one of these can render at
-                    // once — plain "Status" three times in a row would be
-                    // ambiguous about which dropdown controls what.
                     if (showInvoiceStatus)
                       _SheetSection(
                         label: widget.selectedType == DocTypeFilter.all
@@ -454,7 +397,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         ),
                       ),
 
-                    // ── Folder ─────────────────────────────────────────
                     _SheetSection(
                       label: 'Folder',
                       child: _SheetDropdown<String?>(
@@ -473,7 +415,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                       ),
                     ),
 
-                    // ── Date range + Sort — same row, one line ───────────
                     _SheetSection(
                       label: 'Date & Sort',
                       child: Row(
@@ -528,7 +469,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                       ),
                     ),
 
-                    // ── Amount range — one line, Min + Max side by side ──
                     _SheetSection(
                       label: 'Amount Range',
                       child: Row(
@@ -564,7 +504,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                     ),
                     const SizedBox(height: 4),
 
-                    // ── Done ──────────────────────────────────────────────
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
@@ -589,8 +528,6 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
         );
       },
     ).whenComplete(() {
-      // Guard in case the sheet is dismissed by swipe/backdrop tap rather
-      // than the Done button — make sure any typed min/max still commits.
       _submitAmountRange();
     });
   }
@@ -599,23 +536,11 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // NEW: contextual visibility for the Paid / Accepted / Declined quick
-    // chips — same rule the Filters sheet's Status dropdowns already use
-    // (showInvoiceStatus/showQuoteStatus above): show when that type is
-    // the selected pill, OR "All" is selected and that type actually has
-    // documents.
     final showPaidChip = widget.selectedType == DocTypeFilter.invoices ||
         (widget.selectedType == DocTypeFilter.all && widget.invoiceCount > 0);
     final showQuoteStatusChips = widget.selectedType == DocTypeFilter.quotes ||
         (widget.selectedType == DocTypeFilter.all && widget.quoteCount > 0);
 
-    // FIX: build the overdue/needs-action/paid/accepted/declined quick
-    // chips as a filtered list first — only entries that are actually
-    // going to render (contextually applicable, AND count > 0 or
-    // currently the selected quick filter) survive. Spacing is then only
-    // emitted between/around chips that are really there, so a fully-empty
-    // state (everything at 0, nothing selected) contributes zero extra
-    // width instead of a dead strip of padding.
     final quickEntries = <_QuickEntry>[
       _QuickEntry(QuickFilter.needsAction, widget.needsActionCount),
       _QuickEntry(QuickFilter.overdue, widget.overdueCount),
@@ -685,108 +610,115 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
           const SizedBox(height: 12),
 
           // ── Single scrollable line: type pills + quick-filter chips ────
+          // SWIPE-FADE: the whole ListView is wrapped in a ShaderMask so
+          // the trailing (right) edge fades to transparent over its last
+          // ~28px, signalling more content is swipable without a hard
+          // clipped edge. Purely a paint-time mask -- scrolling, hit
+          // testing, and pill layout are unchanged.
           SizedBox(
             height: 34,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _Pill(
-                  label: 'All',
-                  count: widget.invoiceCount + widget.quoteCount + widget.receiptCount + widget.expensesCount,
-                  selected: widget.selectedType == DocTypeFilter.all,
-                  onTap: () => widget.onTypeChanged(DocTypeFilter.all),
-                ),
-                const SizedBox(width: 8),
-                _Pill(
-                  label: 'Invoices',
-                  count: widget.invoiceCount,
-                  selected: widget.selectedType == DocTypeFilter.invoices,
-                  onTap: () => widget.onTypeChanged(DocTypeFilter.invoices),
-                ),
-                const SizedBox(width: 8),
-                _Pill(
-                  label: 'Quotes',
-                  count: widget.quoteCount,
-                  selected: widget.selectedType == DocTypeFilter.quotes,
-                  onTap: () => widget.onTypeChanged(DocTypeFilter.quotes),
-                ),
-                const SizedBox(width: 8),
-                _Pill(
-                  label: 'Receipts',
-                  count: widget.receiptCount,
-                  selected: widget.selectedType == DocTypeFilter.receipts,
-                  onTap: () => widget.onTypeChanged(DocTypeFilter.receipts),
-                ),
-
-                // Divider between the type group and the quick-filter group.
-                // FIX: only emitted when there's at least one quick-filter
-                // chip about to render after it — otherwise it was pure
-                // dead space between Receipts and Folders.
-                if (quickEntries.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Container(
-                      width: 1,
-                      height: 18,
-                      color: cs.outline.withValues(alpha: 0.2),
-                    ),
-                  )
-                else
-                  const SizedBox(width: 8),
-
-                // FIX: only chips that survived the filter render, each
-                // followed by its own SizedBox(8) — no gaps left behind by
-                // hidden ones.
-                for (final entry in quickEntries) ...[
-                  _QuickPill(
-                    label: quickFilterLabel(entry.filter),
-                    count: entry.count,
-                    selected: widget.selectedQuickFilter == entry.filter,
-                    onTap: () => widget.onQuickFilterChanged(
-                        widget.selectedQuickFilter == entry.filter
-                            ? QuickFilter.none
-                            : entry.filter),
+            child: ShaderMask(
+              shaderCallback: (bounds) {
+                final fadeFraction = (28 / bounds.width).clamp(0.0, 1.0);
+                return LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: const [Colors.white, Colors.white, Colors.transparent],
+                  stops: [0.0, 1 - fadeFraction, 1.0],
+                ).createShader(bounds);
+              },
+              blendMode: BlendMode.dstIn,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _Pill(
+                    key: _pillKeys[DocTypeFilter.all],
+                    label: 'All',
+                    count: widget.invoiceCount + widget.quoteCount + widget.receiptCount + widget.expensesCount,
+                    selected: widget.selectedType == DocTypeFilter.all,
+                    onTap: () => widget.onTypeChanged(DocTypeFilter.all),
                   ),
                   const SizedBox(width: 8),
+                  _Pill(
+                    key: _pillKeys[DocTypeFilter.invoices],
+                    label: 'Invoices',
+                    count: widget.invoiceCount,
+                    selected: widget.selectedType == DocTypeFilter.invoices,
+                    onTap: () => widget.onTypeChanged(DocTypeFilter.invoices),
+                  ),
+                  const SizedBox(width: 8),
+                  _Pill(
+                    key: _pillKeys[DocTypeFilter.quotes],
+                    label: 'Quotes',
+                    count: widget.quoteCount,
+                    selected: widget.selectedType == DocTypeFilter.quotes,
+                    onTap: () => widget.onTypeChanged(DocTypeFilter.quotes),
+                  ),
+                  const SizedBox(width: 8),
+                  _Pill(
+                    key: _pillKeys[DocTypeFilter.receipts],
+                    label: 'Receipts',
+                    count: widget.receiptCount,
+                    selected: widget.selectedType == DocTypeFilter.receipts,
+                    onTap: () => widget.onTypeChanged(DocTypeFilter.receipts),
+                  ),
+
+                  if (quickEntries.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Container(
+                        width: 1,
+                        height: 18,
+                        color: cs.outline.withValues(alpha: 0.2),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 8),
+
+                  for (final entry in quickEntries) ...[
+                    _QuickPill(
+                      label: quickFilterLabel(entry.filter),
+                      count: entry.count,
+                      selected: widget.selectedQuickFilter == entry.filter,
+                      onTap: () => widget.onQuickFilterChanged(
+                          widget.selectedQuickFilter == entry.filter
+                              ? QuickFilter.none
+                              : entry.filter),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+
+                  _Pill(
+                    key: _pillKeys[DocTypeFilter.expenses],
+                    label: 'Expenses',
+                    count: widget.expensesCount,
+                    selected: widget.selectedType == DocTypeFilter.expenses,
+                    onTap: () => widget.onTypeChanged(DocTypeFilter.expenses),
+                  ),
+                  const SizedBox(width: 8),
+
+                  _FolderChip(
+                    selectedFolder: widget.selectedFolder,
+                    isActive: widget.isBrowsingFolders || widget.selectedFolder != null,
+                    onTap: widget.onFoldersChipTap,
+                  ),
+                  const SizedBox(width: 8),
+
+                  _QuickPill(
+                    label: quickFilterLabel(QuickFilter.drafts),
+                    count: widget.draftsCount,
+                    selected: widget.selectedQuickFilter == QuickFilter.drafts,
+                    onTap: () => widget.onQuickFilterChanged(
+                        widget.selectedQuickFilter == QuickFilter.drafts
+                            ? QuickFilter.none
+                            : QuickFilter.drafts),
+                  ),
+                  // Trailing spacer so the last real pill/chip clears the
+                  // fade zone with room to spare, rather than the fade
+                  // beginning to eat into it right at the end of the row.
+                  const SizedBox(width: 24),
                 ],
-
-                // NEW: Expenses quick pill — same _Pill widget the four
-                // document type pills use, positioned immediately before
-                // the Folders chip. Tapping it sets selectedType to
-                // DocTypeFilter.expenses, same mechanism as All/Invoices/
-                // Quotes/Receipts above.
-                _Pill(
-                  label: 'Expenses',
-                  count: widget.expensesCount,
-                  selected: widget.selectedType == DocTypeFilter.expenses,
-                  onTap: () => widget.onTypeChanged(DocTypeFilter.expenses),
-                ),
-                const SizedBox(width: 8),
-
-                // CHANGED: no longer navigates itself — calls
-                // widget.onFoldersChipTap so the parent decides what
-                // "Folders" tapped means (SavedDocumentsSection toggles its
-                // inline _browsingFolders flag). isActive now considers
-                // isBrowsingFolders too, so the chip highlights the moment
-                // folder-browsing content is showing — not just once an
-                // individual folder has been chosen.
-                _FolderChip(
-                  selectedFolder: widget.selectedFolder,
-                  isActive: widget.isBrowsingFolders || widget.selectedFolder != null,
-                  onTap: widget.onFoldersChipTap,
-                ),
-                const SizedBox(width: 8),
-
-                _QuickPill(
-                  label: quickFilterLabel(QuickFilter.drafts),
-                  count: widget.draftsCount,
-                  selected: widget.selectedQuickFilter == QuickFilter.drafts,
-                  onTap: () => widget.onQuickFilterChanged(
-                      widget.selectedQuickFilter == QuickFilter.drafts
-                          ? QuickFilter.none
-                          : QuickFilter.drafts),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -866,7 +798,12 @@ class _Pill extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  // AUTO-CENTER PILL PASS: `key` is now accepted and forwarded to
+  // `super.key` so a GlobalKey assigned per DocTypeFilter in
+  // _DocumentFilterBarState actually attaches to this specific pill
+  // instance — required for Scrollable.ensureVisible to find it.
   const _Pill({
+    super.key,
     required this.label,
     required this.count,
     required this.selected,
@@ -945,19 +882,6 @@ class _QuickPill extends StatelessWidget {
 }
 
 // ── Folders quick-access chip ───────────────────────────────────────────
-//
-// No longer owns navigation — tapping it just calls the onTap callback
-// passed in from DocumentFilterBar (which forwards widget.onFoldersChipTap).
-// The parent screen decides what that means: SavedDocumentsSection toggles
-// its inline _browsingFolders flag so the folder grid renders in the
-// content area below this same bar, right here on the same screen, instead
-// of pushing to a separate FoldersOverviewScreen or swapping this bar out.
-//
-// CHANGED (earlier pass): active state is now passed in explicitly via
-// `isActive` (computed by the caller as isBrowsingFolders ||
-// selectedFolder != null) rather than being derived here from
-// selectedFolder alone — so the chip highlights as soon as folder-browsing
-// content is showing, not only once a specific folder has been chosen.
 
 class _FolderChip extends StatelessWidget {
   final String? selectedFolder;

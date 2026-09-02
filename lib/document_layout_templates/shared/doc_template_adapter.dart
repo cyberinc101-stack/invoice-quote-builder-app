@@ -1,5 +1,5 @@
 // doc_template_adapter.dart
-// lib/doc_templates/shared/doc_template_adapter.dart
+// lib/document_layout_templates/shared/doc_template_adapter.dart
 //
 // The whole point of this file: InvoiceData, QuoteData, and ReceiptData are
 // structurally near-identical (same business/client fields, same lineItems
@@ -11,61 +11,143 @@
 //
 // This only covers the READ path (preview rendering / PDF-style layout).
 // It does not know about InvoiceEditBundle or its quote/receipt
-// equivalents â€” the existing WYSIWYG edit canvases keep talking to
-// executive_page_stationary_layout.dart / executive_quote_stationary_layout.dart
+// equivalents — the existing WYSIWYG edit canvases keep talking to
+// executive_invoice_stationary_layout.dart / executive_quote_stationary_layout.dart
 // / executive_receipt_stationary_layout.dart directly, untouched by this.
 //
 // To add a new template design: write one header widget against
 // DocTemplateAdapter (see 02_nordic/nordic_template.dart), reuse
-// buildSharedLineItemRow / buildSharedFooterSection from
-// shared_doc_widgets.dart for the rest, and expose three thin Preview
-// wrappers (one per doc type) that call the three toXAdapter() functions
-// below.
+// buildSharedLineItemRow / buildSharedTotalsAndNotesSection /
+// buildSharedThankYouFooter / buildSharedLogo from shared_doc_widgets.dart
+// for the rest, and expose three thin Preview wrappers (one per doc type)
+// that call the three toXAdapter() functions below.
+//
+// QUOTE + RECEIPT FIELD VISIBILITY PASS (this update):
+//   - quoteToAdapter() now passes d.enabledFields straight through — see
+//     QuoteData's own TEMPLATE FIELD VISIBILITY PASS. Quote gained a new
+//     "Template" step (quote_editor_screen.dart) mirroring the invoice
+//     flow's toggle sheet, backed by the same key set
+//     executive_template.dart already reads generically via docFieldOn().
+//   - receiptToAdapter() now builds its enabledFields map from
+//     ReceiptData's own pre-existing granular show* booleans
+//     (showLogo, showBusinessDetails, showCustomerDetails,
+//     showReceiptNumber, showDateTime, showPaymentMethod, showTaxLine,
+//     showDiscountLine) instead of leaving the class default (const {}).
+//     Receipt never needed a new toggle sheet or a new model field for
+//     this — those show* fields already existed and are already synced
+//     from CreateReceiptScreen's new "Template" step (see that file) —
+//     this mapping is what makes the DocTemplateAdapter-based rendering
+//     path (executive_template.dart, used by the template chooser and
+//     the saved-document Preview screen) finally respect them, the same
+//     way executive_receipt_stationary_layout.dart and
+//     receipt_pdf_service.dart's A4 export now do directly. businessName
+//     itself and the notes/thank-you lines have no dedicated receipt
+//     toggle, so those two keys are left out of the map (defaulting true
+//     via docFieldOn's `?? true`).
+//
+// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
+// and businessLogoInitialLetter, threaded through from InvoiceData/
+// QuoteData/ReceiptData's own new fields (see those files' doc
+// comments). Lets buildSharedLogo() in shared_doc_widgets.dart honour
+// the user's choice to hide the no-logo initial-letter mark entirely, or
+// override which letter it shows, the same way it already honours
+// reposition/zoom/shape for a real uploaded logo.
+//
+// CURRENCY DISPLAY PASS (earlier): added currencySymbol and
+// currencyDisplayMode, threaded through from InvoiceData/QuoteData/
+// ReceiptData's own new fields (see those files' doc comments). Money
+// formatting itself moved out of shared_doc_widgets.dart's fmtMoney() and
+// now lives on DocTemplateAdapter as a method, since it needs both the
+// symbol and the display-mode choice rather than a hardcoded lookup.
+//
+// LOGO FIELDS PASS (earlier): added businessLogoOffsetDx/Dy,
+// businessLogoScale, businessLogoShape, businessLogoDisplaySize alongside
+// the existing businessLogoPath. Previously the adapter only carried the
+// logo *path*, so every non-Executive template design (Nordic, Vibrant,
+// Tech Dark, Classic, Gradient Modern, Editorial, Pastel Soft, Brutalist,
+// Emerald — anything built against DocTemplateAdapter rather than talking
+// to InvoiceData directly) had no way to honour the reposition/zoom/shape/
+// size the user configured via the Logo Sizer (SharedLogoPicker) on the
+// Customise step — they either rendered no logo at all, or would have had
+// to fall back to a plain centred cover-fit render that ignores those
+// settings entirely. All three toXAdapter() functions below now pass these
+// straight through from InvoiceData/QuoteData/ReceiptData, which already
+// had these exact fields (see TEMPLATE + LOGO SIZER PASS in those files'
+// doc comments). Defaults match the data classes' own defaults (zero
+// offset, scale 1.0, 'roundedSquare' shape, size 40.0), so nothing changes
+// for documents that never set a logo, and no persisted-data migration is
+// needed.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
-import '../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show invoiceAccent;
-import '../../quote_layout_templates/01_executive_quote_layout/executive_quote_stationary_layout.dart'
+import '../../document_layout_templates/01_executive/executive_quote_stationary_layout.dart'
     show quoteAccent;
-import '../../receipt_layout_templates/01_executive_receipt_layout/executive_receipt_stationary_layout.dart'
+import '../../document_layout_templates/01_executive/executive_receipt_stationary_layout.dart'
     show receiptAccent;
 
 class DocTemplateAdapter {
-  // â”€â”€ Document identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Document identity ────────────────────────────────────────────────────
   final String docTypeLabel;       // 'INVOICE' | 'QUOTE' | 'RECEIPT'
   final String docNumber;
   final String continuationSuffix; // e.g. '(continued)'
   final String recipientLabel;     // 'BILLED TO' | 'PREPARED FOR' | 'RECEIVED FROM'
 
-  // â”€â”€ Business identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Business identity ────────────────────────────────────────────────────
   final String businessName;
   final String businessEmail;
   final String businessPhone;
   final String businessAddress;
   final String? businessLogoPath;
 
-  // â”€â”€ Client / recipient â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Logo reposition/zoom/shape/display size — mirrors InvoiceData/
+  // QuoteData/ReceiptData's own fields (SharedLogoPicker-driven). Only
+  // meaningful when businessLogoPath is set. Carrying these on the adapter
+  // (rather than just businessLogoPath) is what lets every template's
+  // header — not just Executive's own edit-canvas layout — render the logo
+  // the way the user actually configured it, instead of a plain centred
+  // cover-fit circle that ignores their crop/zoom/shape choice.
+  final double businessLogoOffsetDx;
+  final double businessLogoOffsetDy;
+  final double businessLogoScale;
+  final String businessLogoShape; // storage name from LogoShape.storageName
+  final double businessLogoDisplaySize;
+
+  // No-logo fallback mark — mirrors InvoiceData/QuoteData/ReceiptData's
+  // own fields. Only meaningful when businessLogoPath is NOT set:
+  // businessLogoShowInitial = false hides the mark entirely (renders
+  // nothing where the mark would go); businessLogoInitialLetter, when
+  // non-empty, overrides the auto-derived first letter of businessName.
+  final bool businessLogoShowInitial;
+  final String businessLogoInitialLetter;
+
+  // ── Client / recipient ───────────────────────────────────────────────────
   final String clientName;
   final String clientEmail;
   final String clientPhone;
   final String clientAddress;
 
-  // â”€â”€ Meta row (two label/value pairs â€” dates for invoice/quote, date +
-  // payment method for receipt) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Meta row (two label/value pairs — dates for invoice/quote, date +
+  // payment method for receipt) ────────────────────────────────────────────
   final String metaLabel1;
   final String metaValue1;
   final String metaLabel2;
   final String metaValue2;
 
-  // â”€â”€ Status badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Status badge ──────────────────────────────────────────────────────────
   final String statusLabel;
   final Color statusColor;
 
-  // â”€â”€ Money â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Money ─────────────────────────────────────────────────────────────────
   final String currency;
+  // Free-text symbol (e.g. "$", "€") and how it combines with `currency`
+  // (the code) when rendered — see fmtMoney() below. Neither is gated by
+  // a hardcoded currency list; both come straight from user input.
+  final String currencySymbol;
+  final String currencyDisplayMode; // 'code' | 'symbol' | 'both'
   final List<LineItem> lineItems;
   final double subtotal;
   final double discountRate;
@@ -75,11 +157,22 @@ class DocTemplateAdapter {
   final double total;
   final String totalLabel; // 'Grand Total' | 'Total' | 'Amount Paid'
 
-  // â”€â”€ Misc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Misc ──────────────────────────────────────────────────────────────────
   final String notes;
   final String fontFamily;
   final Color accent;
   final String thankYouLabel;
+
+  // Which template-defined fields should render — same key set as
+  // InvoiceData.enabledFields/QuoteData.enabledFields (businessName,
+  // businessLogo, invoiceNumber, date, dueDate, customerName/Email/Phone/
+  // Address, tax, discount, notes, thankYouMessage, etc). Every read site
+  // (buildSharedLogo, buildSharedTotalsAndNotesSection,
+  // buildSharedThankYouFooter, executive_template.dart) uses
+  // `enabledFields[key] ?? true`, so a key that's absent always reads as
+  // shown. Defaults to const {} so existing call sites that don't pass
+  // this parameter are unaffected.
+  final Map<String, bool> enabledFields;
 
   const DocTemplateAdapter({
     required this.docTypeLabel,
@@ -91,6 +184,13 @@ class DocTemplateAdapter {
     required this.businessPhone,
     required this.businessAddress,
     this.businessLogoPath,
+    this.businessLogoOffsetDx = 0.0,
+    this.businessLogoOffsetDy = 0.0,
+    this.businessLogoScale = 1.0,
+    this.businessLogoShape = 'roundedSquare',
+    this.businessLogoDisplaySize = 40.0,
+    this.businessLogoShowInitial = true,
+    this.businessLogoInitialLetter = '',
     required this.clientName,
     required this.clientEmail,
     required this.clientPhone,
@@ -102,6 +202,8 @@ class DocTemplateAdapter {
     required this.statusLabel,
     required this.statusColor,
     required this.currency,
+    this.currencySymbol = '',
+    this.currencyDisplayMode = 'code',
     required this.lineItems,
     required this.subtotal,
     required this.discountRate,
@@ -114,15 +216,56 @@ class DocTemplateAdapter {
     required this.fontFamily,
     required this.accent,
     required this.thankYouLabel,
+    this.enabledFields = const {},
   });
+
+  /// Formats a money amount according to this document's currency code,
+  /// symbol, and display mode. Used by shared_doc_widgets.dart instead of
+  /// a hardcoded currency->symbol lookup table, since currency and symbol
+  /// here are both free text — any currency in the world, not just ones on
+  /// a fixed list.
+  ///
+  /// Falls back gracefully: if currencyDisplayMode calls for a symbol
+  /// that's empty (user never set one), falls back to showing the code
+  /// instead — so an amount is never rendered as a bare, ambiguous number.
+  String fmtMoney(double v) {
+    final amount = v.toStringAsFixed(2);
+    final hasSymbol = currencySymbol.trim().isNotEmpty;
+    final hasCode = currency.trim().isNotEmpty;
+
+    switch (currencyDisplayMode) {
+      case 'symbol':
+        if (hasSymbol) return '$currencySymbol$amount';
+        // No symbol set — fall back to code so the amount isn't bare.
+        return hasCode ? '$currency $amount' : amount;
+      case 'both':
+        if (hasSymbol && hasCode) return '$currency $currencySymbol$amount';
+        if (hasSymbol) return '$currencySymbol$amount';
+        if (hasCode) return '$currency $amount';
+        return amount;
+      case 'code':
+      default:
+        if (hasCode) return '$currency $amount';
+        // No code set (shouldn't normally happen) — fall back to symbol.
+        return hasSymbol ? '$currencySymbol$amount' : amount;
+    }
+  }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Status label/color helpers â€” mirror the private ones already living in
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE FIELD VISIBILITY PASS: single read helper for
+// DocTemplateAdapter.enabledFields — missing keys default to true
+// (shown). Shared by shared_doc_widgets.dart and every *_template.dart
+// file that gates a field.
+// ─────────────────────────────────────────────────────────────────────────────
+bool docFieldOn(DocTemplateAdapter a, String key) => a.enabledFields[key] ?? true;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status label/color helpers — mirror the private ones already living in
 // each 01_executive_*_stationary_layout.dart file (kept private there;
 // duplicated here rather than exported, since these are one-liners and
 // exporting private helpers across files isn't worth the coupling).
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 const Color _kGrey = Color(0xFF6B7280);
 
@@ -173,10 +316,10 @@ String _paymentMethodLabel(PaymentMethod m) => switch (m) {
   PaymentMethod.other        => 'Other',
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Conversion functions â€” one per doc type. Call the matching one from a
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversion functions — one per doc type. Call the matching one from a
 // template's Preview wrapper before handing off to TemplateDocument.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       docTypeLabel: 'INVOICE',
@@ -188,6 +331,13 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       businessPhone: d.businessPhone,
       businessAddress: d.businessAddress,
       businessLogoPath: d.businessLogoPath,
+      businessLogoOffsetDx: d.businessLogoOffsetDx,
+      businessLogoOffsetDy: d.businessLogoOffsetDy,
+      businessLogoScale: d.businessLogoScale,
+      businessLogoShape: d.businessLogoShape,
+      businessLogoDisplaySize: d.businessLogoDisplaySize,
+      businessLogoShowInitial: d.businessLogoShowInitial,
+      businessLogoInitialLetter: d.businessLogoInitialLetter,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
@@ -199,6 +349,8 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       statusLabel: _invoiceStatusLabel(d.paymentStatus),
       statusColor: _invoiceStatusColor(d.paymentStatus),
       currency: d.currency,
+      currencySymbol: d.currencySymbol,
+      currencyDisplayMode: d.currencyDisplayMode,
       lineItems: d.lineItems,
       subtotal: d.subtotal,
       discountRate: d.discountRate,
@@ -211,8 +363,9 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       fontFamily: d.fontFamily,
       accent: invoiceAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for your business â€” ${d.businessEmail}'
+          ? 'Thank you for your business — ${d.businessEmail}'
           : 'Thank you for your business',
+      enabledFields: d.enabledFields,
     );
 
 DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
@@ -225,6 +378,13 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       businessPhone: d.businessPhone,
       businessAddress: d.businessAddress,
       businessLogoPath: d.businessLogoPath,
+      businessLogoOffsetDx: d.businessLogoOffsetDx,
+      businessLogoOffsetDy: d.businessLogoOffsetDy,
+      businessLogoScale: d.businessLogoScale,
+      businessLogoShape: d.businessLogoShape,
+      businessLogoDisplaySize: d.businessLogoDisplaySize,
+      businessLogoShowInitial: d.businessLogoShowInitial,
+      businessLogoInitialLetter: d.businessLogoInitialLetter,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
@@ -236,6 +396,8 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       statusLabel: _quoteStatusLabel(d.quoteStatus),
       statusColor: _quoteStatusColor(d.quoteStatus),
       currency: d.currency,
+      currencySymbol: d.currencySymbol,
+      currencyDisplayMode: d.currencyDisplayMode,
       lineItems: d.lineItems,
       subtotal: d.subtotal,
       discountRate: d.discountRate,
@@ -248,8 +410,13 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       fontFamily: d.fontFamily,
       accent: quoteAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for considering us â€” ${d.businessEmail}'
+          ? 'Thank you for considering us — ${d.businessEmail}'
           : 'Thank you for considering us',
+      // QUOTE + RECEIPT FIELD VISIBILITY PASS: the piece that was
+      // missing — QuoteData.enabledFields now exists (populated from the
+      // new Template step in quote_editor_screen.dart) and is carried
+      // straight onto the adapter here, same as invoiceToAdapter().
+      enabledFields: d.enabledFields,
     );
 
 DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
@@ -262,6 +429,13 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       businessPhone: d.businessPhone,
       businessAddress: d.businessAddress,
       businessLogoPath: d.businessLogoPath,
+      businessLogoOffsetDx: d.businessLogoOffsetDx,
+      businessLogoOffsetDy: d.businessLogoOffsetDy,
+      businessLogoScale: d.businessLogoScale,
+      businessLogoShape: d.businessLogoShape,
+      businessLogoDisplaySize: d.businessLogoDisplaySize,
+      businessLogoShowInitial: d.businessLogoShowInitial,
+      businessLogoInitialLetter: d.businessLogoInitialLetter,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
@@ -273,6 +447,8 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       statusLabel: _receiptStatusLabel(d.status),
       statusColor: _receiptStatusColor(d.status),
       currency: d.currency,
+      currencySymbol: d.currencySymbol,
+      currencyDisplayMode: d.currencyDisplayMode,
       lineItems: d.lineItems,
       subtotal: d.subtotal,
       discountRate: d.discountRate,
@@ -285,6 +461,33 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       fontFamily: d.fontFamily,
       accent: receiptAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for your payment â€” ${d.businessEmail}'
+          ? 'Thank you for your payment — ${d.businessEmail}'
           : 'Thank you for your payment',
+      // QUOTE + RECEIPT FIELD VISIBILITY PASS: ReceiptData has no
+      // enabledFields map of its own — it already had granular show*
+      // booleans (showLogo, showBusinessDetails, showCustomerDetails,
+      // showReceiptNumber, showDateTime, showPaymentMethod, showTaxLine,
+      // showDiscountLine), synced from CreateReceiptScreen's new
+      // "Template" step. This maps those onto the same generic key set
+      // executive_template.dart already gates on via docFieldOn(), so
+      // the chooser preview / PDF-preview-screen path (which renders
+      // through this adapter) respects them without needing its own
+      // parallel toggle system. businessName and notes/thankYouMessage
+      // have no dedicated receipt toggle, so those keys are left out
+      // (defaulting true).
+      enabledFields: {
+        'businessLogo': d.showLogo,
+        'businessEmail': d.showBusinessDetails,
+        'businessPhone': d.showBusinessDetails,
+        'businessAddress': d.showBusinessDetails,
+        'invoiceNumber': d.showReceiptNumber,
+        'date': d.showDateTime,
+        'dueDate': d.showPaymentMethod,
+        'customerName': d.showCustomerDetails,
+        'customerEmail': d.showCustomerDetails,
+        'customerPhone': d.showCustomerDetails,
+        'customerAddress': d.showCustomerDetails,
+        'tax': d.showTaxLine,
+        'discount': d.showDiscountLine,
+      },
     );

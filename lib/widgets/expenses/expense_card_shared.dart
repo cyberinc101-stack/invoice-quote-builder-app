@@ -1,46 +1,36 @@
 // expense_card_shared.dart
 // lib/widgets/expenses/expense_card_shared.dart
 //
-// LOGO BANNER PASS (this update): added ExpenseLogoBanner — a full-width
-// top band mirroring doc_card_shared.dart's private _DocLogoBanner
-// exactly (same height/topRadius/gradient-fallback/contain-fit
-// treatment), used by the new Logo Banner variant of ExpenseListCard
-// (see expense_cards.dart) when CardDisplayPrefs.cardStyle ==
-// CardStyle.logoBanner. Previously expense cards had NO Logo Banner
-// equivalent at all — only the side-by-side Standard layout — so
-// selecting Logo Banner made invoices/quotes/receipts switch to the
-// full-width-image style while expenses stayed in the old side-by-side
-// layout, which is what caused expenses to visibly not match the rest of
-// the saved-document card family whenever Logo Banner was the active
-// style. This widget can't literally reuse _DocLogoBanner (it's private
-// to saved_documents_section.dart's library), so it's a same-shaped
-// sibling here instead, using ExpenseGradientAvatar's existing photo/logo
-// resolution (SharedLogoThumbnail) for the "has an image" branch and the
-// category's own color+icon for the fallback, instead of a business name
-// initial.
+// LOGO HIGHLIGHT / LOGO IMAGE PASS (this update): ExpenseGradientAvatar and
+// ExpenseLogoBanner both gained showHighlight/showImage params, passed
+// straight through to the underlying DocLogoAvatar/DocLogoBanner (see
+// doc_card_shared.dart) they delegate to. Both default to true so any
+// existing call site that doesn't pass them renders exactly as before.
+// expense_cards.dart's call sites now pass
+// CardDisplayPrefs.showLogoHighlight/showLogoImage through, same as every
+// other doc-family card already does.
 //
-// LOGO FIX (earlier pass): ExpenseGradientAvatar now supports independent
-// width/height (defaulting to `size`, same pattern as _DocLogoAvatar in
-// doc_card_shared.dart) instead of always forcing a square. The List
-// layout (ExpenseListCard) now passes height: double.infinity inside an
-// IntrinsicHeight + CrossAxisAlignment.stretch row so the logo/photo
-// fills the card's full height edge-to-edge instead of a small square.
-// Grid/compactGrid/compact stay square — not enough room at those sizes.
+// SHARED-SOURCE PASS (earlier): ExpenseSelectionBadge, ExpenseThreeDotIcon,
+// ExpenseGradientAvatar, and ExpenseLogoBanner no longer contain their own
+// rendering logic -- each is now a thin wrapper delegating straight to the
+// public widgets in doc_card_shared.dart (SelectionBadge, ThreeDotIcon,
+// DocLogoAvatar, DocLogoBanner). Public class names and constructor
+// signatures are UNCHANGED, so any other call site (expense_cards.dart,
+// expense_screen.dart, etc.) keeps working with zero changes -- only the
+// implementation moved, so a visual fix made once in doc_card_shared.dart
+// (e.g. the logo-shadow parity fix) now applies to expense cards too,
+// automatically, instead of needing the same fix copy-pasted here.
 //
-// SORT TOGGLE (earlier pass): ExpenseSortToggleButton, driven by
-// SortOption (from filter_types.dart) instead of ExpenseLayoutMode, used
-// by expense_screen.dart's count row and Home's "My Expenses" header.
+// For the avatar/banner delegates: businessName is always passed as ''
+// (expenses have no business name to monogram), and fallbackIcon is
+// category.icon, so the shared widget's own fallback logic naturally
+// renders the category icon instead of an initial -- no separate
+// fallback branch needed here.
 //
-// DOC-CARD STYLE PASS (earlier): the expense card system visually matches
-// lib/widgets/saved_documents_containers.dart's _DocCard — a two-tone
-// gradient icon box with an accent-tinted drop shadow, and an icon+label
-// status chip. Each expense's own category colour stands in as its
-// "accent" since expenses don't have a single fixed accent colour the way
-// invoices/quotes/receipts do.
-//
-// Everything else — selection mode, the 3-dot menu, folder tags, logo
-// fields, reference number — is unchanged in shape; only the visual skin
-// and the avatar sizing changed.
+// Everything else in this file (ExpenseCardEntry, date/time formatting,
+// ExpenseLayoutMode, ExpenseLayoutToggleButton, ExpenseSortToggleButton,
+// ExpenseCategoryAvatar, ExpenseLogoAvatar (legacy), excludedChip /
+// excludedChipCompact) is unchanged from the previous pass.
 
 import 'dart:io';
 
@@ -50,10 +40,11 @@ import '../../filters/filter_types.dart';
 import '../../models/document_category.dart';
 import '../../models/expense_data.dart';
 import '../shared_logo_picker.dart' show LogoShape, LogoShapeX, SharedLogoThumbnail;
+import '../saved_documents/doc_card_shared.dart';
 
 const Color kExpenseAccent = Color(0xFFE53935);
 
-// ── Pre-computed per-card view model ──────────────────────────────────────
+// -- Pre-computed per-card view model --------------------------------------
 
 class ExpenseCardEntry {
   final String key;
@@ -95,7 +86,7 @@ class ExpenseCardEntry {
   String get amountLabel => '${expense.currency} ${expense.amount.toStringAsFixed(2)}';
 }
 
-// ── Date/time formatting helpers ────────────────────────────────────────
+// -- Date/time formatting helpers -------------------------------------------
 
 const _shortMonths = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -112,7 +103,7 @@ String formatExpenseRelativeTime(DateTime dt) {
   return formatExpenseShortDate(dt);
 }
 
-// ── Layout mode (list / grid / compactGrid / compact) ──────────────────
+// -- Layout mode (list / grid / compactGrid / compact) ----------------------
 
 enum ExpenseLayoutMode { list, grid, compactGrid, compact }
 
@@ -202,7 +193,7 @@ class ExpenseLayoutToggleButton extends StatelessWidget {
   }
 }
 
-// ── Sort toggle ──────────────────────────────────────────────────────────
+// -- Sort toggle --------------------------------------------------------------
 
 class ExpenseSortToggleButton extends StatelessWidget {
   final SortOption selected;
@@ -260,7 +251,7 @@ class ExpenseSortToggleButton extends StatelessWidget {
   }
 }
 
-// ── Selection badge — mirrors _SelectionBadge in doc_card_shared.dart ────
+// -- Selection badge -- delegates to doc_card_shared.dart's SelectionBadge --
 
 class ExpenseSelectionBadge extends StatelessWidget {
   final bool selected;
@@ -269,27 +260,10 @@ class ExpenseSelectionBadge extends StatelessWidget {
   const ExpenseSelectionBadge({super.key, required this.selected, required this.accent});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: selected ? accent : Colors.white,
-        border: Border.all(color: selected ? accent : Colors.grey.shade400, width: 1.5),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1))],
-      ),
-      child: selected ? const Icon(Icons.check_rounded, size: 14, color: Colors.white) : null,
-    );
-  }
+  Widget build(BuildContext context) => SelectionBadge(selected: selected, accent: accent);
 }
 
-// ── 3-dot options icon — mirrors _ThreeDotIcon in doc_card_shared.dart ──
-//
-// `background`/`iconColor` overrides added (this pass) so the new Logo
-// Banner expense card can render this icon as a translucent pill on top
-// of an image/gradient background — same reasoning as doc_card_shared.
-// dart's _ThreeDotIcon overrides.
+// -- 3-dot options icon -- delegates to doc_card_shared.dart's ThreeDotIcon --
 
 class ExpenseThreeDotIcon extends StatelessWidget {
   final VoidCallback onTap;
@@ -298,21 +272,11 @@ class ExpenseThreeDotIcon extends StatelessWidget {
   const ExpenseThreeDotIcon({super.key, required this.onTap, this.background, this.iconColor});
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(color: background ?? cs.onSurface.withValues(alpha: 0.06), shape: BoxShape.circle),
-        child: Icon(Icons.more_vert_rounded, size: 16, color: iconColor ?? cs.onSurface.withValues(alpha: 0.65)),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      ThreeDotIcon(onTap: onTap, background: background, iconColor: iconColor);
 }
 
-// ── Category avatar (flat, legacy) — kept for any other call sites. ─────
+// -- Category avatar (flat, legacy) -- kept for any other call sites. -------
 
 class ExpenseCategoryAvatar extends StatelessWidget {
   final DocumentCategory category;
@@ -343,7 +307,7 @@ class ExpenseCategoryAvatar extends StatelessWidget {
   }
 }
 
-// ── Logo avatar (legacy, flat fallback) — kept for compatibility. ───────
+// -- Logo avatar (legacy, flat fallback) -- kept for compatibility. ---------
 
 class ExpenseLogoAvatar extends StatelessWidget {
   final String? logoPath;
@@ -399,13 +363,14 @@ class ExpenseLogoAvatar extends StatelessWidget {
   }
 }
 
-// ── Gradient avatar — the doc-card-style icon box. Renders the expense's
-// uploaded photo/logo when one is set, otherwise a two-tone gradient box
-// in the category's colour with a white icon and a colour-tinted drop
-// shadow. width/height now default to `size` (a square) but can be set
-// independently — the List layout passes height: double.infinity inside
-// an IntrinsicHeight row so the avatar fills the card's full height
-// edge-to-edge instead of sitting in a small square. ─────────────────────
+// -- Gradient avatar -- delegates to doc_card_shared.dart's DocLogoAvatar.
+// businessName is always '' (expenses have no business name), and
+// fallbackIcon is the category's own icon, so the shared widget's normal
+// fallback path renders the category icon (with the same accent-tinted
+// drop shadow every doc-family avatar now gets) instead of a monogram.
+// showHighlight/showImage pass straight through to DocLogoAvatar -- see
+// that class in doc_card_shared.dart for what each controls. Both default
+// to true so existing call sites that don't pass them are unaffected. ----
 
 class ExpenseGradientAvatar extends StatelessWidget {
   final String? logoPath;
@@ -418,6 +383,8 @@ class ExpenseGradientAvatar extends StatelessWidget {
   final double? height;
   final double iconSize;
   final double borderRadius;
+  final bool showHighlight;
+  final bool showImage;
 
   const ExpenseGradientAvatar({
     super.key,
@@ -431,66 +398,36 @@ class ExpenseGradientAvatar extends StatelessWidget {
     this.height,
     this.iconSize = 24,
     this.borderRadius = 14,
+    this.showHighlight = true,
+    this.showImage = true,
   });
-
-  bool get _hasLogo =>
-      logoPath != null && logoPath!.isNotEmpty && File(logoPath!).existsSync();
 
   @override
   Widget build(BuildContext context) {
-    final w = width ?? size;
-    final h = height ?? size;
-
-    if (_hasLogo) {
-      return Container(
-        width: w,
-        height: h,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(borderRadius),
-          boxShadow: [
-            BoxShadow(color: category.color.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3)),
-          ],
-        ),
-        child: SharedLogoThumbnail(
-          logoPath: logoPath!,
-          logoOffset: logoOffset,
-          logoScale: logoScale,
-          logoShape: logoShape,
-          boxSize: w,
-        ),
-      );
-    }
-    return Container(
-      width: w,
-      height: h,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [category.color, category.color.withValues(alpha: 0.72)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          BoxShadow(color: category.color.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3)),
-        ],
-      ),
-      child: Icon(category.icon, color: Colors.white, size: iconSize),
+    return DocLogoAvatar(
+      logoPath: logoPath,
+      logoOffset: logoOffset,
+      logoScale: logoScale,
+      logoShape: logoShape,
+      businessName: '',
+      accentColor: category.color,
+      size: size,
+      width: width,
+      height: height,
+      iconSize: iconSize,
+      borderRadius: borderRadius,
+      fallbackIcon: category.icon,
+      showHighlight: showHighlight,
+      showImage: showImage,
     );
   }
 }
 
-// ── Logo banner — full-width top band for the Logo Banner card style.
-// Same shape/height/gradient-fallback treatment as doc_card_shared.dart's
-// private _DocLogoBanner (can't be reused directly — it's private to a
-// different library), rebuilt here for expenses:
-//   - Has a photo/logo -> shown large, centered, BoxFit.contain (never
-//     cropped), filling the banner height, using the same
-//     SharedLogoThumbnail the side-by-side avatar already uses.
-//   - No photo -> soft gradient tinted with the category's own color,
-//     with a large category icon centered (category icon stands in for
-//     the business-name initial doc cards fall back to, since an expense
-//     has no business name field).
+// -- Logo banner -- delegates to doc_card_shared.dart's DocLogoBanner, same
+// businessName: '' / fallbackIcon: category.icon pattern as the avatar
+// above. showHighlight/showImage pass straight through, same as the
+// avatar. ----------------------------------------------------------------
+
 class ExpenseLogoBanner extends StatelessWidget {
   final String? logoPath;
   final Offset logoOffset;
@@ -499,6 +436,8 @@ class ExpenseLogoBanner extends StatelessWidget {
   final DocumentCategory category;
   final double height;
   final double topRadius;
+  final bool showHighlight;
+  final bool showImage;
 
   const ExpenseLogoBanner({
     super.key,
@@ -509,50 +448,29 @@ class ExpenseLogoBanner extends StatelessWidget {
     required this.category,
     this.height = 110,
     this.topRadius = 18,
+    this.showHighlight = true,
+    this.showImage = true,
   });
-
-  bool get _hasLogo =>
-      logoPath != null && logoPath!.isNotEmpty && File(logoPath!).existsSync();
 
   @override
   Widget build(BuildContext context) {
-    if (_hasLogo) {
-      return ClipRRect(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-        child: SizedBox(
-          width: double.infinity,
-          height: height,
-          child: SharedLogoThumbnail(
-            logoPath: logoPath!,
-            logoOffset: logoOffset,
-            logoScale: logoScale,
-            logoShape: logoShape,
-            boxSize: height,
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: double.infinity,
+    return DocLogoBanner(
+      logoPath: logoPath,
+      logoOffset: logoOffset,
+      logoScale: logoScale,
+      logoShape: logoShape,
+      businessName: '',
+      accentColor: category.color,
       height: height,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-        gradient: LinearGradient(
-          colors: [
-            category.color.withValues(alpha: 0.18),
-            category.color.withValues(alpha: 0.07),
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Icon(category.icon, color: category.color.withValues(alpha: 0.85), size: 44),
+      topRadius: topRadius,
+      fallbackIcon: category.icon,
+      showHighlight: showHighlight,
+      showImage: showImage,
     );
   }
 }
 
-// ── "Excluded" chip ───────────────────────────────────────────────────────
+// -- "Excluded" chip ----------------------------------------------------------
 
 Widget excludedChip() => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

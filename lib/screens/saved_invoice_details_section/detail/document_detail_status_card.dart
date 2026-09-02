@@ -1,27 +1,35 @@
 // document_detail_status_card.dart
 // lib/screens/saved_invoice_details_section/detail/document_detail_status_card.dart
 //
-// Prominent, professional status summary card for
-// SavedDocumentDetailScreen — sits right under the Total/Line Items stat
-// row. Previously the only place status showed at all was the small pill
-// in the header; there was no dedicated "is this paid?" / "was this
-// accepted?" block with supporting detail. This card makes that the
-// single, unmissable answer for each document type:
-//   - Invoice: Paid / Partial / Unpaid / Overdue, with due date (or paid
-//     date once marked paid) and — for Overdue specifically — how many
-//     days overdue, computed from the due date so it never drifts out of
-//     sync with the badge itself.
-//   - Quote: Accepted / Declined / Sent / Expired / Draft, with expiry
-//     date and — while still Sent — how many days remain before it
-//     expires.
-//   - Receipt: Issued / Refunded, with payment date.
+// FORMAL REDESIGN: the glowing colored border + gradient icon badge read
+// as an alert/warning toast rather than a status field on a financial
+// document. Replaced with a plain neutral card and a thin left-edge
+// accent bar in the status color (invoice-ledger convention — a quiet
+// category marker, not a klaxon). Icon is now a small flat-tint circle
+// instead of a gradient badge with a colored shadow. Everything else
+// (description text, day-count chip, secondary date row) is unchanged
+// in behavior, just restyled.
 //
-// Visually: a large icon+label header row (bold, colored to match the
-// status), a one-line plain-English description of what that status
-// means, then a divider and one or two DetailActivityRow-style stat
-// lines reusing the exact same row widget the Activity card below it
-// already uses (document_detail_widgets.dart) — same visual language,
-// not a new component vocabulary.
+// BUGFIX #1: Flutter's Border does not allow borderRadius when the four
+// BorderSides have different colors — the left side was statusColor
+// while the other three were neutral gray, which threw "A borderRadius
+// can only be given on borders with uniform colors" on every paint and
+// left this whole card blank. The left accent bar is now a real
+// Container (a colored strip inside a Row) instead of a colored
+// BorderSide, so the outer decoration's border is uniform and the
+// borderRadius is legal again.
+//
+// BUGFIX #2: that Row used crossAxisAlignment.stretch to make the accent
+// bar span the card's full height, but this card sits inside a Column
+// with unbounded height (SliverToBoxAdapter content), so the Row was
+// handed h=Infinity and "stretch to infinity" threw "BoxConstraints
+// forces an infinite height". Wrapped the Row in IntrinsicHeight, which
+// measures the content's real height first and hands that finite value
+// down, so stretch has something concrete to stretch the bar to.
+//
+// Also adds `neutralAccent` — the app's own navy (kHeroGradient[0]) used
+// to tint the card's hairline border instead of a flat unrelated gray,
+// matching the rest of the redesigned detail screen.
 
 import 'package:flutter/material.dart';
 
@@ -34,6 +42,10 @@ class DocumentStatusStatsCard extends StatelessWidget {
   final Color statusColor;
   final IconData statusIcon;
   final Color accent;
+
+  /// The app's own navy (kHeroGradient[0]) — tints the card's hairline
+  /// border so it reads as this app's brand color rather than generic gray.
+  final Color neutralAccent;
 
   /// Invoice: "Due" (or "Paid" once paid). Quote: "Expires". Receipt:
   /// "Paid". Matches the same secondaryDateLabel/secondaryDate the rest
@@ -48,6 +60,7 @@ class DocumentStatusStatsCard extends StatelessWidget {
     required this.statusColor,
     required this.statusIcon,
     required this.accent,
+    required this.neutralAccent,
     this.secondaryDateLabel,
     this.secondaryDateValue,
   });
@@ -111,9 +124,6 @@ class DocumentStatusStatsCard extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // Day-count line — only shown for the two states where "how many
-    // days" is actually meaningful and computable: an overdue invoice
-    // (days past due) or a still-sent quote (days until expiry).
     String? dayCountLabel;
     if (type == DocType.invoice && statusLabel == 'Overdue' && parsedSecondaryDate != null) {
       final daysPast = today.difference(parsedSecondaryDate).inDays;
@@ -122,6 +132,10 @@ class DocumentStatusStatsCard extends StatelessWidget {
       final daysLeft = parsedSecondaryDate.difference(today).inDays;
       if (daysLeft >= 0) dayCountLabel = '$daysLeft day${daysLeft == 1 ? '' : 's'} left';
     }
+
+    // Neutral hairline border tinted with the app's own navy instead of a
+    // flat unrelated gray — matches the rest of the redesigned screen.
+    final neutralBorder = neutralAccent.withValues(alpha: isDark ? 0.28 : 0.16);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -132,80 +146,96 @@ class DocumentStatusStatsCard extends StatelessWidget {
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E2235) : Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: statusColor.withValues(alpha: 0.25), width: 1.2),
-              boxShadow: [
-                BoxShadow(color: statusColor.withValues(alpha: isDark ? 0.15 : 0.1), blurRadius: 20, offset: const Offset(0, 6)),
-              ],
+              borderRadius: BorderRadius.circular(14),
+              // FIX #1: all four sides now share the same neutral color,
+              // so borderRadius is legal here. The colored accent moved
+              // to a real left-edge strip below instead of a colored
+              // BorderSide.
+              border: Border.all(color: neutralBorder),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [statusColor, statusColor.withValues(alpha: 0.75)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 3))],
-                      ),
-                      child: Icon(statusIcon, color: Colors.white, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
+            // FIX #2: IntrinsicHeight measures the content's real height
+            // first, then hands that finite height down to the Row so
+            // `stretch` has something concrete to stretch the accent bar
+            // to, instead of the unbounded height this card would
+            // otherwise inherit from its sliver/Column context.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Left accent bar — a real widget now, not a border trick.
+                  Container(width: 4, color: statusColor),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            statusLabel,
-                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: colorScheme.onSurface, letterSpacing: -0.2),
+                          Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(statusIcon, color: statusColor, size: 20),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      statusLabel,
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: colorScheme.onSurface, letterSpacing: -0.2),
+                                    ),
+                                    if (_description.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _description,
+                                        style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface.withValues(alpha: 0.55)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              if (dayCountLabel != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+                                  ),
+                                  child: Text(
+                                    dayCountLabel,
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: statusColor),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                            ],
                           ),
-                          if (_description.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              _description,
-                              style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface.withValues(alpha: 0.55)),
+                          if (secondaryDateLabel != null && secondaryDateValue != null) ...[
+                            const SizedBox(height: 16),
+                            Divider(height: 1, color: neutralBorder),
+                            const SizedBox(height: 14),
+                            DetailActivityRow(
+                              icon: Icons.event_rounded,
+                              label: secondaryDateLabel!,
+                              value: secondaryDateValue!,
+                              color: accent,
                             ),
                           ],
                         ],
                       ),
                     ),
-                    if (dayCountLabel != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          dayCountLabel,
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: statusColor),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                  ],
-                ),
-                if (secondaryDateLabel != null && secondaryDateValue != null) ...[
-                  const SizedBox(height: 16),
-                  Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFF0F0F0)),
-                  const SizedBox(height: 14),
-                  DetailActivityRow(
-                    icon: Icons.event_rounded,
-                    label: secondaryDateLabel!,
-                    value: secondaryDateValue!,
-                    color: accent,
                   ),
                 ],
-              ],
+              ),
             ),
           ),
         ],

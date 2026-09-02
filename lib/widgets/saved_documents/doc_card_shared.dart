@@ -1,96 +1,166 @@
 // doc_card_shared.dart
 // lib/widgets/saved_documents/doc_card_shared.dart
 //
-// Part of saved_documents_section.dart — small widgets shared across every
-// card layout: the section header row, the selection-mode check badge, the
-// 3-dot options icon, the green "positive status" dot, the business logo
-// avatar, the full-width logo banner used by CardStyle.logoBanner, and the
-// bold Accepted/Declined decision badge used on quote cards.
+// LOGO HIGHLIGHT / LOGO IMAGE TOGGLES (this pass): DocLogoAvatar and
+// DocLogoBanner both gained two new optional params:
+//   - showHighlight (default true): when false, the colored box-shadow
+//     glow behind the logo (image OR fallback initial/icon) is omitted —
+//     the box/banner renders flat, no shadow.
+//   - showImage (default true): when false, the actual uploaded picture
+//     is never drawn, even if one exists on disk — rendering falls
+//     through to the same fallback initial/icon treatment used when
+//     there's no logo at all.
+// Both are driven by CardDisplayPrefs.showLogoHighlight/showLogoImage
+// (see card_display_prefs.dart) and threaded in by every card file
+// (doc_card_grid.dart, doc_card_list.dart, doc_card_compact.dart).
+// Defaulting to true keeps every other call site (template previews,
+// etc.) unchanged if it doesn't pass them.
 //
-// NO-BACKGROUND LOGO PASS (this update): _DocLogoAvatar and _DocLogoBanner
-// previously wrapped the real logo image in a tinted Container (a soft
-// accent-colored backing) so contain-fit logos wouldn't look like they were
-// floating on nothing. Per feedback, that background reads as clutter — the
-// image itself should just fill/sit centered in the card slot with nothing
-// behind it. Both widgets now render the plain Image.file directly with
-// BoxFit.contain + Alignment.center, no Container/tint/padding wrapper, when
-// a real logo file exists. The colored tint is ONLY still used for the
-// fallback state (no logo file — initials monogram or generic icon), since
-// there's no actual image there and a bare icon/letter on a transparent
-// background would look broken, not clean.
+// SECTION HEADER WRAP FIX (earlier pass): SectionHeader's toggle+count
+// cluster previously sat in a SingleChildScrollView(reverse: true), which
+// starts already scrolled to its right edge — so on a narrow screen where
+// the full cluster (sort + layout + groupBy + displayOptions + count)
+// doesn't fit, the toggles at the START of the row (sort, layout) sat
+// off-screen to the left until the user manually scrolled it into view.
+// That's what was showing up as the icon row looking randomly "cut off"
+// or inconsistently sized between renders/screens — nothing was actually
+// broken layout-wise, it was just scrolled past. Replaced with a Wrap:
+// nothing is ever hidden behind a scroll offset. When everything fits on
+// one line (the common case) it's visually identical to before; when it
+// doesn't, the overflow drops to a second line instead of requiring a
+// scroll gesture the user had no reason to know was needed.
 //
-// DECISION BADGE (this update): added `_decisionBadge(statusLabel)` — a
-// small bold, high-contrast pill only rendered when statusLabel is exactly
-// 'Accepted' or 'Declined' (the two QuoteStatus states callers care about
-// seeing at a glance). Returns SizedBox.shrink() for every other status, so
-// it's a no-op / safe to drop into any card layout without special-casing
-// document type. Solid fill (not the usual soft-tint chip) so it reads
-// clearly even at a glance in a scrolled list.
+// Everything else in this file is unchanged from the previous pass.
 
-part of 'saved_documents_section.dart';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import '../shared_logo_picker.dart';
 
-class _SectionHeader extends StatelessWidget {
+const double kDocChipRadius = 8.0;
+const double kDocChipAlpha = 0.1;
+
+const double kDocCardRadiusLarge = 18.0;  // List / Logo Banner
+const double kDocCardRadiusMedium = 16.0; // Grid
+const double kDocCardRadiusSmall = 10.0;  // Compact Grid / Compact Row
+
+/// Avatar corner radius held at a constant ~22% of its size, so a 68px
+/// List avatar and a 26px Compact Grid avatar look like the same shape
+/// scaled down, not progressively rounder as they shrink.
+double kDocAvatarRadius(double size) => size * 0.22;
+
+/// Soft neutral background a contained (letterboxed) logo sits on, so it
+/// doesn't look like it's floating on a hard white/dark rectangle. Mixed
+/// with the document's own accent at low alpha so it still feels tied to
+/// that document's colour, without competing with the logo itself. This
+/// is the DEFAULT — used only when the client has no color assigned via
+/// ClientColorPrefs (see client_color_prefs.dart).
+Color kDocLogoLetterboxBg(Color accent) => accent.withValues(alpha: 0.05);
+
+/// Same idea, but for a user-chosen client color (client_color_prefs.dart)
+/// instead of the document's accent. Kept at a low, fixed alpha regardless
+/// of how saturated the chosen swatch is, so the letterbox stays a subtle
+/// backdrop rather than competing with the logo sitting on top of it —
+/// and so a logo with its own baked-in solid background (a JPEG, say)
+/// blends into a soft tint of the user's chosen color at the letterbox
+/// margin, rather than sitting inside a full-strength color block.
+Color kDocLogoClientBg(Color clientColor) => clientColor.withValues(alpha: 0.16);
+
+class SectionHeader extends StatelessWidget {
   final String label;
-  final int    count;
-  final Color  accentColor;
+  final int count;
+  final Color accentColor;
   final Widget? sortToggle;
   final Widget? layoutToggle;
+  final Widget? groupByToggle;
   final Widget? displayOptionsToggle;
 
-  const _SectionHeader({
+  const SectionHeader({
+    super.key,
     required this.label,
     required this.count,
     required this.accentColor,
     this.sortToggle,
     this.layoutToggle,
+    this.groupByToggle,
     this.displayOptionsToggle,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Row(
+
+    // LAYOUT (this pass): toggle icons (sort/layout/groupBy/display) sit on
+    // their own row ABOVE the title, right-aligned -- Jesse felt them
+    // sharing a line with the title looked cluttered/out of place. The
+    // document count now sits beside the title instead of at the end of
+    // the toggle row, since it's describing the title ("My Invoices — 3
+    // documents"), not one of the toggle controls.
+    //
+    // ORDER (this pass): layoutToggle now comes FIRST (leftmost in the
+    // right-aligned cluster), ahead of sortToggle — Jesse wanted the
+    // layout filter container to appear first.
+    final toggleIcons = <Widget>[
+      if (layoutToggle != null) ...[layoutToggle!, const SizedBox(width: 8)],
+      if (sortToggle != null) ...[sortToggle!, const SizedBox(width: 8)],
+      if (groupByToggle != null) ...[groupByToggle!, const SizedBox(width: 8)],
+      if (displayOptionsToggle != null) displayOptionsToggle!,
+    ];
+    // Drop the trailing spacer after the last icon, if any were added.
+    if (toggleIcons.isNotEmpty && toggleIcons.last is SizedBox) {
+      toggleIcons.removeLast();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface,
+        if (toggleIcons.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 6,
+              children: toggleIcons,
+            ),
           ),
-        ),
-        const Spacer(),
-        if (sortToggle != null) ...[
-          sortToggle!,
-          const SizedBox(width: 8),
+          const SizedBox(height: 8),
         ],
-        if (layoutToggle != null) ...[
-          layoutToggle!,
-          const SizedBox(width: 8),
-        ],
-        if (displayOptionsToggle != null) ...[
-          displayOptionsToggle!,
-          const SizedBox(width: 10),
-        ],
-        Text(
-          '$count document${count == 1 ? '' : 's'}',
-          style: TextStyle(
-            fontSize: 13,
-            color: cs.onSurface.withValues(alpha: 0.4),
-          ),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$count document${count == 1 ? '' : 's'}',
+              style: TextStyle(
+                fontSize: 13,
+                color: cs.onSurface.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-// Selection badge — small check circle shown top-right of a card while
-// selection mode is active. Shared by all selectable card types.
-class _SelectionBadge extends StatelessWidget {
+// Selection badge -- small check circle shown top-right of a card while
+// selection mode is active. Shared by every card family.
+class SelectionBadge extends StatelessWidget {
   final bool selected;
   final Color accent;
 
-  const _SelectionBadge({required this.selected, required this.accent});
+  const SelectionBadge({super.key, required this.selected, required this.accent});
 
   @override
   Widget build(BuildContext context) {
@@ -108,19 +178,12 @@ class _SelectionBadge extends StatelessWidget {
   }
 }
 
-// 3-dot options icon — shared by all card layouts. Rendered instead of the
-// selection badge when NOT in selection mode (list/grid/compactGrid/
-// compact), or always (kanban, which has no selection mode).
-//
-// `background`/`iconColor` overrides let the Logo Banner list card render
-// this icon as a translucent-white pill on top of an image background,
-// instead of the default subtle-on-surface tint that would be invisible
-// there.
-class _ThreeDotIcon extends StatelessWidget {
+// 3-dot options icon -- shared by every card layout in every card family.
+class ThreeDotIcon extends StatelessWidget {
   final VoidCallback onTap;
   final Color? background;
   final Color? iconColor;
-  const _ThreeDotIcon({required this.onTap, this.background, this.iconColor});
+  const ThreeDotIcon({super.key, required this.onTap, this.background, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -145,25 +208,22 @@ class _ThreeDotIcon extends StatelessWidget {
 }
 
 // Small green dot shown next to a title when the entry's status is "good"
-// (Paid / Accepted / Issued). One-liner, reused inline in every card layout.
-Widget _positiveDot() => Container(
+// (Paid / Accepted / Issued). Reused inline in every card layout.
+Widget positiveStatusDot() => Container(
       width: 7,
       height: 7,
       margin: const EdgeInsets.only(left: 6),
       decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4CAF50)),
     );
 
-// Bold Accepted/Declined pill for quote cards. No-op (SizedBox.shrink) for
-// every status label other than exactly 'Accepted' or 'Declined', so it's
-// safe to drop into any card layout unconditionally — invoices/receipts
-// never carry those two labels so this never renders for them.
-Widget _decisionBadge(String statusLabel, {double fontSize = 11}) {
+// Bold Accepted/Declined pill for quote cards.
+Widget decisionBadge(String statusLabel, {double fontSize = 11}) {
   final isAccepted = statusLabel == 'Accepted';
   final isDeclined = statusLabel == 'Declined';
   if (!isAccepted && !isDeclined) return const SizedBox.shrink();
 
   final color = isAccepted ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
-  final icon  = isAccepted ? Icons.check_circle_rounded : Icons.cancel_rounded;
+  final icon = isAccepted ? Icons.check_circle_rounded : Icons.cancel_rounded;
   final label = isAccepted ? 'ACCEPTED' : 'DECLINED';
 
   return Container(
@@ -192,16 +252,11 @@ Widget _decisionBadge(String statusLabel, {double fontSize = 11}) {
   );
 }
 
-// Business logo avatar. Three-tier fallback:
-//   1. logoPath set AND file still exists on disk  -> the actual logo image,
-//      rendered plain (no background) — BoxFit.contain, centered, nothing
-//      behind it.
-//   2. logoPath missing/stale, businessName present -> colored initial
-//      monogram (tint kept here — there's no image to show plainly).
-//   3. neither available                            -> generic document
-//      icon (tint kept here too, same reasoning).
-class _DocLogoAvatar extends StatelessWidget {
+class DocLogoAvatar extends StatelessWidget {
   final String? logoPath;
+  final Offset logoOffset;
+  final double logoScale;
+  final LogoShape logoShape;
   final String businessName;
   final Color accentColor;
   final double size;
@@ -209,10 +264,24 @@ class _DocLogoAvatar extends StatelessWidget {
   final double? height;
   final double iconSize;
   final double borderRadius;
-  final BoxFit fit;
+  final IconData fallbackIcon;
+  final Color? clientColor;
 
-  const _DocLogoAvatar({
+  /// When false, the colored glow/box-shadow behind the avatar (image OR
+  /// fallback initial/icon) is omitted — renders flat. Defaults to true.
+  final bool showHighlight;
+
+  /// When false, the actual uploaded logo picture is never drawn, even if
+  /// one exists on disk — falls through to the same fallback initial/icon
+  /// treatment used when there's no logo. Defaults to true.
+  final bool showImage;
+
+  const DocLogoAvatar({
+    super.key,
     required this.logoPath,
+    this.logoOffset = Offset.zero,
+    this.logoScale = 1.0,
+    this.logoShape = LogoShape.roundedSquare,
     required this.businessName,
     required this.accentColor,
     required this.size,
@@ -220,33 +289,42 @@ class _DocLogoAvatar extends StatelessWidget {
     this.height,
     this.iconSize = 24,
     this.borderRadius = 12,
-    this.fit = BoxFit.contain,
+    this.fallbackIcon = Icons.description_rounded,
+    this.clientColor,
+    this.showHighlight = true,
+    this.showImage = true,
   });
+
+  bool get _hasLogo => logoPath != null && logoPath!.isNotEmpty && File(logoPath!).existsSync();
 
   @override
   Widget build(BuildContext context) {
     final w = width ?? size;
     final h = height ?? size;
-    final path = logoPath;
-    if (path != null && path.isNotEmpty) {
-      final file = File(path);
-      if (file.existsSync()) {
-        // Plain image, no tint/background container — just sized, clipped
-        // to match the card's corner radius, centered and fully contained.
-        return ClipRRect(
+    final letterboxBg = clientColor != null
+        ? kDocLogoClientBg(clientColor!)
+        : kDocLogoLetterboxBg(accentColor);
+    final shadowColor = (clientColor ?? accentColor).withValues(alpha: 0.28);
+
+    if (_hasLogo && showImage) {
+      return Container(
+        width: w,
+        height: h,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: letterboxBg,
           borderRadius: BorderRadius.circular(borderRadius),
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: Image.file(
-              file,
-              fit: fit,
-              alignment: Alignment.center,
-              errorBuilder: (_, __, ___) => _fallback(w, h),
-            ),
-          ),
-        );
-      }
+          boxShadow: showHighlight
+              ? [BoxShadow(color: shadowColor, blurRadius: 8, offset: const Offset(0, 3))]
+              : null,
+        ),
+        alignment: Alignment.center,
+        padding: EdgeInsets.all(w * 0.08),
+        child: Image.file(
+          File(logoPath!),
+          fit: BoxFit.contain,
+        ),
+      );
     }
     return _fallback(w, h);
   }
@@ -254,12 +332,16 @@ class _DocLogoAvatar extends StatelessWidget {
   Widget _fallback(double w, double h) {
     final trimmedName = businessName.trim();
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : null;
+    final effectiveColor = clientColor ?? accentColor;
     return Container(
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.12),
+        color: effectiveColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(borderRadius),
+        boxShadow: showHighlight
+            ? [BoxShadow(color: effectiveColor.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3))]
+            : null,
       ),
       alignment: Alignment.center,
       child: initial != null
@@ -269,84 +351,104 @@ class _DocLogoAvatar extends StatelessWidget {
               style: TextStyle(
                 fontSize: iconSize * 0.62,
                 fontWeight: FontWeight.w800,
-                color: accentColor,
+                color: effectiveColor,
               ),
             )
-          : Icon(Icons.description_rounded, color: accentColor, size: iconSize),
+          : Icon(fallbackIcon, color: effectiveColor, size: iconSize),
     );
   }
 }
 
-// Full-width logo banner — top band of the List card when
-// CardDisplayPrefs.cardStyle == CardStyle.logoBanner.
-//
-// NO-BACKGROUND PASS: when a real logo file exists, this now renders the
-// plain image (contain, centered) filling the banner height with no tint/
-// gradient behind it — just the image itself against the card's own
-// background. The soft accent gradient is kept ONLY for the fallback state
-// (no logo file), where a bare monogram/icon needs some visual weight
-// behind it to not look like an empty card.
-class _DocLogoBanner extends StatelessWidget {
+class DocLogoBanner extends StatelessWidget {
   final String? logoPath;
+  final Offset logoOffset;
+  final double logoScale;
+  final LogoShape logoShape;
   final String businessName;
   final Color accentColor;
   final double height;
   final double topRadius;
+  final IconData fallbackIcon;
+  final Color? clientColor;
 
-  const _DocLogoBanner({
+  /// When false, omits the colored glow treatment on the fallback banner
+  /// (the gradient itself is the banner's base look either way — this
+  /// only affects whether the fallback's tint gradient renders at full
+  /// strength or is flattened to a neutral surface). Defaults to true.
+  final bool showHighlight;
+
+  /// When false, the actual uploaded logo picture is never drawn, even if
+  /// one exists on disk — falls through to the fallback initial/icon
+  /// banner used when there's no logo. Defaults to true.
+  final bool showImage;
+
+  const DocLogoBanner({
+    super.key,
     required this.logoPath,
+    this.logoOffset = Offset.zero,
+    this.logoScale = 1.0,
+    this.logoShape = LogoShape.roundedSquare,
     required this.businessName,
     required this.accentColor,
     this.height = 120,
     this.topRadius = 16,
+    this.fallbackIcon = Icons.description_rounded,
+    this.clientColor,
+    this.showHighlight = true,
+    this.showImage = true,
   });
+
+  bool get _hasLogo => logoPath != null && logoPath!.isNotEmpty && File(logoPath!).existsSync();
 
   @override
   Widget build(BuildContext context) {
-    final path = logoPath;
-
-    if (path != null && path.isNotEmpty) {
-      final file = File(path);
-      if (file.existsSync()) {
-        return ClipRRect(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-          child: SizedBox(
-            width: double.infinity,
-            height: height,
-            child: Image.file(
-              file,
-              fit: BoxFit.contain,
-              alignment: Alignment.center,
-              errorBuilder: (_, __, ___) => _fallbackBanner(),
-            ),
+    if (_hasLogo && showImage) {
+      final letterboxBg = clientColor != null
+          ? kDocLogoClientBg(clientColor!)
+          : kDocLogoLetterboxBg(accentColor);
+      return ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+        child: Container(
+          width: double.infinity,
+          height: height,
+          color: letterboxBg,
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(vertical: height * 0.12, horizontal: 24),
+          child: Image.file(
+            File(logoPath!),
+            fit: BoxFit.contain,
           ),
-        );
-      }
+        ),
+      );
     }
     return _fallbackBanner();
   }
 
   Widget _fallbackBanner() {
+    final effectiveColor = clientColor ?? accentColor;
     return Container(
       width: double.infinity,
       height: height,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-        gradient: LinearGradient(
-          colors: [
-            accentColor.withValues(alpha: 0.16),
-            accentColor.withValues(alpha: 0.06),
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
+        gradient: showHighlight
+            ? LinearGradient(
+                colors: [
+                  effectiveColor.withValues(alpha: 0.16),
+                  effectiveColor.withValues(alpha: 0.06),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              )
+            : null,
+        color: showHighlight ? null : effectiveColor.withValues(alpha: 0.06),
       ),
-      child: _fallbackContent(),
+      child: _fallbackContent(effectiveColor),
     );
   }
 
-  Widget _fallbackContent() {
+  Widget _fallbackContent(Color effectiveColor) {
     final trimmedName = businessName.trim();
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : null;
     return initial != null
@@ -356,9 +458,9 @@ class _DocLogoBanner extends StatelessWidget {
             style: TextStyle(
               fontSize: 40,
               fontWeight: FontWeight.w800,
-              color: accentColor.withValues(alpha: 0.85),
+              color: effectiveColor.withValues(alpha: 0.85),
             ),
           )
-        : Icon(Icons.description_rounded, color: accentColor.withValues(alpha: 0.85), size: 44);
+        : Icon(fallbackIcon, color: effectiveColor.withValues(alpha: 0.85), size: 44);
   }
 }

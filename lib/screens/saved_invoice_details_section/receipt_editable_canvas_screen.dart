@@ -1,6 +1,15 @@
 // receipt_editable_canvas_screen.dart
 // lib/screens/saved_invoice_details_section/receipt_editable_canvas_screen.dart
 //
+// CRASH SAFETY PASS (this update): _loadStackTrace was captured in
+// _loadData()'s catch block but never read anywhere — it only ever went
+// to debugPrint (console-only). _buildErrorScreen now includes a
+// collapsible "Technical details" section (ExpansionTile) that renders
+// the full stack trace via SelectableText, so a real load failure is
+// actually diagnosable in production instead of the trace being silently
+// discarded. Identical fix applied to invoice_editable_canvas_screen.dart
+// and quote_editable_canvas_screen.dart.
+//
 // Receipt counterpart to InvoiceEditableCanvasScreen — same tap-to-edit
 // pattern, adapted to ReceiptData's shape:
 //   invoiceNumber/dueDate -> receiptNumber/paymentDate (single date, no due)
@@ -31,8 +40,8 @@
 // cancel discards via resetReceiptData() without ever calling
 // saveCurrentReceipt(), so the saved record on disk is untouched.
 //
-// FIX (this pass): TWO fixes on top of the previous pass's guard around
-// firstWhere-with-no-orElse (kept below, unchanged):
+// FIX (earlier pass): TWO fixes on top of the pass before it's guard
+// around firstWhere-with-no-orElse (kept below, unchanged):
 //
 // 1. ROOT CAUSE of the blank-screen crash. loadSavedReceipt() calls
 //    notifyListeners() on ReceiptProvider — calling that synchronously
@@ -115,7 +124,7 @@ class _ReceiptEditableCanvasScreenState
   StackTrace? _loadStackTrace;
   bool _initialized = false;
 
-  // FIX: build() must not touch the controllers below until the deferred
+  // build() must not touch the controllers below until the deferred
   // load in _loadData() has actually run and created them.
   bool _loading = true;
 
@@ -149,7 +158,7 @@ class _ReceiptEditableCanvasScreenState
   @override
   void initState() {
     super.initState();
-    // FIX: defer the provider load until after the first frame finishes
+    // Defer the provider load until after the first frame finishes
     // building, instead of calling it synchronously here.
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
@@ -160,7 +169,7 @@ class _ReceiptEditableCanvasScreenState
       provider.loadSavedReceipt(widget.receiptId);
       final data = provider.currentReceiptData;
 
-      // Guard kept from the previous pass: was firstWhere with no orElse —
+      // Guard kept from an earlier pass: was firstWhere with no orElse —
       // threw with nothing on screen if the id wasn't found. Falls back to
       // a thrown StateError (caught below) so the error screen shows a
       // clear message instead of a blank one.
@@ -214,7 +223,7 @@ class _ReceiptEditableCanvasScreenState
       _loadError = e;
       _loadStackTrace = st;
     }
-    // FIX: flip _loading off (and trigger a rebuild) now that the load
+    // Flip _loading off (and trigger a rebuild) now that the load
     // attempt has finished, whichever way it went.
     if (mounted) setState(() => _loading = false);
   }
@@ -363,7 +372,7 @@ class _ReceiptEditableCanvasScreenState
         ),
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -382,6 +391,37 @@ class _ReceiptEditableCanvasScreenState
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
               ),
+              // Captured in _loadData()'s catch block — previously
+              // discarded after debugPrint. Collapsed by default; expanding
+              // gives a copy-pasteable trace for a bug report. Also
+              // surfaces the specific StateError message from the
+              // savedReceipts lookup guard above when that's the cause.
+              if (_loadStackTrace != null) ...[
+                const SizedBox(height: 12),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text('Technical details',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: SelectableText(
+                          '$_loadStackTrace',
+                          style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -396,7 +436,7 @@ class _ReceiptEditableCanvasScreenState
 
   @override
   Widget build(BuildContext context) {
-    // FIX: while the deferred load hasn't finished yet, show a spinner
+    // While the deferred load hasn't finished yet, show a spinner
     // instead of touching controllers/data that don't exist yet.
     if (_loading) {
       return const Scaffold(
@@ -481,14 +521,13 @@ class _ReceiptEditableCanvasScreenState
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // FIX: same bounded-width fix as the invoice/quote
+                          // Same bounded-width fix as the invoice/quote
                           // canvases — SharedLogoPicker's internal Row uses
                           // Expanded/flex children and needs a finite width
                           // from its parent, which a bare Row child doesn't
-                          // provide.
+                          // provide. Widened from 64 to 110 — 64 overflowed
+                          // by 40px in testing.
                           SizedBox(
-                            // FIX: widened from 64 to 110 — 64 overflowed
-                            // by 40px in testing.
                             width: 110,
                             child: SharedLogoPicker(
                               logoPath: data.businessLogoPath,

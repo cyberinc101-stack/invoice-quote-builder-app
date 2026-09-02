@@ -1,8 +1,8 @@
-﻿// executive_cv_logic_data.dart
-// lib/invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart
+// executive_invoice_logic_data.dart
+// lib/document_layout_templates/01_executive/executive_invoice_logic_data.dart
 //
 // REWRITE: previously measured content height off-screen and applied a
-// single Transform.scale to force everything onto one page â€” real
+// single Transform.scale to force everything onto one page — real
 // overflow just clipped. This version delegates entirely to A4Paginator:
 // line items are handed over as a flat widget list, and the paginator
 // measures real rendered heights and splits them across as many A4 pages
@@ -10,13 +10,13 @@
 // paginates the exported PDF.
 //
 // Two public entry points, same underlying document:
-//   ExecutiveInvoicePreview â€” read-only (edit bundle is null)
-//   ExecutiveInvoiceEditor  â€” WYSIWYG editable (edit bundle required)
+//   ExecutiveInvoicePreview — read-only (edit bundle is null)
+//   ExecutiveInvoiceEditor  — WYSIWYG editable (edit bundle required)
 
 import 'package:flutter/material.dart';
 import '../../../models/invoice_data.dart';
 import '../pagination/a4_paginator.dart';
-import 'executive_page_stationary_layout.dart';
+import 'executive_invoice_stationary_layout.dart';
 
 class ExecutiveInvoicePreview extends StatelessWidget {
   final InvoiceData data;

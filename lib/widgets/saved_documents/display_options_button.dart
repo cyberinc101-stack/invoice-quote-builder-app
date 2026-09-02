@@ -8,7 +8,20 @@
 // updates every card family immediately (they all watch the same
 // provider instance) and persists across app restarts.
 //
-// CARD STYLE PASS (this update): added a "Card Style" segmented control
+// LOGO HIGHLIGHT / LOGO IMAGE SWITCHES (this update): added two switches
+// directly under "Business Logo" — "Logo Highlight" (bound to
+// showLogoHighlight/setShowLogoHighlight) and "Show Logo Image" (bound to
+// showLogoImage/setShowLogoImage). Both only make sense once a logo is
+// showing at all, so they're nested/greyed out based on prefs.showLogo
+// (disabled + dimmed rather than hidden entirely, so the option stays
+// visible/discoverable even before Business Logo is turned on).
+//
+// BUSINESS NAME TOGGLE (earlier): added a "Business Name" switch to
+// the field list, bound to CardDisplayPrefs.showBusinessName/
+// setShowBusinessName — controls the small business-name label doc_cards.
+// dart renders under the logo avatar on List/Grid layouts.
+//
+// CARD STYLE PASS (earlier): added a "Card Style" segmented control
 // (Standard / Logo Banner) above the existing field switches, bound to
 // CardDisplayPrefs.cardStyle/setCardStyle. This is deliberately separate
 // from the switchTile list below it — it changes the List card's overall
@@ -66,17 +79,25 @@ class _DisplayOptionsSheet extends StatelessWidget {
       required IconData icon,
       required bool value,
       required ValueChanged<bool> onChanged,
+      bool enabled = true,
+      bool indented = false,
     }) {
-      return SwitchListTile(
-        value: value,
-        onChanged: onChanged,
-        secondary: Icon(icon, color: cs.primary),
-        title: Text(
-          label,
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface),
+      return Opacity(
+        opacity: enabled ? 1.0 : 0.4,
+        child: Padding(
+          padding: EdgeInsets.only(left: indented ? 16 : 0),
+          child: SwitchListTile(
+            value: value,
+            onChanged: enabled ? onChanged : null,
+            secondary: Icon(icon, color: cs.primary),
+            title: Text(
+              label,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface),
+            ),
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: cs.primary,
+          ),
         ),
-        contentPadding: EdgeInsets.zero,
-        activeThumbColor: cs.primary,
       );
     }
 
@@ -211,6 +232,28 @@ class _DisplayOptionsSheet extends StatelessWidget {
                   icon: Icons.image_rounded,
                   value: prefs.showLogo,
                   onChanged: prefs.setShowLogo,
+                ),
+                switchTile(
+                  label: 'Show Logo Image',
+                  icon: Icons.photo_rounded,
+                  value: prefs.showLogoImage,
+                  onChanged: prefs.setShowLogoImage,
+                  enabled: prefs.showLogo,
+                  indented: true,
+                ),
+                switchTile(
+                  label: 'Logo Highlight',
+                  icon: Icons.blur_on_rounded,
+                  value: prefs.showLogoHighlight,
+                  onChanged: prefs.setShowLogoHighlight,
+                  enabled: prefs.showLogo,
+                  indented: true,
+                ),
+                switchTile(
+                  label: 'Document Type Badge',
+                  icon: Icons.storefront_rounded,
+                  value: prefs.showBusinessName,
+                  onChanged: prefs.setShowBusinessName,
                 ),
                 switchTile(
                   label: 'Amount',

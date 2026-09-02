@@ -1,4 +1,4 @@
-// lib/invoice_layout_templates/pagination/scaled_page_stack.dart
+// lib/document_layout_templates/pagination/scaled_page_stack.dart
 //
 // Replaces the old Transform.scale + fixed-height SizedBox pattern, which
 // assumed a single page. Since documents can now span N A4 pages, height

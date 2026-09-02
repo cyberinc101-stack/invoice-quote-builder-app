@@ -1,27 +1,31 @@
 // lib/services/quote_pdf_service.dart
 //
-// Generates and exports quote PDFs. Mirrors InvoicePdfService exactly,
-// built directly against the real QuoteData/SavedQuote model (businessName,
-// clientName, lineItems, subtotal/discountAmount/taxAmount/grandTotal
-// getters, QuoteColor scheme).
+// Generates and exports quote PDFs.
 //
-// FIX (this pass): generateAndDownloadPDF / generateAndSharePDF /
-// generatePdfBytes now accept an optional [layoutTemplateId] parameter,
-// matching InvoicePdfService's signature exactly (previously missing —
-// caused a "No named parameter" build error at every call site that
-// passed it). _buildPdf is now a small dispatcher, mirroring
-// InvoicePdfService's _buildPdf: the original single-layout body is
-// renamed to _buildExecutivePdf and is the default/only case for now.
-// Adding a second quote layout later is: write _buildXxxPdf() + add a
-// case to the switch below — identical pattern to InvoicePdfService.
+// LOGO PARITY PASS (this update): mirrors invoice_pdf_service.dart's own
+// LOGO PARITY PASS exactly — the Executive builder's logo was hardcoded
+// to pw.ClipOval on a solid white background regardless of what LogoShape
+// the user actually picked via the Logo Sizer. Now clips to the real
+// shape (circle/square/roundedSquare, mirroring LogoShape.radiusFor() on
+// the Flutter side) and sits on a very light neutral background with
+// BoxFit.contain, matching pdf_templates.dart's _logoWidget (used by
+// styles 2-10 for quotes too, via buildStyledDocument) and the
+// Flutter-side DocLogoAvatar's own contain-fit treatment.
 //
-// FOLLOW UP (earlier pass): generateAndSharePDF gained an optional
-// [shareText] parameter — pre-filled message body used by the Alerts
-// screen's "Follow Up" action. Omitted (null) for every other caller.
+// CURRENCY DISPLAY PASS (earlier): _fmtMoney(d, v) uses QuoteData's own
+// currency/currencySymbol/currencyDisplayMode fields directly — mirrors
+// DocTemplateAdapter.fmtMoney() (Flutter preview side) and
+// PdfDocData.fmtMoney() (styled-template path), so exported PDFs respect
+// whatever the user actually typed for currency symbol/format.
 //
-// NEW (earlier pass): generatePdfBytes() — same purpose as the identically-named
-// method added to InvoicePdfService: raw bytes for FolderDownloadService's
-// ZIP bundling, no file written.
+// REWRITE: built directly against the real QuoteData model (flat fields:
+// businessName, businessEmail, clientName, lineItems, etc.), same as
+// invoice_pdf_service.dart's own rewrite — see that file's header comment
+// for the full rationale, which applies identically here.
+//
+// Layout dispatcher: layoutTemplateId selects the visual style (1 =
+// Executive, built directly below; 2-10 route through
+// pdf_templates.dart's buildStyledDocument, shared with invoice/receipt).
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -32,12 +36,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/quote_data.dart';
+import 'pdf_doc_adapter.dart';
+import 'pdf_templates.dart' as styled;
 
 class QuotePdfService {
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  /// [layoutTemplateId] selects the visual layout (1 = Executive, the only
-  /// one built so far). Null or unrecognized falls back to Executive.
   Future<String> generateAndDownloadPDF(
     SavedQuote quote, {
     int? layoutTemplateId,
@@ -50,9 +54,6 @@ class QuotePdfService {
     return file.path;
   }
 
-  /// [shareText] is an optional pre-filled message body (used by the
-  /// Alerts screen's "Follow Up" action) — omitted entirely for normal
-  /// shares, unchanged from before this pass.
   Future<void> generateAndSharePDF(
     SavedQuote quote, {
     int? layoutTemplateId,
@@ -70,7 +71,6 @@ class QuotePdfService {
     );
   }
 
-  /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService.
   Future<Uint8List> generatePdfBytes(
     SavedQuote quote, {
     int? layoutTemplateId,
@@ -79,18 +79,16 @@ class QuotePdfService {
   }
 
   // ── Layout dispatcher ───────────────────────────────────────────────────────
-  //
-  // Add a case here + a new _buildXxxPdf() method for each future layout.
-  // Mirrors InvoicePdfService._buildPdf exactly.
+
   Future<Uint8List> _buildPdf(
     SavedQuote quote, {
     int? layoutTemplateId,
   }) async {
-    switch (layoutTemplateId) {
-      case 1:
-      default:
-        return _buildExecutivePdf(quote);
-    }
+    final id = layoutTemplateId ?? 1;
+    if (id == 1) return _buildExecutivePdf(quote);
+    final data = await quoteToPdfData(quote.data);
+    final bytes = await styled.buildStyledDocument(data, id);
+    return Uint8List.fromList(bytes);
   }
 
   // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
@@ -99,7 +97,6 @@ class QuotePdfService {
     final pdf   = pw.Document();
     final d     = quote.data;
     final color = _pdfColor(d.colorScheme);
-    final sym   = _currencySymbol(d.currency);
 
     final subtotal       = d.subtotal;
     final discountAmount = d.discountAmount;
@@ -136,14 +133,7 @@ class QuotePdfService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 if (logoImage != null) ...[
-                  pw.ClipOval(
-                    child: pw.Container(
-                      width: 64,
-                      height: 64,
-                      color: PdfColors.white,
-                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                    ),
-                  ),
+                  _executiveLogoWidget(logoImage, d.businessLogoShape),
                   pw.SizedBox(width: 16),
                 ],
                 pw.Expanded(
@@ -200,7 +190,7 @@ class QuotePdfService {
           ),
           pw.SizedBox(height: 20),
 
-          // ── Bill To ────────────────────────────────────────────────────
+          // ── Prepared For ──────────────────────────────────────────────
           if (hasCustomer)
             pw.Container(
               padding: const pw.EdgeInsets.all(14),
@@ -266,8 +256,8 @@ class QuotePdfService {
                           : item.quantity.toStringAsFixed(2),
                       align: pw.TextAlign.center,
                     ),
-                    _td('$sym${_fmt(item.unitPrice)}', align: pw.TextAlign.right),
-                    _td('$sym${_fmt(item.total)}', align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.unitPrice), align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.total), align: pw.TextAlign.right),
                   ],
                 ),
               ),
@@ -282,21 +272,21 @@ class QuotePdfService {
               width: 220,
               child: pw.Column(
                 children: [
-                  _totalRow('Subtotal', '$sym${_fmt(subtotal)}'),
+                  _totalRow('Subtotal', _fmtMoney(d, subtotal)),
                   if (d.taxRate > 0)
                     _totalRow('Tax (${_fmtPct(d.taxRate)}%)',
-                        '+$sym${_fmt(taxAmount)}'),
+                        '+${_fmtMoney(d, taxAmount)}'),
                   if (d.discountRate > 0)
                     _totalRow('Discount (${_fmtPct(d.discountRate)}%)',
-                        '-$sym${_fmt(discountAmount)}'),
+                        '-${_fmtMoney(d, discountAmount)}'),
                   pw.Divider(color: PdfColors.grey400),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text('ESTIMATED TOTAL',
+                      pw.Text('TOTAL',
                           style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold, fontSize: 13)),
-                      pw.Text('$sym${_fmt(grandTotal)}',
+                              fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                      pw.Text(_fmtMoney(d, grandTotal),
                           style: pw.TextStyle(
                               fontWeight: pw.FontWeight.bold,
                               fontSize: 14,
@@ -341,17 +331,50 @@ class QuotePdfService {
     }
   }
 
-  String _currencySymbol(String code) {
-    switch (code.toUpperCase()) {
-      case 'USD': return '\$';
-      case 'EUR': return '€';
-      case 'GBP': return '£';
-      case 'NZD': return 'NZ\$';
-      case 'AUD': return 'A\$';
-      case 'CAD': return 'C\$';
-      case 'JPY': return '¥';
-      case 'INR': return '₹';
-      default:    return '$code ';
+  /// Renders the Executive header logo respecting the document's real
+  /// LogoShape instead of a hardcoded ClipOval — mirrors
+  /// invoice_pdf_service.dart's identical helper exactly.
+  static pw.Widget _executiveLogoWidget(pw.MemoryImage logoImage, String logoShape, {double size = 64}) {
+    final radius = switch (logoShape) {
+      'circle' => size / 2,
+      'square' => 0.0,
+      _ => size * 0.22, // roundedSquare + fallback
+    };
+    return pw.ClipRRect(
+      horizontalRadius: radius,
+      verticalRadius: radius,
+      child: pw.Container(
+        width: size,
+        height: size,
+        color: PdfColors.grey50,
+        alignment: pw.Alignment.center,
+        padding: pw.EdgeInsets.all(size * 0.08),
+        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+      ),
+    );
+  }
+
+  /// Formats money using QuoteData's own currency/currencySymbol/
+  /// currencyDisplayMode fields — mirrors invoice_pdf_service.dart's
+  /// identical helper exactly.
+  static String _fmtMoney(QuoteData d, double v) {
+    final amount = _fmt(v);
+    final hasSymbol = d.currencySymbol.trim().isNotEmpty;
+    final hasCode = d.currency.trim().isNotEmpty;
+
+    switch (d.currencyDisplayMode) {
+      case 'symbol':
+        if (hasSymbol) return '${d.currencySymbol}$amount';
+        return hasCode ? '${d.currency} $amount' : amount;
+      case 'both':
+        if (hasSymbol && hasCode) return '${d.currency} ${d.currencySymbol}$amount';
+        if (hasSymbol) return '${d.currencySymbol}$amount';
+        if (hasCode) return '${d.currency} $amount';
+        return amount;
+      case 'code':
+      default:
+        if (hasCode) return '${d.currency} $amount';
+        return hasSymbol ? '${d.currencySymbol}$amount' : amount;
     }
   }
 

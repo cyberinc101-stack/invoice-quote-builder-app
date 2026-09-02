@@ -1,18 +1,38 @@
-﻿// lib/models/client_info.dart
+// lib/models/client_info.dart
+//
+// LOGO FALLBACK MARK PASS (this update): BusinessInfo gains
+// logoShowInitial (bool, default true) and logoInitialLetter (String,
+// default '') — mirrors ReceiptTemplate's and QuoteTemplate's own fields
+// of the same name/purpose. Needed so step_templates.dart's
+// SharedLogoPicker can wire up the "show letter mark when there's no
+// logo" switch + optional letter override, matching what Quote's and
+// (after this pass) Receipt's template sheets already do. Defaults
+// preserve existing render behaviour for every persisted invoice
+// template, no migration needed.
 
 import 'invoice_data.dart'; // for InvoiceColor
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // ClientInfo  (aliased as Customer via invoice_models.dart)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 //
 // UPDATED (this pass): added logoOffsetDx/Dy, logoScale, logoShape so the
 // customer logo can be repositioned/zoomed/shaped via SharedLogoPicker
 // (lib/widgets/shared_logo_picker.dart), matching BusinessInfo below and
 // the receipt/quote business profiles. logoShape is stored as a plain
 // String ('circle' | 'square' | 'roundedSquare') so this model file has no
-// dependency on the widgets layer â€” UI code converts via
+// dependency on the widgets layer — UI code converts via
 // logoShapeFromString()/.storageName.
+//
+// CURRENCY DISPLAY PASS (this update): added currencySymbol and
+// currencyDisplayMode alongside the existing defaultCurrency (the ISO-ish
+// code, e.g. "USD"). This is deliberately NOT a fixed dropdown of
+// currencies — defaultCurrency and currencySymbol are both free text, so
+// any currency in the world can be entered, not just ones on a hardcoded
+// list. currencyDisplayMode controls how the two combine when money is
+// rendered: 'code' (USD 200.00), 'symbol' ($200.00), or 'both'
+// (USD $200.00). Defaults to 'code' so existing saved customers render
+// exactly as they did before this field existed.
 
 class ClientInfo {
   final String id;
@@ -28,6 +48,8 @@ class ClientInfo {
 
   double  defaultTaxRate;
   String  defaultCurrency;
+  String  currencySymbol;
+  String  currencyDisplayMode; // 'code' | 'symbol' | 'both'
 
   ClientInfo({
     String? id,
@@ -41,6 +63,8 @@ class ClientInfo {
     this.logoScale    = 1.0,
     this.logoShape    = 'circle',
     this.defaultCurrency = 'USD',
+    this.currencySymbol      = '',
+    this.currencyDisplayMode = 'code',
     this.defaultTaxRate    = 0.0,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -56,6 +80,8 @@ class ClientInfo {
         'logoScale':    logoScale,
         'logoShape':    logoShape,
         'defaultCurrency': defaultCurrency,
+        'currencySymbol':      currencySymbol,
+        'currencyDisplayMode': currencyDisplayMode,
         'defaultTaxRate':  defaultTaxRate,
       };
 
@@ -71,17 +97,22 @@ class ClientInfo {
         logoScale:    (j['logoScale'] as num?)?.toDouble() ?? 1.0,
         logoShape:    j['logoShape'] as String? ?? 'circle',
         defaultCurrency: j['defaultCurrency'] as String? ?? 'USD',
+        currencySymbol:      j['currencySymbol'] as String? ?? '',
+        currencyDisplayMode: j['currencyDisplayMode'] as String? ?? 'code',
         defaultTaxRate:  (j['defaultTaxRate'] as num?)?.toDouble() ?? 0.0,
       );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // BusinessInfo
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 //
-// UPDATED (this pass): same addition as ClientInfo above â€” logoOffsetDx/Dy,
-// logoScale, logoShape â€” so the business logo in the Template step gets the
+// UPDATED (this pass): same addition as ClientInfo above — logoOffsetDx/Dy,
+// logoScale, logoShape — so the business logo in the Template step gets the
 // same reposition/zoom/shape editor via SharedLogoPicker.
+//
+// LOGO FALLBACK MARK PASS (this update): added logoShowInitial/
+// logoInitialLetter — see file header note above.
 
 class BusinessInfo {
   String  name;
@@ -96,6 +127,8 @@ class BusinessInfo {
   double  logoOffsetDy;
   double  logoScale;
   String  logoShape;
+  bool    logoShowInitial;
+  String  logoInitialLetter;
 
   // Sender / contact person fields
   String? senderName;
@@ -118,6 +151,8 @@ class BusinessInfo {
     this.logoOffsetDy   = 0.0,
     this.logoScale      = 1.0,
     this.logoShape      = 'circle',
+    this.logoShowInitial   = true,
+    this.logoInitialLetter = '',
     this.senderName,
     this.senderEmail,
     this.senderPhone,
@@ -139,6 +174,8 @@ class BusinessInfo {
         'logoOffsetDy':   logoOffsetDy,
         'logoScale':      logoScale,
         'logoShape':      logoShape,
+        'logoShowInitial':   logoShowInitial,
+        'logoInitialLetter': logoInitialLetter,
         'senderName':     senderName,
         'senderEmail':    senderEmail,
         'senderPhone':    senderPhone,
@@ -160,6 +197,8 @@ class BusinessInfo {
         logoOffsetDy:   (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
         logoScale:      (j['logoScale'] as num?)?.toDouble() ?? 1.0,
         logoShape:      j['logoShape'] as String? ?? 'circle',
+        logoShowInitial:   j['logoShowInitial'] as bool? ?? true,
+        logoInitialLetter: j['logoInitialLetter'] as String? ?? '',
         senderName:     j['senderName']     as String?,
         senderEmail:    j['senderEmail']    as String?,
         senderPhone:    j['senderPhone']    as String?,
@@ -169,9 +208,9 @@ class BusinessInfo {
       );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // InvoiceTemplate
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 
 class InvoiceTemplate {
   final String      id;
@@ -180,12 +219,22 @@ class InvoiceTemplate {
   String            currency;
   Map<String, bool> enabledFields;
 
+  // THANK YOU MESSAGE PASS: the message text itself now lives on the
+  // template (previously only a "Thank You Message" toggle existed on
+  // the Customise step's field-visibility list, with no field anywhere
+  // to type what it says). Defaults to the same copy InvoiceData already
+  // used implicitly. Not yet wired into InvoiceData.thankYouMessage on
+  // template selection — UI/model plumbing only for now, application
+  // logic to follow in a later pass.
+  String thankYouMessage;
+
   InvoiceTemplate({
     required this.id,
     required this.name,
     required this.businessInfo,
     this.currency      = 'USD',
     Map<String, bool>? enabledFields,
+    this.thankYouMessage = 'Thank you for your business!',
   }) : enabledFields = enabledFields ?? {};
 
   Map<String, dynamic> toJson() => {
@@ -194,6 +243,7 @@ class InvoiceTemplate {
         'businessInfo':  businessInfo.toJson(),
         'currency':      currency,
         'enabledFields': enabledFields,
+        'thankYouMessage': thankYouMessage,
       };
 
   factory InvoiceTemplate.fromJson(Map<String, dynamic> j) => InvoiceTemplate(
@@ -204,12 +254,13 @@ class InvoiceTemplate {
         currency: j['currency'] as String? ?? 'USD',
         enabledFields: (j['enabledFields'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, v as bool? ?? true)),
+        thankYouMessage: j['thankYouMessage'] as String? ?? 'Thank you for your business!',
       );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // Invoice  (the generated invoice document)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 
 class Invoice {
   final String      id;
@@ -219,7 +270,7 @@ class Invoice {
   DateTime          dueDate;
   BusinessInfo      businessInfo;
   ClientInfo        customer;
-  List<dynamic>     items; // List<LineItem> â€” avoid circular import by using dynamic
+  List<dynamic>     items; // List<LineItem> — avoid circular import by using dynamic
   double            taxRate;
   double            discountRate;
   String            notes;
@@ -268,50 +319,61 @@ class Invoice {
       };
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // CurrencyHelper
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Kept as a suggestions/quick-pick list only — NOT a hardcoded validation
+// list. getSymbol() is used as a convenience default when a user picks a
+// well-known code from getAllCurrencies(), but currencySymbol on
+// ClientInfo/InvoiceData/QuoteData/ReceiptData is always free text, so any
+// currency not in this list still works fully — the user just types the
+// symbol themselves instead of getting it auto-filled.
 
 class CurrencyHelper {
   static const _currencies = <Map<String, String>>[
     {'code': 'USD', 'symbol': '\$',   'name': 'US Dollar'},
-    {'code': 'EUR', 'symbol': 'â‚¬',   'name': 'Euro'},
-    {'code': 'GBP', 'symbol': 'Â£',   'name': 'British Pound'},
+    {'code': 'EUR', 'symbol': '€',   'name': 'Euro'},
+    {'code': 'GBP', 'symbol': '£',   'name': 'British Pound'},
     {'code': 'AUD', 'symbol': 'A\$',  'name': 'Australian Dollar'},
     {'code': 'CAD', 'symbol': 'C\$',  'name': 'Canadian Dollar'},
     {'code': 'CHF', 'symbol': 'Fr',   'name': 'Swiss Franc'},
-    {'code': 'JPY', 'symbol': 'Â¥',   'name': 'Japanese Yen'},
-    {'code': 'CNY', 'symbol': 'Â¥',   'name': 'Chinese Yuan'},
+    {'code': 'JPY', 'symbol': '¥',   'name': 'Japanese Yen'},
+    {'code': 'CNY', 'symbol': '¥',   'name': 'Chinese Yuan'},
     {'code': 'NZD', 'symbol': 'NZ\$', 'name': 'New Zealand Dollar'},
     {'code': 'SGD', 'symbol': 'S\$',  'name': 'Singapore Dollar'},
     {'code': 'HKD', 'symbol': 'HK\$', 'name': 'Hong Kong Dollar'},
     {'code': 'MYR', 'symbol': 'RM',   'name': 'Malaysian Ringgit'},
-    {'code': 'INR', 'symbol': 'â‚¹',   'name': 'Indian Rupee'},
+    {'code': 'INR', 'symbol': '₹',   'name': 'Indian Rupee'},
     {'code': 'IDR', 'symbol': 'Rp',   'name': 'Indonesian Rupiah'},
-    {'code': 'THB', 'symbol': 'à¸¿',   'name': 'Thai Baht'},
+    {'code': 'THB', 'symbol': '฿',   'name': 'Thai Baht'},
     {'code': 'BRL', 'symbol': 'R\$',  'name': 'Brazilian Real'},
     {'code': 'MXN', 'symbol': 'MX\$', 'name': 'Mexican Peso'},
     {'code': 'ZAR', 'symbol': 'R',    'name': 'South African Rand'},
-    {'code': 'AED', 'symbol': 'Ø¯.Ø¥', 'name': 'UAE Dirham'},
-    {'code': 'SAR', 'symbol': 'Ã¯Â·Â¼',   'name': 'Saudi Riyal'},
+    {'code': 'AED', 'symbol': 'د.إ', 'name': 'UAE Dirham'},
+    {'code': 'SAR', 'symbol': 'ر.س',   'name': 'Saudi Riyal'},
     {'code': 'SEK', 'symbol': 'kr',   'name': 'Swedish Krona'},
     {'code': 'NOK', 'symbol': 'kr',   'name': 'Norwegian Krone'},
     {'code': 'DKK', 'symbol': 'kr',   'name': 'Danish Krone'},
-    {'code': 'PLN', 'symbol': 'zÅ‚',   'name': 'Polish Zloty'},
+    {'code': 'PLN', 'symbol': 'zł',   'name': 'Polish Zloty'},
   ];
 
   static List<Map<String, String>> getAllCurrencies() => _currencies;
 
+  /// Best-effort convenience lookup for auto-filling the symbol field when
+  /// a user picks a well-known code — returns '' (not the code) when
+  /// unknown, so callers can tell "not found" apart from "found, no
+  /// symbol" and leave the field blank rather than defaulting to the code.
   static String getSymbol(String code) =>
       _currencies.firstWhere(
-        (c) => c['code'] == code,
-        orElse: () => {'symbol': code},
+        (c) => c['code']?.toUpperCase() == code.toUpperCase(),
+        orElse: () => const {'symbol': ''},
       )['symbol']!;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 // Extension kept for any code that calls InvoiceColor.allSchemes
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────
 
 extension InvoiceColorSchemeExtension on InvoiceColor {
   static List<InvoiceColor> get allSchemes => InvoiceColor.values;

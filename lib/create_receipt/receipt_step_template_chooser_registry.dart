@@ -6,7 +6,7 @@
 // invoice_step_template_chooser_registry.dart / quote_step_template_chooser_registry.dart.
 
 import 'package:flutter/material.dart';
-import '../receipt_layout_templates/01_executive_receipt_layout/executive_receipt_stationary_layout.dart'
+import '../document_layout_templates/01_executive/executive_receipt_stationary_layout.dart'
     show kPageW, kPageH;
 import 'receipt_template_chooser_01/preview_registry.dart';
 

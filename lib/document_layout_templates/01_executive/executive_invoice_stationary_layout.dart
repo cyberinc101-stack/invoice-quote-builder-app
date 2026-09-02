@@ -1,7 +1,28 @@
-// executive_page_stationary_layout.dart
-// lib/invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
+// executive_invoice_stationary_layout.dart
+// lib/document_layout_templates/01_executive/executive_invoice_stationary_layout.dart
 //
-// LOGO SIZER PASS (this update): _Logo now renders through
+// TEMPLATE FIELD VISIBILITY FIX (this update): every field that has a
+// matching toggle in step_templates.dart's "Invoice Fields"/"Customer
+// Fields" sheet is now gated behind data.enabledFields[key] (via the new
+// _on() helper below) — businessLogo, businessName, businessEmail,
+// businessPhone, businessAddress, invoiceNumber, date, dueDate,
+// customerName/Email/Phone/Address, tax, discount, notes,
+// thankYouMessage. Previously these toggles were saved on the template
+// but InvoiceData had no enabledFields field at all, so every one of
+// them rendered unconditionally regardless of what the user picked.
+// Missing keys default to true (`?? true`), so invoices with no
+// enabledFields set (no template selected, or persisted before this
+// field existed) render exactly as before.
+//
+// NOTE: this template has no barcode field at all (the "Barcode" toggle
+// in the template sheet has nothing to gate here) — that's a separate,
+// pre-existing gap, not something this pass touches. businessWebsite,
+// businessTaxId, businessGst, and the Sender/Contact Person fields are
+// also not rendered by this layout at all, so their toggles have nothing
+// to gate here either — they'd need their own layout support before a
+// toggle could do anything.
+//
+// LOGO SIZER PASS (earlier): _Logo now renders through
 // SharedLogoThumbnail instead of a plain centred Image.file cover-fit, so
 // the businessLogoOffsetDx/Dy/Scale/Shape values saved via the Customise
 // step's logo sizer (SharedLogoPicker) actually take visual effect here —
@@ -81,6 +102,12 @@ String fmtMoney(String currency, double v) {
 
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
+
+// TEMPLATE FIELD VISIBILITY FIX: single read helper for
+// data.enabledFields — missing keys default to true (shown), so every
+// call site here stays correct for invoices saved before this field
+// existed.
+bool _on(InvoiceData d, String key) => d.enabledFields[key] ?? true;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InvoiceEditBundle — every controller + callback the editable canvas needs.
@@ -200,8 +227,12 @@ Widget buildContinuationHeader({
         children: [
           Text(data.businessName.isEmpty ? 'Your Business' : data.businessName,
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kGrey, fontFamily: ff)),
-          Text('INVOICE #${data.invoiceNumber.isEmpty ? '—' : data.invoiceNumber} (continued)',
-              style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: ff)),
+          Text(
+            _on(data, 'invoiceNumber')
+                ? 'INVOICE #${data.invoiceNumber.isEmpty ? '—' : data.invoiceNumber} (continued)'
+                : 'INVOICE (continued)',
+            style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: ff),
+          ),
         ],
       ),
       const SizedBox(height: 16),
@@ -217,69 +248,90 @@ class _HeaderIdentity extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final editable = edit != null;
+    final showLogo = _on(data, 'businessLogo');
+    final showBusinessName = _on(data, 'businessName');
+    final showBusinessAddress = _on(data, 'businessAddress');
+    final showBusinessEmail = _on(data, 'businessEmail');
+    final showBusinessPhone = _on(data, 'businessPhone');
+    final showInvoiceNumber = _on(data, 'invoiceNumber');
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        editable
-            ? SizedBox(
-                width: data.businessLogoDisplaySize,
-                height: data.businessLogoDisplaySize,
-                child: SharedLogoPicker(
-                  logoPath: data.businessLogoPath,
-                  logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
-                  logoScale: data.businessLogoScale,
-                  logoShape: logoShapeFromString(data.businessLogoShape),
-                  accent: accent,
-                  compact: true,
-                  compactBoxSize: data.businessLogoDisplaySize,
-                  onChanged: (path, offset, scale, shape) => edit!.onLogoChanged(path),
-                ),
-              )
-            : _Logo(data: data, accent: accent),
-        const SizedBox(width: 14),
+        if (showLogo) ...[
+          editable
+              ? SizedBox(
+                  width: data.businessLogoDisplaySize,
+                  height: data.businessLogoDisplaySize,
+                  child: SharedLogoPicker(
+                    logoPath: data.businessLogoPath,
+                    logoOffset: Offset(data.businessLogoOffsetDx, data.businessLogoOffsetDy),
+                    logoScale: data.businessLogoScale,
+                    logoShape: logoShapeFromString(data.businessLogoShape),
+                    accent: accent,
+                    compact: true,
+                    compactBoxSize: data.businessLogoDisplaySize,
+                    onChanged: (path, offset, scale, shape) => edit!.onLogoChanged(path),
+                  ),
+                )
+              : _Logo(data: data, accent: accent),
+          const SizedBox(width: 14),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              DocField(
-                value: data.businessName,
-                editable: editable,
-                controller: edit?.businessNameCtrl,
-                onChanged: edit?.onBusinessNameChanged,
-                hint: 'Your Business',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: kInk, fontFamily: ff),
-              ),
-              const SizedBox(height: 4),
-              DocField(
-                value: data.businessAddress,
-                editable: editable,
-                controller: edit?.businessAddressCtrl,
-                onChanged: edit?.onBusinessAddressChanged,
-                hint: 'Business address',
-                style: TextStyle(fontSize: 9, color: kGrey, height: 1.4, fontFamily: ff),
-              ),
+              if (showBusinessName) ...[
+                DocField(
+                  value: data.businessName,
+                  editable: editable,
+                  controller: edit?.businessNameCtrl,
+                  onChanged: edit?.onBusinessNameChanged,
+                  hint: 'Your Business',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: kInk, fontFamily: ff),
+                ),
+                const SizedBox(height: 4),
+              ],
+              if (showBusinessAddress)
+                DocField(
+                  value: data.businessAddress,
+                  editable: editable,
+                  controller: edit?.businessAddressCtrl,
+                  onChanged: edit?.onBusinessAddressChanged,
+                  hint: 'Business address',
+                  style: TextStyle(fontSize: 9, color: kGrey, height: 1.4, fontFamily: ff),
+                ),
               if (editable) ...[
-                const SizedBox(height: 2),
-                DocField(
-                  value: data.businessEmail,
-                  editable: true,
-                  controller: edit!.businessEmailCtrl,
-                  onChanged: edit!.onBusinessEmailChanged,
-                  hint: 'Business email',
+                if (showBusinessEmail) ...[
+                  const SizedBox(height: 2),
+                  DocField(
+                    value: data.businessEmail,
+                    editable: true,
+                    controller: edit!.businessEmailCtrl,
+                    onChanged: edit!.onBusinessEmailChanged,
+                    hint: 'Business email',
+                    style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff),
+                  ),
+                ],
+                if (showBusinessPhone)
+                  DocField(
+                    value: data.businessPhone,
+                    editable: true,
+                    controller: edit!.businessPhoneCtrl,
+                    onChanged: edit!.onBusinessPhoneChanged,
+                    hint: 'Business phone',
+                    style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff),
+                  ),
+              ] else if ((showBusinessEmail && data.businessEmail.isNotEmpty) ||
+                  (showBusinessPhone && data.businessPhone.isNotEmpty))
+                Text(
+                  [
+                    if (showBusinessEmail) data.businessEmail,
+                    if (showBusinessPhone) data.businessPhone,
+                  ].where((s) => s.isNotEmpty).join('   ·   '),
                   style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff),
                 ),
-                DocField(
-                  value: data.businessPhone,
-                  editable: true,
-                  controller: edit!.businessPhoneCtrl,
-                  onChanged: edit!.onBusinessPhoneChanged,
-                  hint: 'Business phone',
-                  style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff),
-                ),
-              ] else if (data.businessEmail.isNotEmpty || data.businessPhone.isNotEmpty)
-                Text([data.businessEmail, data.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
-                    style: TextStyle(fontSize: 9, color: kGrey, fontFamily: ff)),
             ],
           ),
         ),
@@ -289,22 +341,24 @@ class _HeaderIdentity extends StatelessWidget {
           children: [
             Text('INVOICE', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                 color: kInk, letterSpacing: 3.0, fontFamily: ff)),
-            const SizedBox(height: 6),
-            Row(children: [
-              Text('#', style: TextStyle(fontSize: 10.5, color: accent, fontWeight: FontWeight.w600, fontFamily: ff)),
-              SizedBox(
-                width: 90,
-                child: DocField(
-                  value: data.invoiceNumber,
-                  editable: editable,
-                  controller: edit?.invoiceNumberCtrl,
-                  onChanged: edit?.onInvoiceNumberChanged,
-                  hint: '—',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 10.5, color: accent, fontWeight: FontWeight.w600, fontFamily: ff),
+            if (showInvoiceNumber) ...[
+              const SizedBox(height: 6),
+              Row(children: [
+                Text('#', style: TextStyle(fontSize: 10.5, color: accent, fontWeight: FontWeight.w600, fontFamily: ff)),
+                SizedBox(
+                  width: 90,
+                  child: DocField(
+                    value: data.invoiceNumber,
+                    editable: editable,
+                    controller: edit?.invoiceNumberCtrl,
+                    onChanged: edit?.onInvoiceNumberChanged,
+                    hint: '—',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 10.5, color: accent, fontWeight: FontWeight.w600, fontFamily: ff),
+                  ),
                 ),
-              ),
-            ]),
+              ]),
+            ],
           ],
         ),
       ],
@@ -363,6 +417,13 @@ class _BillToMetaRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final editable = edit != null;
+    final showName = _on(data, 'customerName');
+    final showAddress = _on(data, 'customerAddress');
+    final showEmail = _on(data, 'customerEmail');
+    final showPhone = _on(data, 'customerPhone');
+    final showDate = _on(data, 'date');
+    final showDueDate = _on(data, 'dueDate');
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -375,29 +436,36 @@ class _BillToMetaRow extends StatelessWidget {
               Text('BILLED TO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
                   color: accent, letterSpacing: 1.6, fontFamily: ff)),
               const SizedBox(height: 8),
-              DocField(
-                value: data.clientName, editable: editable, controller: edit?.clientNameCtrl,
-                onChanged: edit?.onClientNameChanged, hint: 'Client name',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kInk, fontFamily: ff),
-              ),
-              const SizedBox(height: 3),
-              DocField(
-                value: data.clientAddress, editable: editable, controller: edit?.clientAddressCtrl,
-                onChanged: edit?.onClientAddressChanged, hint: 'Client address',
-                style: TextStyle(fontSize: 9.5, color: kGrey, height: 1.4, fontFamily: ff),
-              ),
-              const SizedBox(height: 3),
-              DocField(
-                value: data.clientEmail, editable: editable, controller: edit?.clientEmailCtrl,
-                onChanged: edit?.onClientEmailChanged, hint: 'Client email',
-                style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff),
-              ),
-              const SizedBox(height: 2),
-              DocField(
-                value: data.clientPhone, editable: editable, controller: edit?.clientPhoneCtrl,
-                onChanged: edit?.onClientPhoneChanged, hint: 'Client phone',
-                style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff),
-              ),
+              if (showName) ...[
+                DocField(
+                  value: data.clientName, editable: editable, controller: edit?.clientNameCtrl,
+                  onChanged: edit?.onClientNameChanged, hint: 'Client name',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kInk, fontFamily: ff),
+                ),
+                const SizedBox(height: 3),
+              ],
+              if (showAddress) ...[
+                DocField(
+                  value: data.clientAddress, editable: editable, controller: edit?.clientAddressCtrl,
+                  onChanged: edit?.onClientAddressChanged, hint: 'Client address',
+                  style: TextStyle(fontSize: 9.5, color: kGrey, height: 1.4, fontFamily: ff),
+                ),
+                const SizedBox(height: 3),
+              ],
+              if (showEmail) ...[
+                DocField(
+                  value: data.clientEmail, editable: editable, controller: edit?.clientEmailCtrl,
+                  onChanged: edit?.onClientEmailChanged, hint: 'Client email',
+                  style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff),
+                ),
+                const SizedBox(height: 2),
+              ],
+              if (showPhone)
+                DocField(
+                  value: data.clientPhone, editable: editable, controller: edit?.clientPhoneCtrl,
+                  onChanged: edit?.onClientPhoneChanged, hint: 'Client phone',
+                  style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff),
+                ),
             ],
           ),
         ),
@@ -408,10 +476,14 @@ class _BillToMetaRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _metaDateRow('Issue Date', data.issueDate, ff, editable ? edit!.onTapIssueDate : null),
-              const SizedBox(height: 6),
-              _metaDateRow('Due Date', data.dueDate, ff, editable ? edit!.onTapDueDate : null),
-              const SizedBox(height: 10),
+              if (showDate) ...[
+                _metaDateRow('Issue Date', data.issueDate, ff, editable ? edit!.onTapIssueDate : null, accent),
+                const SizedBox(height: 6),
+              ],
+              if (showDueDate) ...[
+                _metaDateRow('Due Date', data.dueDate, ff, editable ? edit!.onTapDueDate : null, accent),
+                const SizedBox(height: 10),
+              ],
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -429,7 +501,7 @@ class _BillToMetaRow extends StatelessWidget {
     );
   }
 
-  Widget _metaDateRow(String label, String value, String ff, VoidCallback? onTap) {
+  Widget _metaDateRow(String label, String value, String ff, VoidCallback? onTap, Color accent) {
     final content = Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -555,6 +627,10 @@ Widget buildFooterSection({
   InvoiceEditBundle? edit,
 }) {
   final editable = edit != null;
+  final showTax = _on(data, 'tax');
+  final showDiscount = _on(data, 'discount');
+  final showNotes = _on(data, 'notes');
+  final showThankYou = _on(data, 'thankYouMessage');
 
   Widget row(String label, double v, {bool bold = false, bool negative = false}) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
@@ -603,23 +679,29 @@ Widget buildFooterSection({
           width: kContentW * 0.42,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             row('Subtotal', data.subtotal),
-            editable
-                ? editableRateRow('Discount', edit!.discountRateCtrl, edit!.onDiscountRateChanged,
-                    data.discountAmount, negative: true)
-                : (data.discountRate > 0
-                    ? row('Discount (${data.discountRate.toStringAsFixed(0)}%)', data.discountAmount, negative: true)
-                    : const SizedBox.shrink()),
-            editable
-                ? editableRateRow('Tax', edit!.taxRateCtrl, edit!.onTaxRateChanged, data.taxAmount)
-                : (data.taxRate > 0
-                    ? row('Tax (${data.taxRate.toStringAsFixed(0)}%)', data.taxAmount)
-                    : const SizedBox.shrink()),
+            if (!showDiscount)
+              const SizedBox.shrink()
+            else
+              editable
+                  ? editableRateRow('Discount', edit!.discountRateCtrl, edit!.onDiscountRateChanged,
+                      data.discountAmount, negative: true)
+                  : (data.discountRate > 0
+                      ? row('Discount (${data.discountRate.toStringAsFixed(0)}%)', data.discountAmount, negative: true)
+                      : const SizedBox.shrink()),
+            if (!showTax)
+              const SizedBox.shrink()
+            else
+              editable
+                  ? editableRateRow('Tax', edit!.taxRateCtrl, edit!.onTaxRateChanged, data.taxAmount)
+                  : (data.taxRate > 0
+                      ? row('Tax (${data.taxRate.toStringAsFixed(0)}%)', data.taxAmount)
+                      : const SizedBox.shrink()),
             const Padding(padding: EdgeInsets.symmetric(vertical: 4), child: Divider(height: 1, color: kRule)),
             row('Grand Total', data.grandTotal, bold: true),
           ]),
         ),
       ),
-      if (editable || data.notes.trim().isNotEmpty) ...[
+      if (showNotes && (editable || data.notes.trim().isNotEmpty)) ...[
         const SizedBox(height: 28),
         Container(
           width: double.infinity,
@@ -637,15 +719,17 @@ Widget buildFooterSection({
           ]),
         ),
       ],
-      const SizedBox(height: 32),
-      Container(height: 0.75, color: kRule),
-      const SizedBox(height: 10),
-      Text(
-        data.businessEmail.isNotEmpty
-            ? 'Thank you for your business — ${data.businessEmail}'
-            : 'Thank you for your business',
-        style: TextStyle(fontSize: 8.5, color: kGreyLight, fontFamily: ff),
-      ),
+      if (showThankYou) ...[
+        const SizedBox(height: 32),
+        Container(height: 0.75, color: kRule),
+        const SizedBox(height: 10),
+        Text(
+          data.businessEmail.isNotEmpty && _on(data, 'businessEmail')
+              ? 'Thank you for your business — ${data.businessEmail}'
+              : 'Thank you for your business',
+          style: TextStyle(fontSize: 8.5, color: kGreyLight, fontFamily: ff),
+        ),
+      ],
     ],
   );
 }

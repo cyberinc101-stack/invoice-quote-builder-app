@@ -1,5 +1,5 @@
 // executive_quote_stationary_layout.dart
-// lib/quote_layout_templates/01_executive_quote_layout/executive_quote_stationary_layout.dart
+// lib/document_layout_templates/01_executive/executive_quote_stationary_layout.dart
 //
 // LOGO SIZER PASS (this update): _Logo now renders through
 // SharedLogoThumbnail instead of a plain centred Image.file cover-fit, so
@@ -7,13 +7,13 @@
 // step's logo sizer (SharedLogoPicker, quote_editor_screen.dart) actually
 // take visual effect here — previously this widget ignored all four
 // fields entirely. Mirrors the identical fix in
-// executive_page_stationary_layout.dart (invoice) and
+// executive_invoice_stationary_layout.dart (invoice) and
 // executive_receipt_stationary_layout.dart (receipt). The initial-letter
 // diamond fallback (no logo set) is unchanged.
 //
 // Minimal, single-page quote template. Diamond-logo mark, generous
 // whitespace, no sidebar — mirrors
-// invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart
+// document_layout_templates/01_executive/executive_invoice_stationary_layout.dart
 // exactly in structure and geometry. Quote-specific differences only:
 // "QUOTE" heading instead of "INVOICE", Issue Date/Valid Until instead of
 // Issue Date/Due Date, and a QuoteStatus-driven badge instead of

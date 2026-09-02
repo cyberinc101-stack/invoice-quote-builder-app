@@ -7,6 +7,19 @@
 //    BulkDocumentExportService (no duplicated CSV logic — same column
 //    layout / escaping / Downloads-vs-share pattern it already has).
 //
+// EXPENSES PASS (this update): expenses are now threaded through to the
+// CSV path ONLY — downloadFolderAsCsv/shareFolderAsCsv both gained
+// optional `expenses`/`categoryNameOf` params, passed straight through to
+// BulkDocumentExportService (see that file's own EXPENSES PASS comment
+// for the accounting rationale — expenses show up as negative-Total rows
+// so a folder's exported numbers actually net out). The PDF ZIP path
+// (downloadFolderAsPdfZip/shareFolderAsPdfZip) is DELIBERATELY untouched
+// — expenses have no PDF template and are not a real, sendable document,
+// so they never appear in the PDF bundle, only in the accounting CSV.
+// expenses/categoryNameOf both default to empty/identity so any existing
+// call site that doesn't pass them compiles and behaves exactly as
+// before this pass.
+//
 // Mirrors the save/share pattern used everywhere else in this app:
 // downloadXxx() writes to Downloads and returns the path; shareXxx() writes
 // to a temp dir and opens the OS share sheet.
@@ -22,6 +35,7 @@ import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/expense_data.dart';
 import '../models/invoice_data.dart';
 import '../models/quote_data.dart';
 import '../models/receipt_data.dart';
@@ -37,6 +51,12 @@ class FolderDownloadService {
   final BulkDocumentExportService _csvService = BulkDocumentExportService();
 
   // ── PDF ZIP ────────────────────────────────────────────────────────────
+  //
+  // Documents only — no expenses. Expenses have no PDF template and
+  // aren't a real, sendable document; including them here would mean
+  // fabricating a fake "expense PDF" with no client-facing purpose, which
+  // is exactly what this feature is meant to avoid. Expenses only ever
+  // appear in the CSV path below.
 
   /// Writes a ZIP of every document's PDF to Downloads and returns the path.
   Future<String> downloadFolderAsPdfZip({
@@ -119,18 +139,27 @@ class FolderDownloadService {
   }
 
   // ── CSV (delegates to BulkDocumentExportService — no duplicated logic) ──
+  //
+  // expenses/categoryNameOf are the accounting-accuracy addition — see the
+  // EXPENSES PASS comment at the top of this file. Optional, defaulting to
+  // "no expenses", so a caller that hasn't been updated yet still compiles
+  // and behaves exactly as before.
 
   Future<String> downloadFolderAsCsv({
     required String folderName,
     required List<SavedInvoice> invoices,
     required List<SavedQuote> quotes,
     required List<SavedReceipt> receipts,
+    List<ExpenseEntry> expenses = const [],
+    String Function(String categoryId)? categoryNameOf,
   }) {
     return _csvService.exportToDownloads(
       fileName: '${folderName}_Documents',
       invoices: invoices,
       quotes: quotes,
       receipts: receipts,
+      expenses: expenses,
+      categoryNameOf: categoryNameOf,
     );
   }
 
@@ -139,12 +168,16 @@ class FolderDownloadService {
     required List<SavedInvoice> invoices,
     required List<SavedQuote> quotes,
     required List<SavedReceipt> receipts,
+    List<ExpenseEntry> expenses = const [],
+    String Function(String categoryId)? categoryNameOf,
   }) {
     return _csvService.share(
       fileName: '${folderName}_Documents',
       invoices: invoices,
       quotes: quotes,
       receipts: receipts,
+      expenses: expenses,
+      categoryNameOf: categoryNameOf,
     );
   }
 

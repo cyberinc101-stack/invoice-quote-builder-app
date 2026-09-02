@@ -19,13 +19,18 @@
 // gained a DocTypeFilter.expenses case. Kanban dominant-type grouping
 // gained an "Expenses" column alongside Invoices/Quotes/Receipts/Mixed.
 //
-// NOTE: the download sheet (_showDownloadSheet/_runDownload) still only
-// bundles invoices/quotes/receipts via FolderDownloadService — expenses
-// have their own lib/export/expense_export_service.dart that isn't wired
-// into folder-level ZIP/CSV download yet. An expenses-only folder will
-// still show the download button, but it'll produce an archive with no
-// expense data in it. Flagging this as a follow-up rather than blocking
-// this pass on it.
+// ACCOUNTING EXPORT PASS (this update): the download sheet
+// (_showDownloadSheet/_runDownload) now threads a folder's expenses
+// through to FolderDownloadService.downloadFolderAsCsv — see that file's
+// own EXPENSES PASS comment. Expenses show up as negative-Total rows in
+// the CSV so uploading it to Excel/Xero nets income against expenses
+// correctly, instead of the CSV only ever containing income. The PDF ZIP
+// path is deliberately untouched — expenses have no PDF template and
+// aren't a real sendable document, so they never appear there, only in
+// the CSV. categoryNameOf (CategoryProvider.byId(id).name) is resolved
+// once in build() and threaded down to both call sites of
+// _showDownloadSheet (the grid tile's dedicated download button, and the
+// shared rename/delete/download menuFor() used by every other layout).
 //
 // SORT/LAYOUT (earlier pass): FolderSortOption and FolderLayoutMode both
 // expanded to match the richer options already available on the main
@@ -81,6 +86,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../export/folder_download_service.dart';
+import '../providers/category_provider.dart';
 import '../providers/expense_provider.dart';
 import '../providers/invoice_provider.dart';
 import '../providers/quote_provider.dart';
@@ -292,6 +298,8 @@ class FoldersGridView extends StatelessWidget {
     List<dynamic> invoices,
     List<dynamic> quotes,
     List<dynamic> receipts,
+    List<dynamic> expenses,
+    String Function(String categoryId) categoryNameOf,
   ) {
     showModalBottomSheet(
       context: context,
@@ -309,6 +317,9 @@ class FoldersGridView extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.picture_as_pdf_outlined),
                 title: const Text('Download as PDF (ZIP)'),
+                subtitle: expenses.isNotEmpty
+                    ? const Text('Invoices, quotes & receipts only — expenses aren\'t documents')
+                    : null,
                 onTap: () {
                   Navigator.pop(ctx);
                   _runDownload(
@@ -317,6 +328,8 @@ class FoldersGridView extends StatelessWidget {
                     invoices,
                     quotes,
                     receipts,
+                    expenses,
+                    categoryNameOf,
                     isPdf: true,
                   );
                 },
@@ -324,6 +337,9 @@ class FoldersGridView extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.table_chart_outlined),
                 title: const Text('Export as CSV'),
+                subtitle: expenses.isNotEmpty
+                    ? const Text('Includes expenses, for accurate accounting totals')
+                    : null,
                 onTap: () {
                   Navigator.pop(ctx);
                   _runDownload(
@@ -332,6 +348,8 @@ class FoldersGridView extends StatelessWidget {
                     invoices,
                     quotes,
                     receipts,
+                    expenses,
+                    categoryNameOf,
                     isPdf: false,
                   );
                 },
@@ -348,7 +366,9 @@ class FoldersGridView extends StatelessWidget {
     String name,
     List<dynamic> invoices,
     List<dynamic> quotes,
-    List<dynamic> receipts, {
+    List<dynamic> receipts,
+    List<dynamic> expenses,
+    String Function(String categoryId) categoryNameOf, {
     required bool isPdf,
   }) async {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -372,6 +392,8 @@ class FoldersGridView extends StatelessWidget {
               invoices: invoices.cast(),
               quotes: quotes.cast(),
               receipts: receipts.cast(),
+              expenses: expenses.cast(),
+              categoryNameOf: categoryNameOf,
             );
 
       if (!context.mounted) return;
@@ -453,6 +475,15 @@ class FoldersGridView extends StatelessWidget {
         final quotes = quoteProvider.savedQuotes;
         final receipts = receiptProvider.savedReceipts;
         final expenses = expenseProvider.expenses;
+
+        // ACCOUNTING EXPORT PASS: needed to resolve each expense's
+        // categoryId to a display name for the folder CSV export (see
+        // BulkDocumentExportService's Category column). CategoryProvider
+        // is provided higher up the tree (same as saved_documents_section.
+        // dart's own usage), so a plain watch here — no extra Consumer
+        // nesting needed.
+        final categories = context.watch<CategoryProvider>();
+        String categoryNameOf(String categoryId) => categories.byId(categoryId).name;
 
         final Map<String, _FolderCounts> byFolder = {};
 
@@ -606,6 +637,7 @@ class FoldersGridView extends StatelessWidget {
         List<dynamic> invoicesFor(String name) => invoices.where((inv) => inv.folderName == name).toList();
         List<dynamic> quotesFor(String name) => quotes.where((q) => q.folderName == name).toList();
         List<dynamic> receiptsFor(String name) => receipts.where((r) => r.folderName == name).toList();
+        List<dynamic> expensesFor(String name) => expenses.where((e) => e.folderName == name).toList();
 
         VoidCallback menuFor(BuildContext ctx, String name) => () => _showTileMenu(
               ctx,
@@ -615,6 +647,8 @@ class FoldersGridView extends StatelessWidget {
                 invoicesFor(name),
                 quotesFor(name),
                 receiptsFor(name),
+                expensesFor(name),
+                categoryNameOf,
               ),
               onRename: () => _renameFolder(ctx, name),
               onDelete: () => _deleteFolder(ctx, name),
@@ -722,6 +756,8 @@ class FoldersGridView extends StatelessWidget {
                     invoicesFor(name),
                     quotesFor(name),
                     receiptsFor(name),
+                    expensesFor(name),
+                    categoryNameOf,
                   ),
                 );
               },

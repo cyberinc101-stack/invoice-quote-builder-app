@@ -1,16 +1,26 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
 //
-// PUSH ALERTS: closes the last gap in DocumentAlertScheduler coverage —
-// receipts now get real push notifications for stale drafts, the same way
-// InvoiceProvider/QuoteProvider already do. Receipts have no
-// overdue/expiring concept (they're already-settled records — see
-// filter_logic.dart's comment on applyQuickFilterToReceipts), so drafts
-// are the only category that applies here. Uses filter_logic.dart's
-// receiptIsDraft() predicate directly, same single-source-of-truth
-// pattern as the other two providers.
+// ALERTPREFS PUSH WIRING (this pass): added applyDraftAlertsEnabled() —
+// called from alert_type_toggles.dart's "Drafts" switch and
+// settings_screen.dart's master Alerts switch whenever the effective
+// enabled state (alertsEnabled && draftsEnabled) changes, so turning
+// drafts off actually cancels every saved receipt's pending draft-nudge
+// push instead of only hiding it from the in-app Alerts screen/bell
+// badge. Mirrors InvoiceProvider.applyDraftAlertsEnabled /
+// QuoteProvider.applyDraftAlertsEnabled — see invoice_provider.dart's
+// header comment for the full rationale.
 //
-// ADDED (this pass): currentReceiptId getter, exposing the private
+// PUSH ALERTS (earlier pass): receipts now get real push notifications
+// for stale drafts, the same way InvoiceProvider/QuoteProvider already
+// do. Receipts have no overdue/expiring concept (they're already-settled
+// records — see filter_logic.dart's comment on
+// applyQuickFilterToReceipts), so drafts are the only category that
+// applies here. Uses filter_logic.dart's receiptIsDraft() predicate
+// directly, same single-source-of-truth pattern as the other two
+// providers.
+//
+// ADDED (earlier pass): currentReceiptId getter, exposing the private
 // _currentReceiptId so CreateReceiptScreen can look up the SavedReceipt
 // it just created/updated after calling saveCurrentReceipt() (which
 // returns Future<void>, not the saved object itself — unlike
@@ -74,6 +84,26 @@ class ReceiptProvider extends ChangeNotifier {
       title: receipt.title,
       isDraft: receiptIsDraft(receipt),
     );
+  }
+
+  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
+  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
+  // EFFECTIVE enabled state for drafts (alertsEnabled && draftsEnabled)
+  // changes. Mirrors InvoiceProvider.applyDraftAlertsEnabled /
+  // QuoteProvider.applyDraftAlertsEnabled.
+
+  Future<void> applyDraftAlertsEnabled(bool enabled) async {
+    for (final r in _savedReceipts) {
+      try {
+        if (enabled) {
+          await _syncDraftNudge(r);
+        } else {
+          await DocumentAlertScheduler.instance.cancelReceiptDraftNudge(r.id);
+        }
+      } catch (_) {
+        // Best-effort — one bad receipt shouldn't stop the rest applying.
+      }
+    }
   }
 
   // -- Save current draft as a SavedReceipt ----------------------------------

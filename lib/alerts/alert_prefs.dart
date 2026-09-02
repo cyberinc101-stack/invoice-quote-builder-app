@@ -7,18 +7,30 @@
 // the others. All flags persist via SharedPreferences the same way the
 // rest of the app persists settings.
 //
-// WEEKLY DIGEST TOGGLE (this pass): added weeklyDigestEnabled, defaulting
-// to true so existing users get the new weekly summary notification
-// without needing to opt in — consistent with how the four existing
-// per-type toggles were introduced. Deliberately NOT gated behind the
-// master alertsEnabled switch the way the other four are read in
-// alert_engine.dart — the weekly digest isn't part of buildAlerts()'s
-// live in-app alert list (it's a standalone OS-scheduled notification,
-// see WeeklyDigestScheduler), so it's controlled purely by this one flag.
-// settings_screen.dart is responsible for calling
-// WeeklyDigestScheduler.instance.sync(value) whenever this flag changes,
-// same as it already does for the master alertsEnabled switch's effect
-// on document alerts via each provider's resync.
+// COMMENT FIX (this pass): this class is a pure state holder — it never
+// calls into DocumentAlertScheduler/NotificationService/ReminderProvider
+// itself. Applying a flag change to the actual push-notification
+// schedule is done by whoever changes the flag: alert_type_toggles.dart's
+// four switches and settings_screen.dart's master Alerts switch each
+// call the matching provider's applyXEnabled() method (InvoiceProvider.
+// applyOverdueAlertsEnabled/applyDraftAlertsEnabled, QuoteProvider.
+// applyExpiringAlertsEnabled/applyDraftAlertsEnabled, ReceiptProvider.
+// applyDraftAlertsEnabled, ReminderProvider.applyRemindersPushEnabled)
+// right alongside the setXEnabled() call below. A previous version of
+// this comment incorrectly claimed settings_screen.dart "already"
+// resynced document alerts off the master switch — it didn't; that's
+// what this pass actually wires up.
+//
+// WEEKLY DIGEST TOGGLE (earlier pass): added weeklyDigestEnabled,
+// defaulting to true so existing users get the new weekly summary
+// notification without needing to opt in — consistent with how the four
+// existing per-type toggles were introduced. Deliberately NOT part of
+// the alertsEnabled-gated push wiring described above — the weekly
+// digest isn't part of buildAlerts()'s live in-app alert list (it's a
+// standalone OS-scheduled notification, see WeeklyDigestScheduler), so
+// it's controlled purely by this one flag. settings_screen.dart calls
+// WeeklyDigestScheduler.instance.sync(value) directly whenever this flag
+// changes.
 //
 // PER-TYPE TOGGLES (earlier pass): added overdueInvoicesEnabled /
 // quotesExpiringEnabled / draftsEnabled / remindersEnabled, each defaulting

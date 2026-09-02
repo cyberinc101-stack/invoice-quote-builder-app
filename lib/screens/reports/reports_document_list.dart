@@ -1,7 +1,18 @@
 // reports_document_list.dart
 // lib/screens/reports/reports_document_list.dart
 //
-// DISPLAY OPTIONS PASS (this update): the List/Grid/Compact cards here now
+// AMOUNT-ON-PROGRESS-ROW PASS (this update): in the List card
+// (_ReportsDocCard), the amount no longer sits up in the trailing column
+// next to the status chip/checkbox — it now shares the same row as the
+// completion progress bar, right-aligned after it, matching the Home
+// screen's saved-document card layout exactly. When there's no progress
+// bar to share the row with (expenses, which skip completion entirely, or
+// progress display switched off via CardDisplayPrefs), the amount still
+// gets its own right-aligned row directly underneath so it's never lost.
+// The trailing column on the right now only holds the status chip and the
+// include/exclude checkbox, stacked top-to-bottom.
+//
+// DISPLAY OPTIONS PASS (earlier): the List/Grid/Compact cards here now
 // watch CardDisplayPrefs (lib/widgets/saved_documents/card_display_prefs.
 // dart) — the same instance Home's Invoices/Quotes/Receipts/Expenses
 // sections read from — and conditionally render logo, amount, secondary
@@ -9,7 +20,7 @@
 // switches (DisplayOptionsButton, opened from Home) now controls every
 // card family in the app, including this one.
 //
-// LOGO FIX (this update): _ReportsLogoAvatar gained independent width/
+// LOGO FIX (earlier): _ReportsLogoAvatar gained independent width/
 // height (defaulting to `size`), and the List card (_ReportsDocCard) now
 // wraps its Row in IntrinsicHeight + CrossAxisAlignment.stretch, passing
 // height: double.infinity so the logo fills the card's full height
@@ -439,7 +450,7 @@ class _ReportsGroupHeader extends StatelessWidget {
 
 // ── Section wrapper ─────────────────────────────────────────────────────
 //
-// GROUPED PASS (this update): "Documents in this period" no longer renders
+// GROUPED PASS (earlier): "Documents in this period" no longer renders
 // as one flat, filterable list with category chips — it's now split into
 // per-type sections (My Invoices / My Quotes / My Receipts / My Expenses),
 // each with its own header + count, exactly matching how the Saved
@@ -614,126 +625,157 @@ class _ReportsDocCard extends StatelessWidget {
               BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 8, offset: const Offset(0, 2)),
             ],
           ),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (prefs.showLogo) ...[
-                _ReportsLogoAvatar(
-                  logoPath: item.logoPath,
-                  businessName: item.businessName,
-                  accentColor: item.accentColor,
-                  size: 72,
-                  width: 72,
-                  height: 96,
-                  iconSize: 30,
-                  borderRadius: 14,
-                ),
-                const SizedBox(width: 14),
-              ],
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (prefs.showLogo) ...[
+                    _ReportsLogoAvatar(
+                      logoPath: item.logoPath,
+                      businessName: item.businessName,
+                      accentColor: item.accentColor,
+                      size: 72,
+                      width: 72,
+                      height: 96,
+                      iconSize: 30,
+                      borderRadius: 14,
+                    ),
+                    const SizedBox(width: 14),
+                  ],
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Flexible(
-                              child: Text(item.title,
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(item.title,
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                                if (item.isPositiveStatus) _positiveDot(),
+                              ],
                             ),
-                            if (item.isPositiveStatus) _positiveDot(),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Row(children: [
-                          Text(item.templateName,
-                              style: TextStyle(fontSize: 12, color: item.accentColor, fontWeight: FontWeight.w600),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text('· Edited ${item.editedLabel}',
-                                style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4)),
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ),
-                        ]),
-                        if (prefs.showSecondaryDate) ...[
-                          const SizedBox(height: 3),
-                          Row(children: [
-                            Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.35)),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
-                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                            const SizedBox(height: 2),
+                            Row(children: [
+                              Text(item.templateName,
+                                  style: TextStyle(fontSize: 12, color: item.accentColor, fontWeight: FontWeight.w600),
                                   maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ),
-                          ]),
-                        ],
-                        if (prefs.showCreatedAndItems) ...[
-                          const SizedBox(height: 3),
-                          Row(children: [
-                            Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text('Created ${item.createdLabel}',
-                                  style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ),
-                            if (trailingLabel != null && trailingLabel.isNotEmpty) ...[
-                              const SizedBox(width: 10),
-                              Icon(trailingIcon, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(trailingLabel,
-                                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text('· Edited ${item.editedLabel}',
+                                    style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4)),
                                     maxLines: 1, overflow: TextOverflow.ellipsis),
                               ),
+                            ]),
+                            if (prefs.showSecondaryDate) ...[
+                              const SizedBox(height: 3),
+                              Row(children: [
+                                Icon(Icons.event_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.35)),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text('${item.secondaryDateLabel}: ${item.secondaryDateValue}',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.55)),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                              ]),
                             ],
-                          ]),
-                        ],
-                        if (prefs.showProgress && item._showCompletion) ...[
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: item.completionPercent / 100,
-                              backgroundColor: cs.outline.withValues(alpha: 0.15),
-                              valueColor: AlwaysStoppedAnimation<Color>(item.accentColor),
-                              minHeight: 4,
-                            ),
+                            if (prefs.showCreatedAndItems) ...[
+                              const SizedBox(height: 3),
+                              Row(children: [
+                                Icon(Icons.add_circle_outline_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text('Created ${item.createdLabel}',
+                                      style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                                if (trailingLabel != null && trailingLabel.isNotEmpty) ...[
+                                  const SizedBox(width: 10),
+                                  Icon(trailingIcon, size: 11, color: cs.onSurface.withValues(alpha: 0.32)),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(trailingLabel,
+                                        style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ]),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (prefs.showStatusChip && item.statusLabel.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: item.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                            child: Text(item.statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: item.statusColor)),
                           ),
+                          const SizedBox(height: 6),
                         ],
+                        ReportsIncludeCheckbox(
+                          included: !item.excludedFromReports,
+                          countsTowardReports: item.countsTowardReports,
+                          itemTitle: item.title,
+                          onToggleExclude: item.onToggleExclude,
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                ],
+              ),
+              // Progress bar + amount now spans the FULL card width (not just
+              // the narrower title column next to the logo) — placed as its
+              // own row below everything else, matching how far right the
+              // amount sits on the Home screen's saved-document cards. The
+              // amount text is nudged up 1.5px via Transform.translate so its
+              // visual center lines up with the thin 4px progress bar instead
+              // of sitting slightly below it.
+              if (prefs.showProgress && item._showCompletion) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (prefs.showAmount)
-                      Text(_fmtAmount(item.amount), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
-                    if (prefs.showStatusChip && item.statusLabel.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: item.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: Text(item.statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: item.statusColor)),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: item.completionPercent / 100,
+                          backgroundColor: cs.outline.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation<Color>(item.accentColor),
+                          minHeight: 4,
+                        ),
+                      ),
+                    ),
+                    if (prefs.showAmount) ...[
+                      const SizedBox(width: 14),
+                      Transform.translate(
+                        offset: const Offset(0, -1.5),
+                        child: Text(_fmtAmount(item.amount),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface)),
                       ),
                     ],
-                    const SizedBox(height: 6),
-                    ReportsIncludeCheckbox(
-                      included: !item.excludedFromReports,
-                      countsTowardReports: item.countsTowardReports,
-                      itemTitle: item.title,
-                      onToggleExclude: item.onToggleExclude,
-                    ),
                   ],
                 ),
+              ] else if (prefs.showAmount) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(_fmtAmount(item.amount),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                ),
+              ],
             ],
           ),
         ),

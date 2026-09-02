@@ -15,7 +15,16 @@
 // they show up, rather than each section inventing its own filter-button
 // look.
 //
-// UPDATED (this pass): FolderSortOption grew recentActivity/oldestActivity
+// KANBAN-FIRST PASS (this update): _LayoutToggleButton's popup menu now
+// lists Kanban FIRST rather than last — Jesse wanted it as the top option.
+// DocLayoutMode.values itself is untouched (still list/grid/compactGrid/
+// compact/kanban in that declaration order, since other code — e.g.
+// _fromShared/_toShared in saved_documents_section.dart — switches on the
+// enum by name, not by position), so this reorders only the popup menu's
+// DISPLAY order via an explicit list rather than iterating .values
+// directly.
+//
+// UPDATED (earlier pass): FolderSortOption grew recentActivity/oldestActivity
 // and FolderLayoutMode grew compactGrid/compact/kanban (both in
 // folders_grid_view.dart) so folders now offer the same breadth of sort and
 // layout options as the main document list. _FolderSortToggleButton and
@@ -61,6 +70,17 @@ extension on DocLayoutMode {
   }
 }
 
+// Display order for the popup menu ONLY — Kanban first, per Jesse's ask.
+// Kept separate from DocLayoutMode.values (whose declaration order other
+// code relies on) so this is purely a presentation-order change.
+const List<DocLayoutMode> _kLayoutMenuOrder = [
+  DocLayoutMode.kanban,
+  DocLayoutMode.list,
+  DocLayoutMode.grid,
+  DocLayoutMode.compactGrid,
+  DocLayoutMode.compact,
+];
+
 class _LayoutToggleButton extends StatelessWidget {
   final DocLayoutMode selected;
   final ValueChanged<DocLayoutMode> onChanged;
@@ -77,7 +97,7 @@ class _LayoutToggleButton extends StatelessWidget {
       tooltip: 'Change layout',
       offset: const Offset(0, 34),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      itemBuilder: (context) => DocLayoutMode.values.map((mode) {
+      itemBuilder: (context) => _kLayoutMenuOrder.map((mode) {
         final isSelected = mode == selected;
         return PopupMenuItem<DocLayoutMode>(
           value: mode,

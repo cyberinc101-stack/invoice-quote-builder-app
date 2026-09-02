@@ -1,5 +1,5 @@
 // vibrant_template.dart
-// lib/doc_templates/03_vibrant/vibrant_template.dart
+// lib/document_layout_templates/03_vibrant/vibrant_template.dart
 //
 // Vibrant: bold accent-color panel behind the identity block - business
 // name and address sit in reversed (white-on-accent) type inside a solid
@@ -10,6 +10,17 @@
 // This follows the same pattern as nordic_template.dart: one file, one
 // design, driven entirely by DocTemplateAdapter so it renders correctly
 // for invoice, quote, and receipt alike.
+//
+// LOGO PASS (this update): added the business logo inside the accent
+// panel, left of the business name, via the shared buildSharedLogo()
+// widget (shared_doc_widgets.dart). Because this header sits on a solid
+// accent-colored background, the no-logo fallback mark is told to render
+// white-on-transparent (fallbackMarkColor: Colors.white) with the accent
+// color as the initial letter (fallbackMarkTextColor: a.accent) instead
+// of buildSharedLogo()'s default accent-on-white — matching how the rest
+// of this header already flips to reversed/white type against the panel.
+// A real uploaded logo renders via SharedLogoThumbnail exactly as set by
+// the user regardless of background, same as every other template.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
@@ -37,6 +48,13 @@ Widget _vibrantFullHeader(DocTemplateAdapter a) {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            buildSharedLogo(
+              a,
+              size: 42.0,
+              fallbackMarkColor: Colors.white,
+              fallbackMarkTextColor: a.accent,
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

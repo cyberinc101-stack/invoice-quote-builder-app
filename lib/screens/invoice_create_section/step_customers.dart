@@ -1,6 +1,15 @@
 // lib/screens/invoice_create_section/step_customers.dart
 //
-// UPDATED (this pass): Customer logo picking now uses SharedLogoPicker
+// OPTIONAL LABEL PASS (this update): _SheetField now appends "(Optional)"
+// to a field's label automatically whenever `required` is false —
+// matching the identical pass already applied to this same app's
+// step_templates.dart _SheetField (Invoice Templates step), and just
+// applied to QuoteField (quote_edit_widgets.dart) and ReceiptField
+// (receipt_edit_widgets.dart). Required fields (already carrying their
+// own "*") are untouched. This was the one remaining sheet in the app
+// whose optional fields didn't say "(Optional)".
+//
+// UPDATED (earlier pass): Customer logo picking now uses SharedLogoPicker
 // (lib/widgets/shared_logo_picker.dart) instead of a plain ImagePicker +
 // "Remove Logo" button, so Reposition/Zoom/Shape are available here the
 // same as Business Logo (step_templates.dart) and the receipt/quote
@@ -23,14 +32,20 @@
 // search/sort view only reorders/filters what's displayed via
 // _visibleIndices, it never mutates _library's underlying order.
 //
-// SEARCH RELEVANCE PASS (this update): while the search box has text,
-// _visibleIndices now ranks matches by relevance instead of the chosen
-// sort mode — name starts-with the query first, then name contains it,
-// then email/phone contains it, each tier alphabetical — so typing a
-// few letters brings the closest matches to the top immediately. The
-// sort chips are dimmed/disabled while a search is active since
-// relevance ranking takes over from them, and re-enable once the
-// search box is cleared.
+// SEARCH RELEVANCE PASS: while the search box has text, _visibleIndices
+// now ranks matches by relevance instead of the chosen sort mode — name
+// starts-with the query first, then name contains it, then email/phone
+// contains it, each tier alphabetical — so typing a few letters brings
+// the closest matches to the top immediately. The sort chips are
+// dimmed/disabled while a search is active since relevance ranking
+// takes over from them, and re-enable once the search box is cleared.
+//
+// TAX RATE COUNTER PASS (this update): Default Tax Rate (%) now shows a
+// live "X / 6" character counter under the field, matching Name/Email/
+// Phone/Address/Currency Code/Currency Symbol. This required adding
+// _taxRateCtrl to the listener loop in initState (it was previously
+// left out, so the field's setState-driven counter/limit UI wouldn't
+// refresh live as the user typed).
 
 import 'dart:convert';
 import 'dart:io';
@@ -1117,7 +1132,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _logoScale = e?.logoScale ?? 1.0;
     _logoShape = logoShapeFromString(e?.logoShape ?? 'circle');
 
-    for (final c in [_nameCtrl, _emailCtrl, _phoneCtrl, _addressCtrl, _currencyCtrl, _currencySymbolCtrl]) {
+    for (final c in [_nameCtrl, _emailCtrl, _phoneCtrl, _addressCtrl, _currencyCtrl, _currencySymbolCtrl, _taxRateCtrl]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -1388,6 +1403,7 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                           keyboard: TextInputType.numberWithOptions(decimal: true),
                           accent: _accent,
                         ),
+                        _counter(_taxRateCtrl.text.length, 6),
                         const SizedBox(height: 12),
                         const SizedBox(height: 28),
 
@@ -1459,6 +1475,11 @@ class _SheetField extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atLimit = max != null && ctrl.text.length >= max!;
+    // OPTIONAL LABEL PASS: matches step_templates.dart's _SheetField —
+    // non-required fields get "(Optional)" appended to their label
+    // automatically. Required fields (already carrying their own "*")
+    // are untouched.
+    final displayLabel = required ? label : '$label (Optional)';
 
     return TextFormField(
       controller: ctrl,
@@ -1473,7 +1494,7 @@ class _SheetField extends StatelessWidget {
               ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
               : null),
       decoration: InputDecoration(
-        labelText: label,
+        labelText: displayLabel,
         labelStyle:
             TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,

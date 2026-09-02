@@ -1,7 +1,20 @@
 // invoice_full_preview_screen.dart
 // lib/screens/invoice_create_section/step_customize/invoice_full_preview_screen.dart
 //
-// TEMPLATE PASS (this update): the body no longer hardcodes
+// BUSINESS NAME ON SAVE (this update): the Save Invoice dialog
+// (_handleSaveInvoice) now also has an optional "Business Name" field
+// alongside the existing document title field. Invoices are the one
+// document type in the app that don't require selecting a saved business
+// profile before this point (unlike quotes/receipts, which block Next
+// until a profile is picked — see quote_editor_screen.dart /
+// create_receipt_screen.dart), so this is the first and only place an
+// invoice's business name can reliably get filled in. Left optional
+// (rather than required) so a quick draft invoice can still be saved
+// without one — it only writes through to InvoiceData.businessName via
+// provider.updateBusinessInfo() when non-empty, so leaving it blank never
+// clears an existing value already on the draft.
+//
+// TEMPLATE PASS (earlier): the body no longer hardcodes
 // ExecutiveInvoicePreview — it now dispatches on
 // data.layoutTemplateId via buildInvoicePreview() (preview_registry.dart),
 // same as the template chooser grid, its full-preview modal, and
@@ -14,14 +27,13 @@
 //
 // UPDATED (earlier pass): the old inline _InvoiceDocument mockup widget has
 // been replaced with ExecutiveInvoicePreview from
-// invoice_layout_templates/01_executive_cv_layout — the same self-scaling
+// document_layout_templates/01_executive — the same self-scaling
 // A4-page template used by the real PDF export and now also by
 // quote_full_preview_screen.dart / receipt_full_preview_screen.dart. This
 // preview now matches what actually gets exported, at correct A4
 // proportions, instead of a free-form content-sized mockup.
 //
-// Save / Download / Share logic is otherwise UNCHANGED from the previous
-// pass.
+// Download / Share logic is otherwise UNCHANGED from the previous pass.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -30,10 +42,10 @@ import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
 import '../../../services/invoice_pdf_service.dart';
 import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
-import '../../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
-import '../../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
+import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show kPageW;
-import '../../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
 import 'invoice_preview_bottom_bar.dart';
 
@@ -104,10 +116,11 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     }
   }
 
-  // Prompts for a title, then inserts the current draft into
-  // InvoiceProvider.savedInvoices via saveCurrentInvoice(). On success,
-  // resets the active draft and navigates to the saved invoice's detail
-  // screen, clearing the wizard stack beneath it.
+  // Prompts for a title (required) and a business name (optional), then
+  // inserts the current draft into InvoiceProvider.savedInvoices via
+  // saveCurrentInvoice(). On success, resets the active draft and
+  // navigates to the saved invoice's detail screen, clearing the wizard
+  // stack beneath it.
   Future<void> _handleSaveInvoice() async {
     final provider = context.read<InvoiceProvider>();
     final data = provider.invoiceData;
@@ -116,10 +129,11 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
         ? '${data.clientName} — ${data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice'}'
         : (data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice');
 
-    final controller = TextEditingController(text: suggestedTitle);
+    final titleController = TextEditingController(text: suggestedTitle);
+    final businessNameController = TextEditingController(text: data.businessName);
     final formKey = GlobalKey<FormState>();
 
-    final title = await showDialog<String>(
+    final result = await showDialog<_SaveInvoiceDialogResult>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -127,20 +141,41 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
         content: Form(
           key: formKey,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 60,
-            textCapitalization: TextCapitalization.words,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
-            decoration: InputDecoration(
-              hintText: 'Enter a name for this invoice',
-              filled: true,
-              fillColor: const Color(0xFFF8F9FC),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: titleController,
+                autofocus: true,
+                maxLength: 60,
+                textCapitalization: TextCapitalization.words,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
+                decoration: InputDecoration(
+                  labelText: 'Document Name',
+                  hintText: 'Enter a name for this invoice',
+                  filled: true,
+                  fillColor: const Color(0xFFF8F9FC),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: businessNameController,
+                maxLength: 80,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: 'Business Name (optional)',
+                  hintText: 'e.g. your company name',
+                  filled: true,
+                  fillColor: const Color(0xFFF8F9FC),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -151,7 +186,13 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
           ElevatedButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx, controller.text.trim());
+                Navigator.pop(
+                  ctx,
+                  _SaveInvoiceDialogResult(
+                    title: titleController.text.trim(),
+                    businessName: businessNameController.text.trim(),
+                  ),
+                );
               }
             },
             child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -160,12 +201,20 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
       ),
     );
 
-    if (title == null) return; // cancelled
+    if (result == null) return; // cancelled
+
+    // Only writes through when the field was actually filled in — an
+    // empty business name here must never blank out one already set
+    // earlier (e.g. on the Customise step, if that's ever wired up to
+    // collect it directly).
+    if (result.businessName.isNotEmpty) {
+      provider.updateBusinessInfo(businessName: result.businessName);
+    }
 
     setState(() => _isSaving = true);
     try {
       final saved = provider.saveCurrentInvoice(
-        title: title,
+        title: result.title,
         templateName: 'Executive',
       );
 
@@ -279,4 +328,13 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
       ),
     );
   }
+}
+
+// Small result carrier for the Save Invoice dialog — keeps the two typed
+// fields (title, business name) together as one Navigator.pop payload
+// instead of juggling two separate dialog round-trips.
+class _SaveInvoiceDialogResult {
+  final String title;
+  final String businessName;
+  const _SaveInvoiceDialogResult({required this.title, required this.businessName});
 }

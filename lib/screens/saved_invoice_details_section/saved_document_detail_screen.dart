@@ -1,14 +1,44 @@
 // lib/screens/saved_invoice_details_section/saved_document_detail_screen.dart
 //
-// One unified screen for SavedInvoice / SavedQuote / SavedReceipt, matched to
-// the shape of those models exactly as defined in lib/models/*.dart.
+// CONFIRM-BEFORE-EXPORT PASS (this update): Download PDF, Share PDF,
+// Export as Excel, and Export as CSV in the options sheet previously
+// fired their handler the instant the row was tapped — no confirmation,
+// so a mis-tap immediately kicked off a file write or share sheet.
+// Added a shared _confirmAction(...) dialog (professional, plain-English
+// wording — "This will generate a PDF of this invoice and save it to
+// your device. Continue?" etc., tailored per action/doc type) that each
+// of those four options now awaits before calling its handler. Rename,
+// Convert, and Delete are untouched — Delete already had its own
+// confirmation dialog, and Rename/Convert aren't one-shot destructive-ish
+// actions the same way a file export is.
 //
-// PDF PREVIEW FIX (this pass): _handleFullPreview now also passes the real
-// InvoiceData (widget.invoice?.data, null for demo/quote/receipt) through to
-// DocumentPdfPreviewScreen as `invoiceData:`. That screen uses it to render
-// the actual A4 Executive template instead of its generic mockup card —
-// see document_pdf_preview_screen.dart for the rendering-side change.
+// CONVERT-TO-RECEIPT SIZE PICKER (earlier pass): _handleConvertInvoiceToReceipt
+// now opens ReceiptTemplateChooserScreen (with its new onTemplateChosen
+// callback) instead of converting straight through with whatever
+// layoutTemplateId the converter happened to produce. The user picks a
+// paper format (A4 grid / Thermal) and, for A4, a design, exactly like the
+// regular "Create Receipt" flow — the chosen (templateId, paperFormat) is
+// applied to the converted ReceiptData via copyWith before saving. The
+// chooser is popped from inside the callback once the receipt is saved,
+// then the new saved receipt's detail screen is pushed.
+//
+// FORMAL REDESIGN PASS (earlier pass): three visual changes to de-saturate the
+// screen alongside the stat-card/status-card restyle in
+// document_detail_widgets.dart and detail/document_detail_status_card.dart:
+//   - Template chip (in _buildPreviewCard) now a neutral gray pill instead
+//     of an accent-tinted one.
+//   - Edit button (bottom bar) now solid neutral (colorScheme.onSurface)
+//     instead of the per-document accent color.
+//   - _SecondaryActionButton (Preview) now a plain outlined gray button
+//     instead of an accent-tinted one — removes the "two colorful pills"
+//     look at the bottom of the screen.
 // Nothing else in this file changed for this pass.
+//
+// PDF PREVIEW FIX (earlier pass): _handleFullPreview now also passes the
+// real InvoiceData (widget.invoice?.data, null for demo/quote/receipt)
+// through to DocumentPdfPreviewScreen as `invoiceData:`. That screen uses it
+// to render the actual A4 Executive template instead of its generic mockup
+// card — see document_pdf_preview_screen.dart for the rendering-side change.
 //
 // THEME-MATCH REDESIGN PASS (earlier update): DocumentDetailHeader now always
 // renders on the app's navy hero gradient (kHeroGradient, same colors as
@@ -92,8 +122,14 @@ import 'document_pdf_preview_screen.dart';
 import 'invoice_editable_canvas_screen.dart';
 import 'quote_editable_canvas_screen.dart';
 import 'receipt_editable_canvas_screen.dart';
+import '../invoice_create_section/editor_screen.dart';
+import '../quote_editor_screen.dart';
+import '../../create_receipt/create_receipt_screen.dart';
 import 'detail/document_detail_header.dart';
 import 'detail/document_detail_status_card.dart';
+import '../invoice_template_chooser_screen.dart';
+import '../quote_template_chooser_screen.dart';
+import '../../create_receipt/receipt_template_chooser_screen.dart';
 
 // -----------------------------------------------------------------------------
 // Small per-type status mapping (duplicated intentionally from
@@ -497,6 +533,10 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                       statusColor: state.statusColor,
                       statusIcon: state.statusIcon,
                       accent: _accent,
+                      // Ties the card's neutral border/background tint
+                      // to the same navy used by the header, instead of
+                      // a flat unrelated gray.
+                      neutralAccent: kHeroGradient[0],
                       secondaryDateLabel: state.secondaryDateLabel,
                       secondaryDateValue: state.secondaryDate,
                     ),
@@ -594,6 +634,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               label: widget.type == DocType.receipt ? 'Amount Paid' : 'Total',
               icon: Icons.payments_rounded,
               iconColor: _accent,
+              neutralAccent: kHeroGradient[0],
             ),
           ),
           const SizedBox(width: 12),
@@ -603,6 +644,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               label: 'Line Items',
               icon: Icons.list_alt_rounded,
               iconColor: const Color(0xFF9C27B0),
+              neutralAccent: kHeroGradient[0],
             ),
           ),
         ],
@@ -624,16 +666,27 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const DetailSectionLabel(label: 'Document'),
+              // FORMAL REDESIGN: neutral pill instead of the old
+              // per-document accent-tinted chip — this is document
+              // metadata, not a status or action, so it shouldn't carry
+              // invoice/quote/receipt brand color. Tinted with the
+              // header's own navy (kHeroGradient[0]) rather than a flat
+              // unrelated gray, so it still reads as this app.
               if (state.templateName.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
+                    color: kHeroGradient[0].withValues(alpha: isDark ? 0.18 : 0.08),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: kHeroGradient[0].withValues(alpha: 0.16)),
                   ),
                   child: Text(
                     state.templateName,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _accent),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white.withValues(alpha: 0.8) : kHeroGradient[0],
+                    ),
                   ),
                 ),
             ],
@@ -717,6 +770,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                           unitPrice: state.items[i].unitPrice,
                           total: state.items[i].total,
                           currency: state.currency,
+                          striped: i.isOdd,
                         ),
                         if (i != state.items.length - 1)
                           Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFFF0F0F0)),
@@ -811,7 +865,13 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               child: DetailActionButton(
                 label: 'Edit',
                 icon: Icons.edit_rounded,
-                backgroundColor: _accent,
+                // FORMAL REDESIGN: solid navy (the same kHeroGradient[0]
+                // used by the header) instead of the per-document accent
+                // color — Edit is the primary action, so it stays solid,
+                // but now echoes the header's own brand color instead of
+                // switching between invoice/quote/receipt colors or a
+                // generic black.
+                backgroundColor: kHeroGradient[0],
                 foregroundColor: Colors.white,
                 onTap: () => _handleEdit(context),
               ),
@@ -821,7 +881,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
               child: _SecondaryActionButton(
                 label: 'Preview',
                 icon: Icons.visibility_rounded,
-                accent: _accent,
+                accent: kHeroGradient[0],
                 onTap: () => _handleFullPreview(context, state),
               ),
             ),
@@ -841,37 +901,121 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     ));
   }
 
+  // CONFIRM-BEFORE-EXPORT PASS: shared confirmation dialog used by
+  // Download PDF / Share PDF / Export as Excel / Export as CSV before
+  // any of those handlers actually run. Returns true only if the user
+  // taps the primary (confirm) button; false for Cancel, a barrier tap,
+  // or a back-gesture dismissal (showDialog<bool> resolves null in all
+  // of those cases, so the `?? false` below covers them all in one go).
+  Future<bool> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required IconData icon,
+  }) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = kHeroGradient[0];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurface.withValues(alpha: 0.6), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   void _handleEdit(BuildContext context) {
     if (widget.isDemo) {
       _demoSnack(context, 'This is a demo document — editing is disabled.');
       return;
     }
+    // Load the real saved document into its provider first, then jump
+    // straight to the step-based editor's Customise/Review step (step 3)
+    // with that data already filled in — no template re-selection step.
     switch (widget.type) {
       case DocType.invoice:
+        final provider = context.read<InvoiceProvider>();
+        provider.loadSavedInvoice(widget.invoice!.id);
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => InvoiceEditableCanvasScreen(invoiceId: widget.invoice!.id),
+            builder: (_) => EditorScreen(
+              initialStep: 3,
+              layoutTemplateId: widget.invoice!.data.layoutTemplateId,
+            ),
           ),
         ).then((_) {
           if (context.mounted) setState(() {});
         });
         break;
       case DocType.quote:
+        final provider = context.read<QuoteProvider>();
+        provider.loadSavedQuote(widget.quote!.id);
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => QuoteEditableCanvasScreen(quoteId: widget.quote!.id),
+            builder: (_) => QuoteEditorScreen(
+              initialStep: 3,
+              layoutTemplateId: widget.quote!.data.layoutTemplateId,
+            ),
           ),
         ).then((_) {
           if (context.mounted) setState(() {});
         });
         break;
       case DocType.receipt:
+        final provider = context.read<ReceiptProvider>();
+        provider.loadSavedReceipt(widget.receipt!.id);
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ReceiptEditableCanvasScreen(receiptId: widget.receipt!.id),
+            builder: (_) => CreateReceiptScreen(
+              initialStep: 3,
+              layoutTemplateId: widget.receipt!.data.layoutTemplateId,
+            ),
           ),
         ).then((_) {
           if (context.mounted) setState(() {});
@@ -912,6 +1056,12 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           notes: state.notes,
           invoiceData: (!widget.isDemo && widget.type == DocType.invoice)
               ? widget.invoice!.data
+              : null,
+          quoteData: (!widget.isDemo && widget.type == DocType.quote)
+              ? widget.quote!.data
+              : null,
+          receiptData: (!widget.isDemo && widget.type == DocType.receipt)
+              ? widget.receipt!.data
               : null,
           onDownloadPdf: () => _handleDownloadPdf(context),
           onSharePdf: () => _handleSharePdf(context),
@@ -1070,18 +1220,43 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
-  void _handleConvertQuoteToInvoice(BuildContext context) {
+  // NAME + LOADING PASS: asks for a name up front via
+  // _showConversionNameDialog (defaulting to the quote's own title, but
+  // editable), then runs the actual conversion behind
+  // _runWithLoadingDialog so the user sees a brief, real loading state
+  // instead of the screen just silently swapping underneath them.
+  Future<void> _handleConvertQuoteToInvoice(BuildContext context) async {
     if (widget.isDemo || widget.quote == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
       return;
     }
     final quote = widget.quote!;
-    final newInvoiceData = convertQuoteDataToInvoiceData(quote.data);
-    final saved = context.read<InvoiceProvider>().addConvertedInvoice(
-          data: newInvoiceData,
-          title: quote.title,
-          templateName: quote.templateName,
-        );
+
+    final newTitle = await _showConversionNameDialog(
+      context,
+      defaultTitle: quote.title,
+      dialogTitle: 'Name this Invoice',
+      actionLabel: 'Create Invoice',
+      accent: kInvoiceAccent,
+    );
+    if (newTitle == null || !context.mounted) return; // cancelled
+
+    final convertedInvoiceData = convertQuoteDataToInvoiceData(quote.data);
+    final newInvoiceData = convertedInvoiceData.copyWith(
+      invoiceNumber: '',
+      notes: _prependConversionNote(convertedInvoiceData.notes, 'Quote "${quote.title}"'),
+    );
+    final saved = await _runWithLoadingDialog(
+      context,
+      () async => context.read<InvoiceProvider>().addConvertedInvoice(
+            data: newInvoiceData,
+            title: newTitle,
+            templateName: quote.templateName,
+          ),
+      message: 'Creating invoice…',
+    );
+    if (!context.mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: const Text('Invoice created from this quote'),
       backgroundColor: kInvoiceAccent,
@@ -1096,31 +1271,196 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     );
   }
 
+  // CONVERT-TO-RECEIPT SIZE PICKER + NAME + LOADING PASS: order is now
+  // name -> paper format/design -> loading -> done.
+  //   1. _showConversionNameDialog asks for a name up front (defaulting to
+  //      the invoice's own title, editable, cancel bails out entirely).
+  //   2. ReceiptTemplateChooserScreen opens as a plain size/design picker
+  //      (via its onTemplateChosen callback) instead of saving straight
+  //      through with whatever layoutTemplateId the converter happened to
+  //      produce.
+  //   3. Once a template/paper format is picked, _runWithLoadingDialog
+  //      shows a real loading state (with a small minimum-visible floor so
+  //      it never just flashes) while the converted ReceiptData — now with
+  //      the chosen layoutTemplateId/paperFormat and the user's name —
+  //      is actually saved.
+  //   4. The chooser pops itself from inside the callback once the save
+  //      completes, then the new saved receipt's detail screen is pushed
+  //      on top of this one.
+  //
+  // NOTE: this assumes ReceiptData has a copyWith(layoutTemplateId:,
+  // paperFormat:) — confirm with:
+  //   Select-String -Path "lib\models\receipt_data.dart" -Pattern "copyWith|layoutTemplateId|paperFormat"
+  // before rebuilding. If the field names differ, adjust the copyWith call
+  // below to match.
   Future<void> _handleConvertInvoiceToReceipt(BuildContext context) async {
     if (widget.isDemo || widget.invoice == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
       return;
     }
     final invoice = widget.invoice!;
-    final newReceiptData = convertInvoiceDataToReceiptData(invoice.data);
-    final saved = await context.read<ReceiptProvider>().addConvertedReceipt(
-          data: newReceiptData,
-          title: invoice.title,
-          templateName: invoice.templateName,
-        );
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('Receipt created from this invoice'),
-      backgroundColor: kReceiptAccent,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
+
+    final newTitle = await _showConversionNameDialog(
+      context,
+      defaultTitle: invoice.title,
+      dialogTitle: 'Name this Receipt',
+      actionLabel: 'Continue',
+      accent: kReceiptAccent,
+    );
+    if (newTitle == null || !context.mounted) return; // cancelled
+
+    final receiptProvider = context.read<ReceiptProvider>();
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SavedDocumentDetailScreen.receipt(saved),
+        builder: (_) => ReceiptTemplateChooserScreen(
+          onTemplateChosen: (templateId, paperFormat) async {
+            final convertedData = convertInvoiceDataToReceiptData(invoice.data);
+            final newReceiptData = convertedData.copyWith(
+              layoutTemplateId: templateId,
+              paperFormat: paperFormat,
+              receiptNumber: '',
+              notes: _prependConversionNote(convertedData.notes, 'Invoice "${invoice.title}"'),
+            );
+            final saved = await _runWithLoadingDialog(
+              context,
+              () => receiptProvider.addConvertedReceipt(
+                data: newReceiptData,
+                title: newTitle,
+                templateName: invoice.templateName,
+              ),
+              message: 'Creating receipt…',
+            );
+            if (!context.mounted) return;
+            // Close the chooser first so it doesn't sit underneath the new
+            // receipt's detail screen in the back stack.
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: const Text('Receipt created from this invoice'),
+              backgroundColor: kReceiptAccent,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ));
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SavedDocumentDetailScreen.receipt(saved),
+              ),
+            );
+          },
+        ),
       ),
     );
+  }
+
+  // Shared "Converted from …" note prepended to whatever notes carried
+  // over from the source document — the audit trail for a conversion,
+  // since the number field itself is left blank (see handlers above) and
+  // can't be relied on to identify the source.
+  String _prependConversionNote(String existingNotes, String sourceLabel) {
+    final line = 'Converted from $sourceLabel';
+    if (existingNotes.trim().isEmpty) return line;
+    return '$line\n${existingNotes.trim()}';
+  }
+
+  // Shared naming prompt for both conversion flows — prefilled with the
+  // source document's title (editable), Cancel returns null so the caller
+  // can bail out of the conversion entirely.
+  Future<String?> _showConversionNameDialog(
+    BuildContext context, {
+    required String defaultTitle,
+    required String dialogTitle,
+    required String actionLabel,
+    required Color accent,
+  }) {
+    final controller = TextEditingController(text: defaultTitle);
+    final formKey = GlobalKey<FormState>();
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(dialogTitle,
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 60,
+            textCapitalization: TextCapitalization.words,
+            style: TextStyle(color: colorScheme.onSurface),
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
+            decoration: InputDecoration(
+              hintText: 'Enter a name',
+              hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35)),
+              filled: true,
+              fillColor: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF8F9FC),
+              counterStyle: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outline)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outline)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: accent, width: 2)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, controller.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: Text(actionLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Shows a non-dismissible loading dialog while `work` runs, with a small
+  // minimum-visible floor (550ms) so a fast conversion doesn't just flash
+  // and disappear — the point is for the user to actually perceive that
+  // something happened, not just to gate on real latency. Always pops the
+  // dialog itself (success or failure) via the root navigator, since
+  // showDialog always mounts on the root navigator regardless of how
+  // deeply nested `context` is at the call site.
+  Future<T> _runWithLoadingDialog<T>(
+    BuildContext context,
+    Future<T> Function() work, {
+    String message = 'Working…',
+  }) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ConversionLoadingDialog(message: message),
+    );
+    final stopwatch = Stopwatch()..start();
+    try {
+      final result = await work();
+      final elapsed = stopwatch.elapsed;
+      const minDuration = Duration(milliseconds: 550);
+      if (elapsed < minDuration) {
+        await Future.delayed(minDuration - elapsed);
+      }
+      return result;
+    } finally {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 
   void _showOptionsSheet(BuildContext context) {
@@ -1129,6 +1469,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
       return;
     }
     final colorScheme = Theme.of(context).colorScheme;
+    final typeLabelLower = _typeLabel(widget.type).toLowerCase();
 
     showModalBottomSheet(
       context: context,
@@ -1178,40 +1519,74 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                     _handleConvertInvoiceToReceipt(context);
                   },
                 ),
+              // CONFIRM-BEFORE-EXPORT PASS: each of the four export/share
+              // options below now closes the sheet, then awaits
+              // _confirmAction before calling its handler. If the user
+              // taps Cancel (or dismisses the dialog any other way), the
+              // handler is simply never called — no file write, no share
+              // sheet, no snackbar.
               DetailSheetOption(
                 icon: Icons.download_rounded,
                 label: 'Download PDF',
                 color: const Color(0xFF2196F3),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _handleDownloadPdf(context);
+                  final ok = await _confirmAction(
+                    context,
+                    title: 'Download PDF',
+                    message: 'This will generate a PDF of this $typeLabelLower and save it to your device. Continue?',
+                    confirmLabel: 'Download',
+                    icon: Icons.download_rounded,
+                  );
+                  if (ok && context.mounted) _handleDownloadPdf(context);
                 },
               ),
               DetailSheetOption(
                 icon: Icons.ios_share_rounded,
                 label: 'Share PDF',
                 color: const Color(0xFF4CAF50),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _handleSharePdf(context);
+                  final ok = await _confirmAction(
+                    context,
+                    title: 'Share PDF',
+                    message: 'This will generate a PDF of this $typeLabelLower and open your device\'s share menu. Continue?',
+                    confirmLabel: 'Share',
+                    icon: Icons.ios_share_rounded,
+                  );
+                  if (ok && context.mounted) _handleSharePdf(context);
                 },
               ),
               DetailSheetOption(
                 icon: Icons.grid_on_rounded,
                 label: 'Export as Excel',
                 color: const Color(0xFF1D6F42),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _handleExportXlsx(context);
+                  final ok = await _confirmAction(
+                    context,
+                    title: 'Export as Excel',
+                    message: 'This will generate an Excel spreadsheet of this $typeLabelLower and save it to your Downloads folder. Continue?',
+                    confirmLabel: 'Export',
+                    icon: Icons.grid_on_rounded,
+                  );
+                  if (ok && context.mounted) _handleExportXlsx(context);
                 },
               ),
               DetailSheetOption(
                 icon: Icons.table_chart_rounded,
                 label: 'Export as CSV',
                 color: const Color(0xFF607D8B),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _handleExportCsv(context);
+                  final ok = await _confirmAction(
+                    context,
+                    title: 'Export as CSV',
+                    message: 'This will generate a CSV file of this $typeLabelLower and save it to your Downloads folder. Continue?',
+                    confirmLabel: 'Export',
+                    icon: Icons.table_chart_rounded,
+                  );
+                  if (ok && context.mounted) _handleExportCsv(context);
                 },
               ),
               DetailSheetOption(
@@ -1362,7 +1737,58 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
 }
 
 // -----------------------------------------------------------------------------
-// _SecondaryActionButton — flat-tint, crisp-border button for the bottom bar.
+// _ConversionLoadingDialog — small non-dismissible spinner + message shown
+// while a conversion (quote→invoice, invoice→receipt) actually saves, so
+// it reads as a real action instead of the screen silently swapping.
+// canPop: false blocks the hardware/gesture back action while it's up;
+// the dialog is only ever dismissed programmatically by
+// _runWithLoadingDialog once the work finishes.
+// -----------------------------------------------------------------------------
+class _ConversionLoadingDialog extends StatelessWidget {
+  final String message;
+  const _ConversionLoadingDialog({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6, color: kHeroGradient[0]),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                message,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// _SecondaryActionButton — outlined navy button for the bottom bar.
+//
+// FORMAL REDESIGN: was a flat per-document-accent fill with an accent
+// border and accent text/icon — paired with the also-accent-colored Edit
+// button, this made the bottom bar read as "two colorful pills." Now
+// outlined only (no fill), colored by whatever's passed as `accent` — the
+// call site passes kHeroGradient[0] (the header's navy), so this pairs
+// with the now-solid-navy Edit button as one calm, on-brand color instead
+// of a rotating cast of invoice/quote/receipt accents.
 // -----------------------------------------------------------------------------
 class _SecondaryActionButton extends StatelessWidget {
   final String label;
@@ -1386,9 +1812,12 @@ class _SecondaryActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Ink(
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.1),
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.2),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.4),
+              width: 1.2,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

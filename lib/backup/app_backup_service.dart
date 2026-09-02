@@ -1,6 +1,23 @@
 // app_backup_service.dart
 // lib/backup/app_backup_service.dart
 //
+// AUTO-BACKUP TO DOWNLOADS (this update): added autoBackupToDownloads() —
+// silently writes the current backup JSON to the public Downloads folder
+// (same directory receipt_pdf_service.dart already downloads PDFs to),
+// NOT the app's internal storage. This matters because SharedPreferences
+// (what every provider actually persists to) lives in app-internal
+// storage, which gets WIPED if the app is ever uninstalled — including a
+// silent uninstall+reinstall Android performs automatically when a
+// rebuilt APK is signed with a different debug certificate than what's
+// already installed (a real gotcha after `flutter clean` if the debug
+// keystore gets regenerated). The public Downloads folder is untouched
+// by an app uninstall, so a file sitting there survives exactly the
+// scenario that just cost data. This method is called after every save
+// (see the providers) and once on every app launch, overwriting the same
+// fixed filename each time — always-current, no pileup of dated files.
+// Fire-and-forget by design: failures are swallowed, this must never
+// block or crash whatever save action triggered it.
+//
 // Exports/imports all saved documents (invoices, quotes, receipts,
 // expenses) as a single JSON file the user can save or share, and later
 // restore from — e.g. after reinstalling the app or switching phones.
@@ -70,6 +87,14 @@ class AppBackupService {
 
   static const int _backupVersion = 1;
 
+  // Fixed filename for the silent auto-backup — always overwritten in
+  // place rather than timestamped, so Downloads doesn't accumulate a new
+  // file on every save. The manual "Export Backup" flow in
+  // backup_screen.dart still produces its own timestamped file separately
+  // via exportToFile(), for when the user wants a deliberate point-in-time
+  // copy (e.g. before a risky restore) they can keep alongside this one.
+  static const String _autoBackupFileName = 'invoice_app_autobackup.json';
+
   /// Reads every provider's raw persisted JSON string straight out of
   /// SharedPreferences and returns the combined backup document as a
   /// pretty-printed JSON string, ready to write to a file.
@@ -107,6 +132,42 @@ class AppBackupService {
     final file = File('${dir.path}/$name');
     await file.writeAsString(json);
     return file;
+  }
+
+  /// Silently writes the current backup JSON to the PUBLIC Downloads
+  /// folder — not app-internal storage — using the same directory
+  /// receipt_pdf_service.dart already writes PDFs to. Unlike
+  /// SharedPreferences (which is wiped if the app is ever uninstalled,
+  /// including an automatic silent uninstall+reinstall Android performs
+  /// when a rebuilt debug APK's signature doesn't match what's already
+  /// installed), the public Downloads folder survives an uninstall. This
+  /// is the actual safety net for the "flutter clean wiped my data"
+  /// scenario — call it after every save so there's never more than one
+  /// save's worth of data at risk.
+  ///
+  /// Fire-and-forget by design: wrap calls in `unawaited(...)` at the
+  /// call site. Failures are swallowed here — a failed auto-backup must
+  /// never block or crash whatever save action triggered it.
+  Future<void> autoBackupToDownloads() async {
+    try {
+      final json = await buildBackupJson();
+      final dir = await _downloadsDir();
+      final file = File('${dir.path}/$_autoBackupFileName');
+      await file.writeAsString(json);
+    } catch (_) {
+      // Best-effort. If Downloads isn't writable for some reason (unusual
+      // permission state, restricted platform, etc), silently skip — the
+      // manual Export Backup flow is still available as a fallback, and
+      // this should never surface an error for a background safety net.
+    }
+  }
+
+  static Future<Directory> _downloadsDir() async {
+    if (Platform.isAndroid) {
+      return Directory('/storage/emulated/0/Download');
+    }
+    final docs = await getApplicationDocumentsDirectory();
+    return docs;
   }
 
   /// Result of a restore attempt — counts of how many raw provider

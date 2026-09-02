@@ -1,4 +1,4 @@
-// lib/invoice_layout_templates/pagination/a4_paginator.dart
+// lib/document_layout_templates/pagination/a4_paginator.dart
 //
 // Generic, model-agnostic A4 pagination engine shared across invoice,
 // quote, and receipt templates. Given a list of "item" widgets (one per
@@ -7,7 +7,7 @@
 // fixed-size A4 pages as needed — never scaling text down to force a fit.
 // This matches how invoice_pdf_service.dart's pw.MultiPage already
 // paginates the exported PDF; previously the on-screen preview
-// (executive_cv_logic_data.dart) instead shrank content to fit one page,
+// (executive_invoice_logic_data.dart) instead shrank content to fit one page,
 // which is what this replaces.
 //
 // Header/footer convention:
@@ -18,6 +18,16 @@
 //   footerBuilder(pageIndex, pageCount) — render your totals/notes block
 //     only when pageIndex == pageCount - 1 (the last page); return
 //     SizedBox.shrink() otherwise.
+//
+// Footer position: the items block is wrapped in an Expanded, so any
+// vertical space left over on a page (after the header, items, and — on
+// the last page — the footer's own height) pushes the footer down to the
+// true bottom margin of the page. On a short page (e.g. a one-item
+// invoice) this means the footer sits pinned at the bottom rather than
+// floating directly under the last item. Pages with a SizedBox.shrink()
+// footer are unaffected — the Expanded space is simply absorbed there,
+// which changes nothing visually since the page card is already a fixed
+// height regardless.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -208,11 +218,23 @@ class _A4PaginatorState extends State<A4Paginator> {
           padding: widget.pagePadding,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
               widget.headerBuilder(pageIndex, pageCount),
               SizedBox(height: widget.headerGap),
-              ...items,
+              // Expanded so any leftover vertical space on this page (after
+              // the header, the items themselves, and — on the last page —
+              // the footer) collects here, between the last item and the
+              // footer. That's what pins the footer to the true bottom
+              // margin instead of letting it float directly under a short
+              // item list. Wrapped in a scroll-disabled, non-clipping
+              // Column so the items still lay out at their natural height
+              // above whatever blank space remains.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: items,
+                ),
+              ),
               if (pageIndex == pageCount - 1) ...[
                 SizedBox(height: widget.footerGap),
                 widget.footerBuilder(pageIndex, pageCount),

@@ -1,6 +1,17 @@
 // reminder_provider.dart
 // lib/alerts/custom_reminders/reminder_provider.dart
 //
+// ALERTPREFS PUSH WIRING (this pass): added applyRemindersPushEnabled() —
+// called from alert_type_toggles.dart's "Reminders" switch and
+// settings_screen.dart's master Alerts switch whenever the effective
+// enabled state (alertsEnabled && remindersEnabled) changes. Previously
+// AlertPrefs.remindersEnabled only hid due reminders from the in-app
+// bell badge/Alerts screen — the underlying OS push notification for
+// every notifyPush reminder kept firing at its exact scheduled time
+// regardless. Turning it off now actually cancels every currently
+// push-enabled reminder's notification; turning it back on re-arms them
+// all via the existing resyncScheduledNotifications().
+//
 // RESTORE (earlier pass): restoreReminder() puts a deleted reminder back
 // exactly as it was (same id, same remindAt) for the delete-snackbar Undo
 // action — addReminder() always mints a fresh id/createdAt, which would
@@ -10,20 +21,20 @@
 // id as their payload so NotificationService can route a tap back to the
 // right reminder via onReminderTapped.
 //
-// RESCHEDULE-ON-LAUNCH (this pass): some OEM Android builds (MIUI, Huawei,
-// aggressive battery-optimization modes on Samsung) kill the boot receiver
-// that's supposed to re-arm scheduled alarms after a restart, even with
-// AndroidManifest.xml wired correctly. As a safety net, every normal app
-// launch re-syncs every future notifyPush reminder against the OS
-// scheduler via resyncScheduledNotifications() — cheap (cancel + schedule,
-// a no-op if already correct) and guarantees that simply opening the app
-// once repairs a device that dropped its alarms.
+// RESCHEDULE-ON-LAUNCH (earlier pass): some OEM Android builds (MIUI,
+// Huawei, aggressive battery-optimization modes on Samsung) kill the boot
+// receiver that's supposed to re-arm scheduled alarms after a restart,
+// even with AndroidManifest.xml wired correctly. As a safety net, every
+// normal app launch re-syncs every future notifyPush reminder against the
+// OS scheduler via resyncScheduledNotifications() — cheap (cancel +
+// schedule, a no-op if already correct) and guarantees that simply
+// opening the app once repairs a device that dropped its alarms.
 //
-// EDIT (this pass): updateReminder() changes an existing reminder in place
-// (same id/createdAt) so fixing a typo or nudging a time doesn't lose the
-// original creation history the way delete+recreate would.
+// EDIT (earlier pass): updateReminder() changes an existing reminder in
+// place (same id/createdAt) so fixing a typo or nudging a time doesn't
+// lose the original creation history the way delete+recreate would.
 //
-// RECURRENCE (this pass): addReminder/updateReminder accept a
+// RECURRENCE (earlier pass): addReminder/updateReminder accept a
 // ReminderRecurrence. advanceRecurringReminder() is what a swipe-dismiss
 // calls on a recurring reminder instead of deleting it outright — moves
 // remindAt to the next occurrence and reschedules under the same id, so
@@ -97,6 +108,30 @@ class ReminderProvider extends ChangeNotifier {
       } catch (_) {
         // Best-effort — one bad reminder shouldn't stop the rest from
         // re-syncing, and this already runs silently in the background.
+      }
+    }
+  }
+
+  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
+  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
+  // EFFECTIVE enabled state for reminders (alertsEnabled && remindersEnabled)
+  // changes. `enabled: true` re-arms every future, push-enabled reminder
+  // (delegates to resyncScheduledNotifications(), which is idempotent);
+  // `enabled: false` cancels every currently-scheduled reminder
+  // notification outright. Never touches the reminders themselves or the
+  // in-app due-reminders list — those are unaffected either way; only the
+  // real OS notification is cancelled/re-armed.
+  Future<void> applyRemindersPushEnabled(bool enabled) async {
+    if (enabled) {
+      await resyncScheduledNotifications();
+      return;
+    }
+    for (final reminder in _reminders) {
+      if (!reminder.notifyPush) continue;
+      try {
+        await NotificationService.instance.cancelReminder(reminder.notificationId);
+      } catch (_) {
+        // Best-effort — one bad reminder shouldn't stop the rest applying.
       }
     }
   }

@@ -1,26 +1,67 @@
 // expense_cards.dart
 // lib/widgets/expenses/expense_cards.dart
 //
-// LOGO BANNER PASS (this update): ExpenseListCard now dispatches between
-// the original side-by-side Standard layout and a new
-// _LogoBannerExpenseCard (full-width top image band, mirroring
-// doc_cards.dart's _LogoBannerDocCard) based on
-// CardDisplayPrefs.cardStyle — exactly the same dispatch _DocCard already
-// does in doc_cards.dart. Previously ExpenseListCard had ONLY the
-// Standard layout, so selecting Logo Banner switched invoices/quotes/
-// receipts to the full-width-image style while expenses stayed in the
-// old side-by-side layout — that mismatch is what made expense cards
-// visibly not match the rest of the saved-document family whenever Logo
-// Banner was active. Grid/CompactGrid/Compact are unaffected, same as
-// doc cards (no room for a banner at those sizes).
+// LOGO HIGHLIGHT / LOGO IMAGE PASS (this update): every ExpenseGradientAvatar
+// and ExpenseLogoBanner call site in the List/Grid/CompactGrid/Compact
+// layouts now passes showHighlight: prefs.showLogoHighlight and
+// showImage: prefs.showLogoImage, matching the same two switches already
+// wired into doc_card_grid.dart/doc_card_list.dart/doc_card_compact.dart
+// for Invoices/Quotes/Receipts (see card_display_prefs.dart /
+// display_options_button.dart). ExpenseKanbanCard's tiny 18px avatar is
+// left at the (true/true) defaults, same as doc_kanban.dart's own kanban
+// cards -- at that size the highlight/image toggle doesn't meaningfully
+// register and kanban cards elsewhere in the app don't read these prefs
+// either.
 //
-// OVERFLOW FIX (this update): the amount text in every layout's
-// right-side column is now wrapped so a very large number (or a long
-// currency code) can't push the card past its bounds — `Flexible` +
-// `overflow: TextOverflow.ellipsis` + `maxLines: 1` on every amount
-// Text, matching the safety already present on the title/category/date
-// text elsewhere. This is what caused the "RIGHT OVERFLOWED BY N PIXELS"
-// error banner with sufficiently large test amounts.
+// KANBAN PARITY FIX (earlier): DocLayoutMode.kanban previously fell
+// through to the same case as DocLayoutMode.list in
+// saved_documents_section.dart's _buildExpenseEntries, so the Expenses
+// section rendered full-size ExpenseListCards even while every other
+// section (Invoices/Quotes/Receipts) had switched to the compact
+// _DocKanbanCard board layout — the "My Expenses" card looked oversized
+// and out of place next to the kanban columns above it. Added
+// ExpenseKanbanBoard + ExpenseKanbanCard below, matching
+// doc_kanban.dart's _DocKanbanColumn/_DocKanbanCard sizing exactly (165
+// column width, 380 board height), rendered as a single "Expenses"
+// column since expenses have no status field to split into multiple
+// columns the way invoices/quotes/receipts do. saved_documents_section.dart's
+// kanban case now routes here instead of falling back to the list card.
+//
+// AMOUNT ALIGNMENT PASS (earlier): in _StandardExpenseCard's amount
+// block, the fixed-width SizedBox(width:110) that holds the price (and
+// the Excluded chip above it) was left-aligned — crossAxisAlignment.start
+// on the Column, Alignment.centerLeft on the FittedBox — which kept the
+// price from reflowing when it grew, but also left it sitting away from
+// the card's right edge rather than hugging it. Both now right-align
+// (crossAxisAlignment.end / Alignment.centerRight) so the amount sits
+// flush with the right side of the card, matching the alignment style
+// used elsewhere (e.g. ExpenseCompactRow's amount column already used
+// CrossAxisAlignment.end). Width stays fixed at 110 — the reflow-safety
+// behavior described in the OVERFLOW FIX note below is unchanged.
+//
+// TYPE BADGE PASS (earlier): _StandardExpenseCard and ExpenseGridCard
+// now render a small "Expense" badge under the logo avatar, gated behind
+// CardDisplayPrefs.showBusinessName — the exact same toggle and visual
+// treatment as doc_cards.dart's docTypeLabel badge (Invoice/Quote/
+// Receipt), using kExpenseAccent as the badge color instead of a
+// per-entry accentColor since expenses don't have one. Both avatar+badge
+// pairs are wrapped in a fixed-width, center-aligned Column (matching
+// doc_cards.dart's fix for the same issue) so the badge sits centered
+// under the logo rather than left-aligned under it.
+//
+// LOGO BANNER PASS (earlier): ExpenseListCard dispatches between the
+// original side-by-side Standard layout and a new _LogoBannerExpenseCard
+// (full-width top image band, mirroring doc_cards.dart's
+// _LogoBannerDocCard) based on CardDisplayPrefs.cardStyle — exactly the
+// same dispatch _DocCard already does in doc_cards.dart. Grid/CompactGrid/
+// Compact are unaffected, same as doc cards (no room for a banner at
+// those sizes).
+//
+// OVERFLOW FIX (earlier): the amount text in every layout's right-side
+// column is wrapped so a very large number (or a long currency code)
+// can't push the card past its bounds — `Flexible` + `overflow:
+// TextOverflow.ellipsis` + `maxLines: 1` on every amount Text, matching
+// the safety already present on the title/category/date text elsewhere.
 //
 // UI-PARITY PASS (earlier): every layout's container styling (corner
 // radius, shadow recipe, border color/width) matches the equivalent tier
@@ -140,19 +181,58 @@ class _StandardExpenseCard extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              IntrinsicHeight(
+                child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (prefs.showLogo) ...[
-                    ExpenseGradientAvatar(
-                      logoPath: entry.logoPath,
-                      logoOffset: entry.logoOffset,
-                      logoScale: entry.logoScale,
-                      logoShape: entry.logoShape,
-                      category: entry.category,
-                      size: 68,
-                      iconSize: 28,
-                      borderRadius: 15,
+                    SizedBox(
+                      width: 68,
+                      child: Center(
+                        child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          ExpenseGradientAvatar(
+                            logoPath: entry.logoPath,
+                            logoOffset: entry.logoOffset,
+                            logoScale: entry.logoScale,
+                            logoShape: entry.logoShape,
+                            category: entry.category,
+                            size: 68,
+                            iconSize: 28,
+                            borderRadius: 15,
+                            showHighlight: prefs.showLogoHighlight,
+                            showImage: prefs.showLogoImage,
+                          ),
+                          if (prefs.showBusinessName) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              width: 68,
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: kExpenseAccent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'Expense',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.2,
+                                    color: kExpenseAccent,
+                                  ),
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 14),
                   ],
@@ -238,31 +318,53 @@ class _StandardExpenseCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 120),
+                  SizedBox(
+                    width: 120,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.max,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (prefs.showAmount)
-                          Text(
-                            entry.amountLabel,
-                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                          ),
-                        if (prefs.showAmount && entry.excluded && prefs.showStatusChip) const SizedBox(height: 6),
-                        if (entry.excluded && prefs.showStatusChip) excludedChip(),
-                        if (!selectionMode) ...[
-                          const SizedBox(height: 6),
+                        if (!selectionMode)
                           ExpenseThreeDotIcon(onTap: entry.onShowMenu),
-                        ],
+                        const Spacer(),
+                        if (prefs.showAmount || (entry.excluded && prefs.showStatusChip))
+                          // FIXED width (not just a max) — this is what
+                          // keeps the Excluded chip pinned in place. It no
+                          // longer reflows sideways when the price grows,
+                          // because the block's own width never changes;
+                          // only the price text inside it scales down via
+                          // FittedBox to fit up to 50,000,000+ values.
+                          // Right-aligned (crossAxisAlignment.end /
+                          // Alignment.centerRight) so the amount sits
+                          // flush with the card's right edge.
+                          SizedBox(
+                            width: 110,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (entry.excluded && prefs.showStatusChip) ...[
+                                  excludedChip(),
+                                  const SizedBox(height: 6),
+                                ],
+                                if (prefs.showAmount)
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      entry.amountLabel,
+                                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
                 ],
+              ),
               ),
               if (selectionMode)
                 Positioned(top: -4, right: -4, child: ExpenseSelectionBadge(selected: selected, accent: cs.primary)),
@@ -348,6 +450,8 @@ class _LogoBannerExpenseCard extends StatelessWidget {
                         category: entry.category,
                         height: 110,
                         topRadius: cardRadius,
+                        showHighlight: prefs.showLogoHighlight,
+                        showImage: prefs.showLogoImage,
                       ),
                       if (entry.excluded && prefs.showStatusChip)
                         Positioned(
@@ -397,13 +501,16 @@ class _LogoBannerExpenseCard extends StatelessWidget {
                             ),
                             if (prefs.showAmount) ...[
                               const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  entry.amountLabel,
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.right,
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 130),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    entry.amountLabel,
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurface),
+                                    maxLines: 1,
+                                  ),
                                 ),
                               ),
                             ],
@@ -548,15 +655,53 @@ class ExpenseGridCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (prefs.showLogo) ...[
-                    ExpenseGradientAvatar(
-                      logoPath: entry.logoPath,
-                      logoOffset: entry.logoOffset,
-                      logoScale: entry.logoScale,
-                      logoShape: entry.logoShape,
-                      category: entry.category,
-                      size: 40,
-                      iconSize: 18,
-                      borderRadius: 10,
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        width: 40,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            ExpenseGradientAvatar(
+                              logoPath: entry.logoPath,
+                              logoOffset: entry.logoOffset,
+                              logoScale: entry.logoScale,
+                              logoShape: entry.logoShape,
+                              category: entry.category,
+                              size: 40,
+                              iconSize: 18,
+                              borderRadius: 10,
+                              showHighlight: prefs.showLogoHighlight,
+                              showImage: prefs.showLogoImage,
+                            ),
+                            if (prefs.showBusinessName) ...[
+                              const SizedBox(height: 3),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: kExpenseAccent.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Expense',
+                                    style: TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: kExpenseAccent,
+                                    ),
+                                    maxLines: 1,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 6),
                   ],
@@ -583,10 +728,15 @@ class ExpenseGridCard extends StatelessWidget {
                       if (entry.excluded && prefs.showStatusChip) excludedChipCompact() else const SizedBox.shrink(),
                       const Spacer(),
                       if (prefs.showAmount)
-                        Flexible(
-                          child: Text(entry.amountLabel,
-                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 90),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(entry.amountLabel,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                                maxLines: 1),
+                          ),
                         ),
                     ],
                   ),
@@ -668,6 +818,8 @@ class ExpenseCompactGridCard extends StatelessWidget {
                       size: 26,
                       iconSize: 13,
                       borderRadius: 8,
+                      showHighlight: prefs.showLogoHighlight,
+                      showImage: prefs.showLogoImage,
                     ),
                     const SizedBox(height: 6),
                   ],
@@ -680,14 +832,25 @@ class ExpenseCompactGridCard extends StatelessWidget {
                         style: TextStyle(fontSize: 8.5, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
-                  if (prefs.showAmount) ...[
-                    const SizedBox(height: 2),
-                    Text(entry.amountLabel,
-                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ],
                   const Spacer(),
-                  if (entry.excluded && prefs.showStatusChip) excludedChipCompact(),
+                  if (entry.excluded && prefs.showStatusChip) ...[
+                    excludedChipCompact(),
+                    const SizedBox(height: 4),
+                  ],
+                  if (prefs.showAmount)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 90),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(entry.amountLabel,
+                              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                              maxLines: 1),
+                        ),
+                      ),
+                    ),
                 ],
               ),
               if (selectionMode)
@@ -760,6 +923,8 @@ class ExpenseCompactRow extends StatelessWidget {
                       size: 28,
                       iconSize: 15,
                       borderRadius: 8,
+                      showHighlight: prefs.showLogoHighlight,
+                      showImage: prefs.showLogoImage,
                     ),
                     const SizedBox(width: 10),
                   ],
@@ -768,7 +933,10 @@ class ExpenseCompactRow extends StatelessWidget {
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
-                  const SizedBox(width: 8),
+                  if (entry.excluded && prefs.showStatusChip) ...[
+                    excludedChipCompact(),
+                    const SizedBox(width: 8),
+                  ],
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 110),
                     child: Column(
@@ -776,9 +944,13 @@ class ExpenseCompactRow extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (prefs.showAmount)
-                          Text(entry.amountLabel,
-                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
-                              maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(entry.amountLabel,
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                                maxLines: 1),
+                          ),
                         if (prefs.showSecondaryDate)
                           Text(entry.dateLabel,
                               style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
@@ -786,10 +958,6 @@ class ExpenseCompactRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (entry.excluded && prefs.showStatusChip) ...[
-                    const SizedBox(width: 8),
-                    excludedChipCompact(),
-                  ],
                   if (!selectionMode) ...[
                     const SizedBox(width: 6),
                     ExpenseThreeDotIcon(onTap: entry.onShowMenu),
@@ -798,6 +966,188 @@ class ExpenseCompactRow extends StatelessWidget {
               ),
               if (selectionMode)
                 Positioned(top: -6, right: -2, child: ExpenseSelectionBadge(selected: selected, accent: cs.primary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+// -----------------------------------------------------------------------------
+// ExpenseKanbanBoard / ExpenseKanbanCard — KANBAN layout equivalent.
+//
+// Expenses have no status enum to build multiple columns from (unlike
+// invoices/quotes/receipts, which group by statusLabel in
+// _DocKanbanBoard), so this renders as a single "Expenses" column using
+// the exact same sizing/visual recipe as doc_kanban.dart's
+// _DocKanbanColumn/_DocKanbanCard (165 column width, 380 board height,
+// same card padding/fonts/shadow). This replaces the previous behaviour
+// of falling back to the full-size ExpenseListCard when Kanban was the
+// active layout, which didn't match the compact card size every other
+// section used in that view.
+//
+// ExpenseKanbanCard's ExpenseGradientAvatar is intentionally left at the
+// default showHighlight/showImage (true/true) rather than reading
+// CardDisplayPrefs -- at 18px the highlight isn't really visible either
+// way, and doc_kanban.dart's own kanban cards don't read these prefs
+// either, so this keeps the two kanban card families consistent with
+// each other.
+// -----------------------------------------------------------------------------
+
+class ExpenseKanbanBoard extends StatelessWidget {
+  final List<ExpenseCardEntry> entries;
+  const ExpenseKanbanBoard({super.key, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 380,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 165,
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.outline.withValues(alpha: 0.15)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(color: kExpenseAccent, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Expenses',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurface),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '${entries.length}',
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.4)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) => ExpenseKanbanCard(entry: entries[index]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ExpenseKanbanCard extends StatelessWidget {
+  final ExpenseCardEntry entry;
+  const ExpenseKanbanCard({super.key, required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: entry.onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Opacity(
+        opacity: entry.excluded ? 0.65 : 1.0,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E2235) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ExpenseGradientAvatar(
+                    logoPath: entry.logoPath,
+                    logoOffset: entry.logoOffset,
+                    logoScale: entry.logoScale,
+                    logoShape: entry.logoShape,
+                    category: entry.category,
+                    size: 18,
+                    iconSize: 10,
+                    borderRadius: 6,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      entry.title,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurface),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: ExpenseThreeDotIcon(onTap: entry.onShowMenu),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                entry.category.name,
+                style: TextStyle(fontSize: 9, color: entry.category.color, fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      entry.dateLabel,
+                      style: TextStyle(fontSize: 9, color: cs.onSurface.withValues(alpha: 0.4)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Flexible(
+                    child: Text(
+                      entry.amountLabel,
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: cs.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+              if (entry.excluded) ...[
+                const SizedBox(height: 5),
+                excludedChipCompact(),
+              ],
             ],
           ),
         ),

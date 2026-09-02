@@ -2,12 +2,71 @@
 //
 // Self-contained reusable widgets for the quote creation/edit flow.
 //
+// OPTIONAL LABEL PASS (this update): QuoteField now appends "(Optional)"
+// to a field's label automatically whenever `required` is false —
+// matching the identical pass already applied to invoice's
+// step_templates.dart _SheetField. Required fields (which already carry
+// their own "*") are untouched. Since QuoteField is the shared widget
+// behind nearly every quote input (template sheet, customer sheet, and
+// the main quote step screens), this single fix makes every optional
+// field across the quote flow show "(Optional)" in its label.
+//
+// FALLBACK MARK SETTINGS PASS (earlier): QuoteLogoPicker gained four
+// new optional params — showInitialFallback, onShowInitialFallbackChanged,
+// initialLetterOverride, onInitialLetterOverrideChanged — mirroring the
+// same addition just made to SharedLogoPicker (lib/widgets/
+// shared_logo_picker.dart), used by the invoice/receipt pickers. When
+// onShowInitialFallbackChanged is provided (opt-in; existing call sites
+// that don't pass it are unaffected), a small settings block renders
+// below the logo box: a switch to hide the no-logo rotated-square mark
+// ("the blue diamond") entirely, and — while it's on — a one-character
+// field to override which letter it shows instead of always
+// auto-deriving the first letter of the business name. Implemented as a
+// local _QuoteFallbackMarkSettings widget rather than importing anything
+// from shared_logo_picker.dart, matching this file's existing "fully
+// self-contained" convention (see the note below about not depending on
+// invoice_create_section files). These two values are meant to be
+// persisted alongside logoPath/logoOffset/logoScale on
+// QuoteBusinessProfile, and ultimately land on QuoteData's own
+// businessLogoShowInitial/businessLogoInitialLetter fields so
+// buildSharedLogo() in shared_doc_widgets.dart can honour them.
+//
+// CHARACTER-COUNTER DISPLAY FIX (earlier): QuoteField applied `max`
+// only as an inputFormatter (LengthLimitingTextInputFormatter) — that
+// silently caps what can be typed, but Flutter's built-in "12/40" counter
+// under a text field is driven by the widget's `maxLength` property, which
+// this field never set. Since QuoteField is the shared widget behind
+// nearly every quote input (business profile fields, client fields, and
+// the main quote step screens), this single fix makes the counter appear
+// everywhere at once. Mirrors the identical fix just applied to
+// ReceiptField in receipt_edit_widgets.dart. maxLength: max is safe when
+// max is null (the default) — no counter renders in that case, same as
+// before this fix. QuoteItemCard's description field already set
+// maxLength directly and is unaffected.
+//
 // Deliberately does NOT depend on invoice_create_section/invoice_edit_widgets.dart
 // or anything from invoice_models.dart — this feature is kept fully
 // self-contained rather than risking a cross-import from a different model
 // set.
 //
-// UPDATED (this pass): QuoteLogoPicker now matches the invoice app's
+// VALIDATION PASS (earlier): QuoteField gained an `extraFormatters`
+// param — mirroring ReceiptField/_InvoiceField's pattern — so callers can
+// restrict keystrokes (e.g. digits-only on Tax %/Discount %) the same way
+// QuoteItemCard's qty/price fields already do. The actual bound-checking
+// (discount 0-100%, non-negative/capped tax, required quote number/
+// descriptions, save-time guard against the step-tap bypass) lives in
+// quote_editor_screen.dart, which is where the step flow and
+// _nextStep()/_save() logic live.
+//
+// VALIDATION PASS 2 (earlier): QuoteItemCard's description field now
+// shows a character counter (maxLength wired up, not just the length
+// limiter formatter) matching the invoice item card, and its Total display
+// is now overflow-guarded (single line + ellipsis) so an unusually large
+// computed total can't blow out the card's fixed-width box. QuoteTotalsCard
+// got the same overflow guard on every amount value, including the final
+// Estimated Total line.
+//
+// UPDATED (earlier pass): QuoteLogoPicker now matches the invoice app's
 // profile_photo_widget.dart UX:
 //   - Tapping the logo box opens a bottom sheet: Choose from Gallery /
 //     Take a Photo / Reposition Logo (if one exists) / Remove Logo —
@@ -222,6 +281,12 @@ class QuoteField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final Widget? suffix;
 
+  /// Additional input formatters applied alongside the length limiter —
+  /// e.g. FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')) to
+  /// restrict a field to digits-only at the keyboard. Mirrors
+  /// ReceiptField/_InvoiceField's `extraFormatters` param.
+  final List<TextInputFormatter>? extraFormatters;
+
   const QuoteField({
     super.key,
     required this.ctrl,
@@ -235,6 +300,7 @@ class QuoteField extends StatelessWidget {
     this.keyboard,
     this.onChanged,
     this.suffix,
+    this.extraFormatters,
   });
 
   @override
@@ -242,17 +308,29 @@ class QuoteField extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atLimit = max != null && ctrl.text.length >= max!;
+    // OPTIONAL LABEL PASS: non-required fields get "(Optional)" appended
+    // to their label automatically, matching invoice's step_templates.dart
+    // _SheetField. Required fields (already carrying their own "*") are
+    // untouched.
+    final displayLabel = required ? label : '$label (Optional)';
 
     return TextFormField(
       controller: ctrl,
       keyboardType: keyboard,
       maxLines: maxLines,
+      // CHARACTER-COUNTER DISPLAY FIX: this is what actually turns on
+      // Flutter's built-in "n/max" counter — the LengthLimitingTextInput
+      // Formatter below enforces the cap but never displayed it.
+      maxLength: max,
       style: TextStyle(color: colorScheme.onSurface),
-      inputFormatters: max != null ? [LengthLimitingTextInputFormatter(max!)] : null,
+      inputFormatters: [
+        if (max != null) LengthLimitingTextInputFormatter(max!),
+        ...?extraFormatters,
+      ],
       onChanged: onChanged,
       validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: displayLabel,
         labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
         hintText: hint,
         hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
@@ -264,6 +342,8 @@ class QuoteField extends StatelessWidget {
                     child: Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFF44336)),
                   )
                 : null),
+        counterStyle: TextStyle(
+            fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.4)),
         filled: true,
         fillColor: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outline)),
@@ -330,12 +410,17 @@ class QuoteDateField extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // QuoteLogoPicker — optional business/client logo image
 //
-// UPDATED (this pass): now offers Gallery / Camera / Reposition / Remove
+// UPDATED (earlier pass): now offers Gallery / Camera / Reposition / Remove
 // via a bottom sheet (same pattern as the invoice app's photo widget),
 // plus a drag-to-pan + pinch/slider-to-zoom reposition dialog. Picked
 // images are still copied into <app documents>/quote_logos/<uuid>.<ext>
 // before the path is handed back, so saved logos stay durable across app
 // restarts / cache clears.
+//
+// FALLBACK MARK SETTINGS PASS (this update): see the file-level doc
+// comment at the top for the full rationale. Four new optional params;
+// existing call sites that don't pass onShowInitialFallbackChanged render
+// exactly as before.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class QuoteLogoPicker extends StatefulWidget {
@@ -354,6 +439,19 @@ class QuoteLogoPicker extends StatefulWidget {
   /// the last two arguments.
   final void Function(String? path, Offset offset, double scale) onChanged;
 
+  /// Whether the no-logo rotated-square mark shows at all. Only opt into
+  /// the settings UI (by passing onShowInitialFallbackChanged) if you're
+  /// also going to persist this value — otherwise leave both at defaults.
+  final bool showInitialFallback;
+  final ValueChanged<bool>? onShowInitialFallbackChanged;
+
+  /// One-character override for the mark's letter; empty means
+  /// auto-derive from the business name. Only shown/editable when
+  /// showInitialFallback is true and onInitialLetterOverrideChanged is
+  /// provided.
+  final String initialLetterOverride;
+  final ValueChanged<String>? onInitialLetterOverrideChanged;
+
   const QuoteLogoPicker({
     super.key,
     required this.logoPath,
@@ -361,6 +459,10 @@ class QuoteLogoPicker extends StatefulWidget {
     this.logoScale = 1.0,
     required this.accent,
     required this.onChanged,
+    this.showInitialFallback = true,
+    this.onShowInitialFallbackChanged,
+    this.initialLetterOverride = '',
+    this.onInitialLetterOverrideChanged,
   });
 
   @override
@@ -510,74 +612,188 @@ class _QuoteLogoPickerState extends State<QuoteLogoPicker> {
       widget.logoOffset.dy * maxTravel,
     );
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: _saving ? null : _showOptions,
-          child: Container(
-            width: boxSize,
-            height: boxSize,
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: _saving
-                ? Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: accent),
-                    ),
-                  )
-                : hasLogo
-                    ? OverflowBox(
-                        alignment: Alignment.center,
-                        maxWidth: double.infinity,
-                        maxHeight: double.infinity,
-                        child: Transform.translate(
-                          offset: pixelOffset,
-                          child: Image.file(
-                            File(logoPath!),
-                            fit: BoxFit.cover,
-                            width: boxSize * overScale * widget.logoScale,
-                            height: boxSize * overScale * widget.logoScale,
-                          ),
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _saving ? null : _showOptions,
+              child: Container(
+                width: boxSize,
+                height: boxSize,
+                decoration: BoxDecoration(
+                  color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _saving
+                    ? Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: accent),
                         ),
                       )
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add_photo_alternate_rounded, size: 24, color: accent.withValues(alpha: 0.6)),
-                          const SizedBox(height: 4),
-                          Text('Logo', style: TextStyle(fontSize: 10, color: accent.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-          ),
-        ),
-        if (hasLogo && !_saving) ...[
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextButton.icon(
-                onPressed: _openReposition,
-                icon: Icon(Icons.crop_rotate_rounded, size: 16, color: accent),
-                label: Text('Reposition', style: TextStyle(color: accent)),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                    : hasLogo
+                        ? OverflowBox(
+                            alignment: Alignment.center,
+                            maxWidth: double.infinity,
+                            maxHeight: double.infinity,
+                            child: Transform.translate(
+                              offset: pixelOffset,
+                              child: Image.file(
+                                File(logoPath!),
+                                fit: BoxFit.cover,
+                                width: boxSize * overScale * widget.logoScale,
+                                height: boxSize * overScale * widget.logoScale,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_rounded, size: 24, color: accent.withValues(alpha: 0.6)),
+                              const SizedBox(height: 4),
+                              Text('Logo', style: TextStyle(fontSize: 10, color: accent.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
+                            ],
+                          ),
               ),
-              TextButton.icon(
-                onPressed: () => widget.onChanged(null, Offset.zero, 1.0),
-                icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF5350)),
-                label: const Text('Remove', style: TextStyle(color: Color(0xFFEF5350))),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+            ),
+            if (hasLogo && !_saving) ...[
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    onPressed: _openReposition,
+                    icon: Icon(Icons.crop_rotate_rounded, size: 16, color: accent),
+                    label: Text('Reposition', style: TextStyle(color: accent)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => widget.onChanged(null, Offset.zero, 1.0),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF5350)),
+                    label: const Text('Remove', style: TextStyle(color: Color(0xFFEF5350))),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                  ),
+                ],
               ),
             ],
+          ],
+        ),
+        // FALLBACK MARK SETTINGS PASS: only rendered when the caller opts
+        // in via onShowInitialFallbackChanged — see the field doc comment
+        // on QuoteLogoPicker above.
+        if (widget.onShowInitialFallbackChanged != null) ...[
+          const SizedBox(height: 16),
+          _QuoteFallbackMarkSettings(
+            accent: accent,
+            showInitial: widget.showInitialFallback,
+            onShowInitialChanged: widget.onShowInitialFallbackChanged!,
+            letterOverride: widget.initialLetterOverride,
+            onLetterOverrideChanged: widget.onInitialLetterOverrideChanged,
           ),
         ],
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _QuoteFallbackMarkSettings — "no logo? show a letter mark" switch +
+// optional one-character override field. Local to this file rather than
+// importing SharedLogoPicker's version, matching this file's existing
+// self-contained convention (see the file-level doc comment).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _QuoteFallbackMarkSettings extends StatelessWidget {
+  final Color accent;
+  final bool showInitial;
+  final ValueChanged<bool> onShowInitialChanged;
+  final String letterOverride;
+  final ValueChanged<String>? onLetterOverrideChanged;
+
+  const _QuoteFallbackMarkSettings({
+    required this.accent,
+    required this.showInitial,
+    required this.onShowInitialChanged,
+    required this.letterOverride,
+    required this.onLetterOverrideChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            activeThumbColor: accent,
+            title: Text('Show letter mark when there\'s no logo',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface)),
+            subtitle: Text(
+              'A small colored mark with a letter, shown until a logo is uploaded.',
+              style: TextStyle(fontSize: 11.5, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+            ),
+            value: showInitial,
+            onChanged: onShowInitialChanged,
+          ),
+          if (showInitial && onLetterOverrideChanged != null) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Letter (optional)',
+                        style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface.withValues(alpha: 0.6))),
+                  ),
+                  SizedBox(
+                    width: 64,
+                    child: TextFormField(
+                      initialValue: letterOverride,
+                      textAlign: TextAlign.center,
+                      maxLength: 1,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [LengthLimitingTextInputFormatter(1)],
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        counterText: '',
+                        hintText: 'Auto',
+                        hintStyle: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+                        filled: true,
+                        fillColor: isDark ? colorScheme.surfaceContainerHighest : Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: accent, width: 1.5)),
+                      ),
+                      onChanged: onLetterOverrideChanged,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else
+            const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }
@@ -901,6 +1117,7 @@ class QuoteItemCard extends StatelessWidget {
             TextFormField(
               controller: descCtrl,
               style: TextStyle(color: colorScheme.onSurface),
+              maxLength: 200,
               inputFormatters: [LengthLimitingTextInputFormatter(200)],
               onChanged: (_) => onChanged(),
               decoration: InputDecoration(
@@ -908,6 +1125,8 @@ class QuoteItemCard extends StatelessWidget {
                 labelStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
                 hintText: 'e.g. Consulting Services',
                 hintStyle: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
+                counterStyle: TextStyle(
+                    fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.4)),
                 filled: true,
                 fillColor: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -963,8 +1182,13 @@ class QuoteItemCard extends StatelessWidget {
                       children: [
                         Text('Total', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withValues(alpha: 0.5))),
                         const SizedBox(height: 2),
-                        Text('$currencySymbol${total.toStringAsFixed(2)}',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: accent)),
+                        Text(
+                          '$currencySymbol${total.toStringAsFixed(2)}',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: accent),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                        ),
                       ],
                     ),
                   ),
@@ -1038,7 +1262,16 @@ class QuoteTotalsCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Estimated Total', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
-              Text('$currencySymbol${total.toStringAsFixed(2)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '$currencySymbol${total.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent),
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ],
@@ -1051,7 +1284,16 @@ class QuoteTotalsCard extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
-        Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

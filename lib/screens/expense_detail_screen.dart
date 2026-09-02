@@ -1,8 +1,39 @@
 // expense_detail_screen.dart
 // lib/screens/expense_detail_screen.dart
 //
-// THEME-MATCH PASS (this update): previously this screen used its own
-// header widget (_ExpenseHeaderBackground) with a flat red/expense-accent
+// CONFIRM-BEFORE-EXPORT PASS (this update): Export as Excel / Export as CSV
+// in the options sheet previously fired their handler the instant the row
+// was tapped — no confirmation, so a mis-tap immediately wrote a file.
+// Added the same _confirmAction(...) dialog saved_document_detail_screen.
+// dart uses (icon chip, plain-English message, Cancel/Export buttons,
+// accented with kHeroGradient[0] to match) — both export rows now await
+// it before calling their handler. Edit / Move to Folder / Include-
+// Exclude / Delete are untouched — Delete already had its own
+// confirmation dialog, and the others aren't one-shot destructive-ish
+// actions the same way a file export is.
+//
+// SHEET SAFE-AREA FIX (earlier): _showOptionsSheet's bottom sheet used
+// to wrap its content in a plain SafeArea, which was not enough to clear
+// the gesture-nav bar on some devices — "Delete" (the last row) was
+// getting hidden behind the Android nav buttons. Replaced with an explicit
+// Padding using MediaQuery.of(ctx).padding.bottom, the same pattern
+// saved_document_detail_screen.dart's own options sheet already uses
+// successfully.
+//
+// EXPORT WIRING PASS (earlier): ExpenseExportService existed with
+// full single-entry XLSX/CSV support but had no button anywhere in the
+// app calling it — the options sheet only had Edit/Move to Folder/
+// Include-Exclude/Delete. Added "Export as Excel" and "Export as CSV"
+// entries, mirroring the exact working pattern already proven in
+// saved_document_detail_screen.dart's _handleExportXlsx/_handleExportCsv
+// (try/catch, path-in-snackbar on success, error message on failure,
+// context.mounted guards around every post-await ScaffoldMessenger call).
+// categoryName is resolved once in build() (already needed for the stat
+// card / header) and threaded through to _showOptionsSheet so the export
+// handlers don't need a second CategoryProvider lookup.
+//
+// THEME-MATCH PASS (earlier): previously this screen used its own header
+// widget (_ExpenseHeaderBackground) with a flat red/expense-accent
 // gradient, a small logo-or-category-icon avatar, and a fixed
 // expandedHeight: 190 — none of which matched the navy hero-gradient
 // header used everywhere else (SavedDocumentDetailScreen for invoices/
@@ -37,6 +68,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../export/expense_export_service.dart';
 import '../models/expense_data.dart';
 import '../providers/category_provider.dart';
 import '../providers/expense_provider.dart';
@@ -59,9 +91,6 @@ class ExpenseDetailScreen extends StatelessWidget {
     final expense = context.watch<ExpenseProvider>().getExpenseById(expenseId);
 
     if (expense == null) {
-      // Deleted from elsewhere (e.g. bulk delete on ExpenseScreen) while
-      // this screen was open — bail out gracefully instead of crashing on
-      // a null category lookup below.
       return Scaffold(
         appBar: AppBar(backgroundColor: kExpenseAccent, foregroundColor: Colors.white),
         body: const Center(child: Text('This expense no longer exists.')),
@@ -80,9 +109,6 @@ class ExpenseDetailScreen extends StatelessWidget {
     final statusColor = expense.excludeFromReports ? const Color(0xFF9E9E9E) : const Color(0xFF4CAF50);
     final statusIcon = expense.excludeFromReports ? Icons.visibility_off_rounded : Icons.check_circle_rounded;
 
-    // barColor mirrors saved_document_detail_screen.dart's collapsed/pinned
-    // bar sourcing — same navy in both branches so it never flashes to the
-    // expense accent on scroll.
     final barColor = kHeroGradient[0];
 
     return Scaffold(
@@ -111,7 +137,7 @@ class ExpenseDetailScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: GestureDetector(
-                  onTap: () => _showOptionsSheet(context, expense),
+                  onTap: () => _showOptionsSheet(context, expense, category.name),
                   child: Container(
                     width: 40,
                     height: 40,
@@ -271,12 +297,125 @@ class ExpenseDetailScreen extends StatelessWidget {
     );
   }
 
-  void _showOptionsSheet(BuildContext context, ExpenseEntry expense) {
+  // CONFIRM-BEFORE-EXPORT PASS: shared confirmation dialog used by
+  // Export as Excel / Export as CSV before either handler actually runs.
+  // Byte-for-byte the same shape as saved_document_detail_screen.dart's
+  // _confirmAction (icon chip, plain-English message, Cancel/Export,
+  // accented with kHeroGradient[0]) so the two screens' export
+  // confirmations look identical. Returns true only if the user taps the
+  // primary (confirm) button; false for Cancel, a barrier tap, or a
+  // back-gesture dismissal.
+  Future<bool> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required IconData icon,
+  }) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = kHeroGradient[0];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurface.withValues(alpha: 0.6), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.45))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _handleExportXlsx(BuildContext context, ExpenseEntry expense, String categoryName) async {
+    try {
+      final path = await ExpenseExportService().exportSingleXlsxToDownloads(
+        expense,
+        categoryName: categoryName,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Saved to $path'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Couldn\'t generate spreadsheet: $e'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    }
+  }
+
+  Future<void> _handleExportCsv(BuildContext context, ExpenseEntry expense, String categoryName) async {
+    try {
+      final path = await ExpenseExportService().exportSingleCsvToDownloads(
+        expense,
+        categoryName: categoryName,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Saved to $path'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Couldn\'t generate spreadsheet: $e'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    }
+  }
+
+  void _showOptionsSheet(BuildContext context, ExpenseEntry expense, String categoryName) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).padding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -305,6 +444,41 @@ class ExpenseDetailScreen extends StatelessWidget {
               onTap: () {
                 Navigator.pop(context);
                 context.read<ExpenseProvider>().updateExpenseExcludeFromReports(expense.id, !expense.excludeFromReports);
+              },
+            ),
+            // CONFIRM-BEFORE-EXPORT PASS: each export row now closes the
+            // sheet, then awaits _confirmAction before calling its
+            // handler. If the user taps Cancel (or dismisses the dialog
+            // any other way), the handler is simply never called — no
+            // file write, no snackbar.
+            ListTile(
+              leading: const Icon(Icons.grid_on_rounded, color: Color(0xFF1D6F42)),
+              title: const Text('Export as Excel'),
+              onTap: () async {
+                Navigator.pop(context);
+                final ok = await _confirmAction(
+                  context,
+                  title: 'Export as Excel',
+                  message: 'This will generate an Excel spreadsheet of this expense and save it to your Downloads folder. Continue?',
+                  confirmLabel: 'Export',
+                  icon: Icons.grid_on_rounded,
+                );
+                if (ok && context.mounted) _handleExportXlsx(context, expense, categoryName);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart_rounded, color: Color(0xFF607D8B)),
+              title: const Text('Export as CSV'),
+              onTap: () async {
+                Navigator.pop(context);
+                final ok = await _confirmAction(
+                  context,
+                  title: 'Export as CSV',
+                  message: 'This will generate a CSV file of this expense and save it to your Downloads folder. Continue?',
+                  confirmLabel: 'Export',
+                  icon: Icons.table_chart_rounded,
+                );
+                if (ok && context.mounted) _handleExportCsv(context, expense, categoryName);
               },
             ),
             ListTile(

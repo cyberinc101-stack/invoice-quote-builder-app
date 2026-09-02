@@ -3,9 +3,10 @@
 //
 // Per-user toggle state for the Reports screen's "data sources" row
 // (Invoices / Quotes / Receipts / Expenses), plus the tax set-aside rate
-// used by TaxSetAsideCard. Mirrors lib/alerts/alert_prefs.dart's shape
-// exactly: a ChangeNotifier with a load() called once at startup in
-// main.dart, plain fields, and SharedPreferences persistence.
+// used by TaxSetAsideCard, and the monthly income goal used by
+// IncomeGoalCard. Mirrors lib/alerts/alert_prefs.dart's shape exactly: a
+// ChangeNotifier with a load() called once at startup in main.dart, plain
+// fields, and SharedPreferences persistence.
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ const String _kIncludeQuotesKey = 'reports_include_quotes_v1';
 const String _kIncludeReceiptsKey = 'reports_include_receipts_v1';
 const String _kIncludeExpensesKey = 'reports_include_expenses_v1';
 const String _kTaxRatePercentKey = 'reports_tax_rate_percent_v1';
+const String _kMonthlyIncomeGoalKey = 'reports_monthly_income_goal_v1';
 const double _kDefaultTaxRatePercent = 25.0;
 
 class ReportsPrefs extends ChangeNotifier {
@@ -23,6 +25,7 @@ class ReportsPrefs extends ChangeNotifier {
   bool _includeReceipts = true;
   bool _includeExpenses = true;
   double _taxRatePercent = _kDefaultTaxRatePercent;
+  double _monthlyIncomeGoal = 0.0;
   bool _loaded = false;
 
   bool get includeInvoices => _includeInvoices;
@@ -30,6 +33,7 @@ class ReportsPrefs extends ChangeNotifier {
   bool get includeReceipts => _includeReceipts;
   bool get includeExpenses => _includeExpenses;
   double get taxRatePercent => _taxRatePercent;
+  double get monthlyIncomeGoal => _monthlyIncomeGoal;
   bool get isLoaded => _loaded;
 
   Future<void> load() async {
@@ -39,6 +43,7 @@ class ReportsPrefs extends ChangeNotifier {
     _includeReceipts = prefs.getBool(_kIncludeReceiptsKey) ?? true;
     _includeExpenses = prefs.getBool(_kIncludeExpensesKey) ?? true;
     _taxRatePercent = prefs.getDouble(_kTaxRatePercentKey) ?? _kDefaultTaxRatePercent;
+    _monthlyIncomeGoal = prefs.getDouble(_kMonthlyIncomeGoalKey) ?? 0.0;
     _loaded = true;
     notifyListeners();
   }
@@ -77,5 +82,13 @@ class ReportsPrefs extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kTaxRatePercentKey, clamped);
+  }
+
+  Future<void> setMonthlyIncomeGoal(double value) async {
+    final clamped = value.clamp(0.0, 100000000.0);
+    _monthlyIncomeGoal = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kMonthlyIncomeGoalKey, clamped);
   }
 }

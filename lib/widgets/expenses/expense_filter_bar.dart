@@ -1,6 +1,35 @@
 // expense_filter_bar.dart
 // lib/widgets/expenses/expense_filter_bar.dart
 //
+// SHEET SAFE-AREA FIX (this update): the Filters bottom sheet's Padding
+// only accounted for MediaQuery.viewInsets.bottom (the keyboard), never
+// MediaQuery.padding.bottom (the Android gesture-nav inset) -- so the
+// "Done" button was rendering partially or fully behind the nav bar on
+// devices with on-screen gesture navigation. This is the exact same bug
+// already fixed in expense_screen.dart's openExpenseFolderSheet and
+// _showItemMenu (and document_filter_bar.dart's own Filters sheet before
+// that) -- it just hadn't been applied here yet. Fixed the same way:
+// added MediaQuery.of(context).padding.bottom on top of the existing
+// viewInsets.bottom in the sheet's outer Padding, plus a little extra
+// breathing room (8px) so Done isn't flush against the nav bar's edge
+// either. No other change in this file.
+//
+// ON-DARK CONTRAST FIX (earlier update): the search field and Filters
+// button previously used theme-driven colors (cs.onSurface.withValues(alpha: ...)
+// fills/borders/text) copied from document_filter_bar.dart — which is
+// correct for that widget since it sits directly on the page background,
+// but WRONG here, since ExpenseFilterBar is always rendered inside
+// AppHeroCard's dark navy gradient (see expense_screen.dart). A
+// near-transparent dark-tinted fill/border/text on a dark background was
+// reading as almost invisible — the field was there, just impossible to
+// see. Both widgets now use fixed white/light tones sized for a dark
+// background instead of theme colorScheme values, matching the pattern
+// the folder-scope chip in expense_screen.dart already uses (white/
+// white70-on-dark). The bottom sheet's own controls (dropdowns, amount
+// fields, Done button) are UNCHANGED — the sheet renders on
+// scaffoldBackgroundColor, a normal light/dark theme surface, not the
+// hero gradient, so theme-driven colors are still correct there.
+//
 // Search + Filters bar for the Expenses screen, matching
 // lib/widgets/document_filter_bar.dart's visual language (search field
 // styling, "Filters" tune-icon button, bottom sheet layout) but scoped to
@@ -13,10 +42,9 @@
 // No type pills (this screen only ever shows expenses) and no Status
 // section (expenses have no payment/quote/receipt-style status field) —
 // those are the two things DocumentFilterBar has that don't apply here.
-// Everything else — search field look, the Filters button with its active
-// dot, the bottom sheet's grab handle/header/"Clear all"/Done button — is
-// styled to match exactly so switching between Home and Expenses doesn't
-// feel like a different app.
+// The bottom sheet's grab handle/header/"Clear all"/Done button are
+// styled to match DocumentFilterBar's so switching between Home and
+// Expenses doesn't feel like a different app.
 
 import 'package:flutter/material.dart';
 import '../../filters/filter_types.dart';
@@ -140,7 +168,17 @@ class _ExpenseFilterBarState extends State<ExpenseFilterBar> {
             final cs = Theme.of(context).colorScheme;
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              // SHEET SAFE-AREA FIX: was viewInsets.bottom only (clears
+              // the keyboard) -- now also adds padding.bottom (the
+              // Android gesture-nav inset) plus 8px of extra breathing
+              // room, same fix already applied to expense_screen.dart's
+              // own sheets, so "Done" can no longer render behind the
+              // nav bar.
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom +
+                    MediaQuery.of(context).padding.bottom +
+                    8,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
@@ -317,8 +355,10 @@ class _ExpenseFilterBarState extends State<ExpenseFilterBar> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
+    // Fixed on-dark tones — this bar always renders inside AppHeroCard's
+    // navy gradient (see expense_screen.dart), never on a plain page
+    // background, so it intentionally does NOT use Theme colorScheme
+    // colors the way document_filter_bar.dart's version does.
     return Row(
       children: [
         Expanded(
@@ -328,12 +368,12 @@ class _ExpenseFilterBarState extends State<ExpenseFilterBar> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Search by vendor or reference number',
-              hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.4)),
-              prefixIcon: Icon(Icons.search_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.5)),
+              hintStyle: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.55)),
+              prefixIcon: Icon(Icons.search_rounded, size: 20, color: Colors.white.withValues(alpha: 0.7)),
               suffixIcon: _searchController.text.isEmpty
                   ? null
                   : IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18),
+                      icon: Icon(Icons.close_rounded, size: 18, color: Colors.white.withValues(alpha: 0.7)),
                       onPressed: () {
                         _searchController.clear();
                         widget.onSearchChanged('');
@@ -341,22 +381,23 @@ class _ExpenseFilterBarState extends State<ExpenseFilterBar> {
                       },
                     ),
               filled: true,
-              fillColor: cs.onSurface.withValues(alpha: 0.045),
+              fillColor: Colors.white.withValues(alpha: 0.1),
               contentPadding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.18)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: _kExpenseAccent.withValues(alpha: 0.55)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.6)),
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.18)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
               ),
             ),
-            style: const TextStyle(fontSize: 13),
+            style: const TextStyle(fontSize: 13, color: Colors.white),
+            cursorColor: Colors.white,
             onSubmitted: (_) => setState(() {}),
           ),
         ),
@@ -368,6 +409,7 @@ class _ExpenseFilterBarState extends State<ExpenseFilterBar> {
 }
 
 // ── Filters button — sits next to search, opens the bottom sheet ──────────
+// Fixed on-dark tones, same reasoning as the search field above.
 
 class _FiltersButton extends StatelessWidget {
   final bool active;
@@ -377,17 +419,16 @@ class _FiltersButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 42,
         width: 42,
         decoration: BoxDecoration(
-          color: active ? _kExpenseAccent.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.045),
+          color: active ? _kExpenseAccent.withValues(alpha: 0.28) : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? _kExpenseAccent.withValues(alpha: 0.45) : cs.outline.withValues(alpha: 0.18),
+            color: active ? _kExpenseAccent.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.22),
           ),
         ),
         child: Stack(
@@ -397,7 +438,7 @@ class _FiltersButton extends StatelessWidget {
               child: Icon(
                 Icons.tune_rounded,
                 size: 20,
-                color: active ? _kExpenseAccent : cs.onSurface.withValues(alpha: 0.6),
+                color: active ? Colors.white : Colors.white.withValues(alpha: 0.8),
               ),
             ),
             if (active)
@@ -407,10 +448,10 @@ class _FiltersButton extends StatelessWidget {
                 child: Container(
                   width: 7,
                   height: 7,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     color: _kExpenseAccent,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
+                    border: Border.fromBorderSide(BorderSide(color: Colors.white, width: 1.5)),
                   ),
                 ),
               ),
@@ -422,6 +463,8 @@ class _FiltersButton extends StatelessWidget {
 }
 
 // ── Bottom-sheet section wrapper — label above a full-width control ───────
+// Unchanged — renders on scaffoldBackgroundColor inside the sheet, not
+// the hero gradient, so theme colorScheme colors are correct here.
 
 class _SheetSection extends StatelessWidget {
   final String label;

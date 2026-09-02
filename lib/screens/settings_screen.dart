@@ -3,7 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
+import '../providers/invoice_provider.dart';
+import '../providers/quote_provider.dart';
+import '../providers/receipt_provider.dart';
 import '../alerts/alert_prefs.dart';
+import '../alerts/custom_reminders/reminder_provider.dart';
 import '../alerts/notifications/digest_scheduler.dart';
 import '../helpers/lang_helper.dart';
 import '../backup/backup_screen.dart';
@@ -147,6 +151,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
+  // Applies the master Alerts on/off switch to every category's real push
+  // notifications, combined with each category's own per-type flag —
+  // matches the same "alertsEnabled && xEnabled" effective-state rule
+  // alert_type_toggles.dart uses per switch. Previously this master
+  // switch only called alertPrefs.setAlertsEnabled(value), which changed
+  // what buildAlerts() shows in-app but left every scheduled push
+  // notification untouched — see document_alert_scheduler.dart's header
+  // comment for the full rationale.
+  void _applyAlertsEnabledToPush(BuildContext context, AlertPrefs alertPrefs, bool value) {
+    context
+        .read<InvoiceProvider>()
+        .applyOverdueAlertsEnabled(value && alertPrefs.overdueInvoicesEnabled);
+    context
+        .read<QuoteProvider>()
+        .applyExpiringAlertsEnabled(value && alertPrefs.quotesExpiringEnabled);
+
+    final draftsEnabled = value && alertPrefs.draftsEnabled;
+    context.read<InvoiceProvider>().applyDraftAlertsEnabled(draftsEnabled);
+    context.read<QuoteProvider>().applyDraftAlertsEnabled(draftsEnabled);
+    context.read<ReceiptProvider>().applyDraftAlertsEnabled(draftsEnabled);
+
+    context
+        .read<ReminderProvider>()
+        .applyRemindersPushEnabled(value && alertPrefs.remindersEnabled);
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
@@ -285,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(height: 1, indent: 72),
 
-                // SIMPLIFIED (this pass): per-type alert toggles (Overdue
+                // SIMPLIFIED (earlier pass): per-type alert toggles (Overdue
                 // Invoices / Expiring Quotes / Drafts / Reminders) no
                 // longer live here — they've moved to a bottom sheet on
                 // alerts_screen.dart itself, opened via the tune icon in
@@ -296,6 +326,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // that belongs buried in a rarely-visited Settings screen
                 // — see the AlertTypeTogglesList usage in
                 // alerts_screen.dart for where it lives now.
+                //
+                // PUSH WIRING (this pass): flipping this switch now also
+                // cancels/re-arms real push notifications for every
+                // category via _applyAlertsEnabledToPush() — previously
+                // it only changed alertPrefs.alertsEnabled, which the
+                // in-app Alerts list reads but the push schedulers never
+                // did.
                 _buildTile(
                   icon: alertPrefs.alertsEnabled
                       ? Icons.notifications_active_rounded
@@ -308,7 +345,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'Overdue invoices, expiring quotes & drafts',
                   trailing: Switch(
                     value: alertPrefs.alertsEnabled,
-                    onChanged: (value) => alertPrefs.setAlertsEnabled(value),
+                    onChanged: (value) {
+                      alertPrefs.setAlertsEnabled(value);
+                      _applyAlertsEnabledToPush(context, alertPrefs, value);
+                    },
                     activeThumbColor: const Color(0xFF2196F3),
                   ),
                 ),

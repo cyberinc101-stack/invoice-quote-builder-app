@@ -1,8 +1,34 @@
 // lib/export/bulk_document_export_service.dart
 //
-// Combines a mixed selection of invoices, quotes, and receipts into ONE
-// named CSV file — used by the "Export" action added to the selection bar
-// in saved_documents_section.dart.
+// Combines a mixed selection of invoices, quotes, receipts — and now,
+// this pass, EXPENSES — into ONE named CSV file.
+//
+// EXPENSES PASS (this update): expenses were previously entirely absent
+// from every combined/folder export — FolderDownloadService's own header
+// comment flagged this explicitly as a known gap. Expenses are not real
+// billable documents (no PDF, no client-facing template) — they exist
+// purely so the accounting/export numbers are accurate when a user
+// uploads a folder's documents into Excel or accounting software like
+// Xero. So they're folded into this same combined CSV as plain data rows,
+// never as a document type with its own PDF path.
+//
+// Two schema additions to support this, both backward compatible with
+// every existing row:
+//   - A trailing 'Category' column, empty for Invoice/Quote/Receipt rows,
+//     populated with the expense's category name for Expense rows.
+//   - Expense rows use the existing 'Total' column, but as a NEGATIVE
+//     number (money OUT), while invoice/quote/receipt rows keep their
+//     existing positive Total (money IN). This is the actual point of
+//     including expenses at all — a plain SUM() over the Total column in
+//     Excel/Xero now nets out to real profit/loss, instead of only ever
+//     summing income. Client Name holds the expense's vendor (the
+//     counterpart party, same role Client Name plays for the other three
+//     types); Document Number holds the expense's reference number, if
+//     any.
+//
+// expenses/categoryNameOf are optional (default: no expenses, identity
+// lookup) so every existing call site that doesn't pass them compiles and
+// behaves exactly as before this pass.
 //
 // Mirrors invoice_export_service.dart's conventions exactly:
 //  - exportToDownloads() writes to the same Downloads directory helper
@@ -12,27 +38,34 @@
 //  - Same minimal CSV field-escaping helper (quote-wrap + double internal
 //    quotes whenever a value contains a comma, quote, or newline)
 //
-// Column layout — one shared row shape so all three document types can
-// live in a single sheet:
+// Column layout — one shared row shape so all four types can live in a
+// single sheet:
 //   Type | Document Number | Client Name | Client Email | Issue Date |
 //   Due / Expiry / Payment Date | Payment Method | Currency | Subtotal |
-//   Tax | Discount | Total | Status
+//   Tax | Discount | Total | Status | Category
 //
 // Field mapping per type (nothing here is guessed beyond what's already
-// defined on InvoiceData / QuoteData / ReceiptData):
+// defined on InvoiceData / QuoteData / ReceiptData / ExpenseEntry):
 //   Invoice  -> invoiceNumber, issueDate, dueDate,    paymentStatus.name
 //   Quote    -> quoteNumber,   issueDate, expiryDate, quoteStatus.name
 //   Receipt  -> receiptNumber, paymentDate (as Issue Date), '' (no second
 //               date), paymentMethod.name, status.name
+//   Expense  -> referenceNumber (Document Number), vendor (Client Name),
+//               date (as Issue Date), '' (no second date), amount (as
+//               Subtotal AND as -amount in Total), category name
+//               (Category column)
 //
-// Rows are emitted in a stable order — invoices first, then quotes, then
-// receipts — same grouping the saved-documents list already uses.
+// Rows are emitted in a stable order — invoices, then quotes, then
+// receipts, then expenses — same grouping the saved-documents list
+// already uses, with expenses last since they're the newest addition and
+// structurally different (money out, not a sent/received document).
 
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/expense_data.dart';
 import '../models/invoice_data.dart';
 import '../models/quote_data.dart';
 import '../models/receipt_data.dart';
@@ -46,11 +79,15 @@ class BulkDocumentExportService {
     required List<SavedInvoice> invoices,
     required List<SavedQuote> quotes,
     required List<SavedReceipt> receipts,
+    List<ExpenseEntry> expenses = const [],
+    String Function(String categoryId)? categoryNameOf,
   }) async {
     final csv = _buildCsvString(
       invoices: invoices,
       quotes: quotes,
       receipts: receipts,
+      expenses: expenses,
+      categoryNameOf: categoryNameOf ?? (id) => id,
     );
     final dir = await _downloadsDir();
     final file = File('${dir.path}/${_sanitize(fileName)}.csv');
@@ -64,11 +101,15 @@ class BulkDocumentExportService {
     required List<SavedInvoice> invoices,
     required List<SavedQuote> quotes,
     required List<SavedReceipt> receipts,
+    List<ExpenseEntry> expenses = const [],
+    String Function(String categoryId)? categoryNameOf,
   }) async {
     final csv = _buildCsvString(
       invoices: invoices,
       quotes: quotes,
       receipts: receipts,
+      expenses: expenses,
+      categoryNameOf: categoryNameOf ?? (id) => id,
     );
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/${_sanitize(fileName)}.csv');
@@ -85,6 +126,8 @@ class BulkDocumentExportService {
     required List<SavedInvoice> invoices,
     required List<SavedQuote> quotes,
     required List<SavedReceipt> receipts,
+    required List<ExpenseEntry> expenses,
+    required String Function(String categoryId) categoryNameOf,
   }) {
     final buf = StringBuffer();
 
@@ -102,6 +145,7 @@ class BulkDocumentExportService {
       'Discount',
       'Total',
       'Status',
+      'Category',
     ].join(','));
 
     for (final inv in invoices) {
@@ -120,6 +164,7 @@ class BulkDocumentExportService {
         d.discountAmount,
         d.grandTotal,
         _csv(d.paymentStatus.name),
+        _csv(''),
       ].join(','));
     }
 
@@ -139,6 +184,7 @@ class BulkDocumentExportService {
         d.discountAmount,
         d.grandTotal,
         _csv(d.quoteStatus.name),
+        _csv(''),
       ].join(','));
     }
 
@@ -158,6 +204,30 @@ class BulkDocumentExportService {
         d.discountAmount,
         d.amountPaid,
         _csv(d.status.name),
+        _csv(''),
+      ].join(','));
+    }
+
+    // Expense rows -- money OUT, so Total is negative. This is the whole
+    // point of including expenses here: a plain SUM() over the Total
+    // column in Excel/Xero now nets income against expenses instead of
+    // only ever summing income.
+    for (final e in expenses) {
+      buf.writeln([
+        _csv('Expense'),
+        _csv(e.referenceNumber ?? ''),
+        _csv(e.vendor.isEmpty ? '(No vendor)' : e.vendor),
+        _csv(''),
+        _csv(_formatDate(e.date)),
+        _csv(''),
+        _csv(''),
+        _csv(e.currency),
+        e.amount,
+        0,
+        0,
+        -e.amount,
+        _csv(''),
+        _csv(categoryNameOf(e.categoryId)),
       ].join(','));
     }
 
@@ -172,6 +242,11 @@ class BulkDocumentExportService {
     }
     return value;
   }
+
+  static String _formatDate(DateTime d) =>
+      '${d.year}-${_pad(d.month)}-${_pad(d.day)}';
+
+  static String _pad(int n) => n.toString().padLeft(2, '0');
 
   // ── Shared helpers ─────────────────────────────────────────────────────
 

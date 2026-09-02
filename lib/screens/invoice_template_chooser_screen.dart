@@ -1,16 +1,26 @@
 // invoice_template_chooser_screen.dart
 // lib/screens/invoice_template_chooser_screen.dart
 //
-// Shown when "Create Invoice" is pressed, BEFORE the editor stepper.
-// Card/grid layout. Tapping a card now just SELECTS it (shows a radio
-// check + highlighted border) instead of navigating immediately — the
-// user confirms with the "Save & Continue" bar at the bottom. The chosen
-// template id is persisted to SharedPreferences so the NEXT time this
-// screen opens, that same template is pre-selected (radio already
-// checked), letting the user just tap Continue without re-picking.
+// Shown when "Create Invoice" is pressed, BEFORE the editor stepper — and
+// also now the entry point for editing an EXISTING saved invoice (pass
+// existingInvoiceId). In that mode:
+//   - The pre-selected template comes from that invoice's own
+//     layoutTemplateId, not the SharedPreferences "last used" value.
+//   - "Save & Continue" loads the real saved invoice into InvoiceProvider
+//     (provider.loadSavedInvoice(id)) before navigating, and pushes
+//     EditorScreen with initialStep: 2 — skipping the legacy
+//     Customer/Template steps (which don't apply to an existing document)
+//     and landing directly on the Create Invoice step, which already
+//     seeds itself from provider.invoiceData.
+//
+// Tapping a card just SELECTS it (radio check + highlighted border)
+// instead of navigating immediately — confirmed via the bottom bar.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/invoice_provider.dart';
+import '../widgets/template_full_preview_modal.dart';
 import 'invoice_create_section/editor_screen.dart';
 import 'invoice_create_section/invoice_step_template_chooser_registry.dart';
 import 'invoice_create_section/invoice_template_previews/preview_registry.dart';
@@ -18,7 +28,11 @@ import 'invoice_create_section/invoice_template_previews/preview_registry.dart';
 const String _kLastInvoiceTemplateKey = 'last_invoice_template_id';
 
 class InvoiceTemplateChooserScreen extends StatefulWidget {
-  const InvoiceTemplateChooserScreen({super.key});
+  /// When set, this chooser is being opened to edit an EXISTING saved
+  /// invoice rather than start a new one.
+  final String? existingInvoiceId;
+
+  const InvoiceTemplateChooserScreen({super.key, this.existingInvoiceId});
 
   @override
   State<InvoiceTemplateChooserScreen> createState() => _InvoiceTemplateChooserScreenState();
@@ -27,13 +41,23 @@ class InvoiceTemplateChooserScreen extends StatefulWidget {
 class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScreen> {
   int? _selectedId;
 
+  bool get _isEditingExisting => widget.existingInvoiceId != null;
+
   @override
   void initState() {
     super.initState();
-    _loadLastSelected();
+    _loadInitialSelection();
   }
 
-  Future<void> _loadLastSelected() async {
+  Future<void> _loadInitialSelection() async {
+    if (_isEditingExisting) {
+      final provider = context.read<InvoiceProvider>();
+      final existing = provider.getInvoiceById(widget.existingInvoiceId!);
+      if (existing != null && mounted) {
+        setState(() => _selectedId = existing.data.layoutTemplateId);
+        return;
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getInt(_kLastInvoiceTemplateKey);
     if (saved != null && mounted) {
@@ -70,6 +94,23 @@ class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScr
       return;
     }
     _persistSelected(_selectedId!);
+
+    if (_isEditingExisting) {
+      final provider = context.read<InvoiceProvider>();
+      provider.loadSavedInvoice(widget.existingInvoiceId!);
+      provider.updateLayoutTemplateId(_selectedId!);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EditorScreen(
+            initialStep: 2,
+            layoutTemplateId: _selectedId!,
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -100,6 +141,14 @@ class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScr
                   info: info,
                   selected: _selectedId == info.id,
                   onTap: () => _tapCard(info),
+                  onLongPress: () => showGenericTemplateFullPreview(
+                    context,
+                    name: info.name,
+                    description: info.description,
+                    accentColor: info.accentColor,
+                    isPremium: info.isPremium,
+                    preview: buildInvoicePreview(info.id, sampleInvoiceData()),
+                  ),
                 );
               },
             ),
@@ -163,7 +212,7 @@ class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScr
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -189,12 +238,12 @@ class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScr
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    const Text(
                       'Choose a Design',
                       style: TextStyle(
                         color: Colors.white,
@@ -203,10 +252,12 @@ class _InvoiceTemplateChooserScreenState extends State<InvoiceTemplateChooserScr
                         letterSpacing: 0.3,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Pick a template to start your invoice',
-                      style: TextStyle(
+                      _isEditingExisting
+                          ? 'Keep the current design or pick a new one'
+                          : 'Pick a template to start your invoice',
+                      style: const TextStyle(
                         color: Color(0x99FFFFFF),
                         fontSize: 12,
                       ),
@@ -230,7 +281,8 @@ class _TemplateCard extends StatelessWidget {
   final InvoiceTemplateInfo info;
   final bool selected;
   final VoidCallback onTap;
-  const _TemplateCard({required this.info, required this.selected, required this.onTap});
+  final VoidCallback? onLongPress;
+  const _TemplateCard({required this.info, required this.selected, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +290,7 @@ class _TemplateCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

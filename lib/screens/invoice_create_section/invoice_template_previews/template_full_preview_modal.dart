@@ -3,24 +3,29 @@
 //
 // Full-screen "tap to preview" overlay for a template card. Rebuilt against
 // the current preview_registry.dart API (InvoiceTemplateInfo,
-// buildInvoicePreview, sampleInvoiceData) - the older version of this file
-// (from the CV-builder era, using TemplateCardInfo / individual Preview*
-// classes) is not compatible and lives only in git history now.
+// buildInvoicePreview, sampleInvoiceData).
 //
-// SCROLL FIX (this pass): the preview widget renders each design at real
-// document scale (not scaled down like the card thumbnail), so for any
-// design taller than ~78% of screen height the old fixed-height Container
-// clipped content and threw a RenderFlex overflow (seen with Nordic:
-// "BOTTOM OVERFLOWED BY 204 PIXELS"). The document sheet is now wrapped in
-// a SingleChildScrollView inside the same maxHeight container, so tall
-// designs scroll instead of overflowing. A lingering ~6-7px *horizontal*
-// overflow on Nordic's issue-date row is inside nordic_template.dart
-// itself (a Row that doesn't leave quite enough width for "26 Jul 2026"
-// next to its label) - not something this modal can fix; needs a tweak in
-// that template file directly.
+// A4-SCALE + SQUARE EDGES PASS (this update): the previous version
+// rendered the preview widget at real document scale (fixed to kPageW =
+// 595px internally, since every template's page is a fixed-size SizedBox)
+// inside a much narrower container — screenW - 32, nowhere near 595px on
+// a phone — which caused text to wrap awkwardly and produced a genuine
+// RenderFlex overflow (seen as "RIGHT OVERFLOWED BY 6.6 PIXELS" on-device,
+// not just a visual mismatch). This now uses the same OverflowBox +
+// Transform.scale technique InvoiceStepChooserScaledPreview already uses
+// for card thumbnails — the full kPageW×kPageH page is scaled down to fit
+// the screen width exactly, so nothing wraps or overflows, and the
+// document renders identically to how it looks in the real PDF Preview
+// screen (document_pdf_preview_screen.dart): square corners, full-bleed
+// width, no rounded card chrome. Sample data (sampleInvoiceData()) is a
+// small, fixed 3-line-item document that always fits on exactly one page,
+// so a single-page height assumption (kPageH) is safe here — this modal
+// never needs to render or scroll a real, multi-page user document.
 
 import 'package:flutter/material.dart';
 import 'preview_registry.dart';
+import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
+    show kPageW, kPageH;
 import '../../../helpers/lang_helper.dart';
 
 /// Call this to show the full preview overlay.
@@ -70,6 +75,17 @@ class _FullPreviewModal extends StatelessWidget {
     final displayDescription = t[info.description] ?? info.description;
 
     final preview = buildInvoicePreview(info.id, sampleInvoiceData());
+
+    // Scale the fixed-size A4 page (kPageW × kPageH) to exactly fill the
+    // available screen width — same math InvoiceStepChooserScaledPreview
+    // uses for card thumbnails, just applied at full-screen size instead
+    // of card size. This is what actually prevents the wrapping/overflow
+    // bug: the page renders at its real internal width (kPageW) and gets
+    // scaled down as a whole, rather than being squeezed into a narrower
+    // container it wasn't designed to reflow into.
+    final pageAreaWidth = screenW - 32; // matches the horizontal padding below
+    final scale = pageAreaWidth / kPageW;
+    final scaledPageHeight = kPageH * scale;
 
     return SafeArea(
       child: Center(
@@ -129,43 +145,48 @@ class _FullPreviewModal extends StatelessWidget {
               const SizedBox(height: 12),
 
               // -- Document preview sheet -------------------------------------
-              // SingleChildScrollView here (new) is what actually fixes the
-              // overflow - the design renders at full document scale, which
-              // is routinely taller than screenH * 0.78, so it needs to
-              // scroll inside the fixed-height frame rather than clip.
+              // Square corners, full-width A4 page scaled to fit exactly —
+              // matches the real PDF Preview screen's look, not a rounded
+              // "card" chrome.
               Flexible(
-                child: Container(
-                  width: screenW - 32,
-                  constraints: BoxConstraints(maxHeight: screenH * 0.78),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 32,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: SingleChildScrollView(
-                      child: DefaultTextStyle(
-                        style: const TextStyle(
-                          decoration: TextDecoration.none,
-                          decorationColor: Colors.transparent,
-                          color: Color(0xFF111111),
-                        ),
-                        child: preview ??
-                            Container(
-                              height: 200,
-                              color: const Color(0xFFF3F4F6),
-                              alignment: Alignment.center,
-                              child: const Icon(Icons.hourglass_empty_rounded,
-                                  color: Color(0xFFB0B7C3), size: 32),
+                child: SingleChildScrollView(
+                  child: Container(
+                    width: pageAreaWidth,
+                    height: preview == null ? 200 : scaledPageHeight,
+                    constraints: BoxConstraints(maxHeight: screenH * 0.78),
+                    color: Colors.white,
+                    child: preview == null
+                        ? Container(
+                            color: const Color(0xFFF3F4F6),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.hourglass_empty_rounded,
+                                color: Color(0xFFB0B7C3), size: 32),
+                          )
+                        : ClipRect(
+                            child: OverflowBox(
+                              alignment: Alignment.topCenter,
+                              maxWidth: kPageW,
+                              maxHeight: kPageH,
+                              child: IgnorePointer(
+                                child: Transform.scale(
+                                  scale: scale,
+                                  alignment: Alignment.topCenter,
+                                  child: SizedBox(
+                                    width: kPageW,
+                                    height: kPageH,
+                                    child: DefaultTextStyle(
+                                      style: const TextStyle(
+                                        decoration: TextDecoration.none,
+                                        decorationColor: Colors.transparent,
+                                        color: Color(0xFF111111),
+                                      ),
+                                      child: preview,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                      ),
-                    ),
+                          ),
                   ),
                 ),
               ),

@@ -1,11 +1,23 @@
 // lib/screens/saved_invoice_details_section/invoice_editable_canvas_screen.dart
 //
-// REWRITE: previously this was a bespoke card UI (colored header band,
-// tap-to-edit text fields, no A4 page geometry at all) — visually different
-// from what Preview/PDF actually show. This version renders the real
-// ExecutiveInvoiceEditor (same template as ExecutiveInvoicePreview and the
-// PDF export, via executive_page_stationary_layout.dart +
-// executive_cv_logic_data.dart) with an InvoiceEditBundle wired to
+// CRASH SAFETY PASS (this update): _loadStackTrace was captured in
+// _loadData()'s catch block but never read anywhere — it only ever went
+// to debugPrint (console-only, invisible outside a dev machine). The
+// error screen showed just the exception message with no way to see
+// what actually failed. _buildErrorScreen now includes a collapsible
+// "Technical details" section (ExpansionTile) that renders the full
+// stack trace via SelectableText, so a real load failure in production
+// is actually diagnosable — the user can expand it, select the text, and
+// paste it into a bug report — instead of the trace being silently
+// discarded. Mirrors the identical fix applied to quote_editable_canvas_
+// screen.dart and receipt_editable_canvas_screen.dart.
+//
+// REWRITE (earlier): previously this was a bespoke card UI (colored header
+// band, tap-to-edit text fields, no A4 page geometry at all) — visually
+// different from what Preview/PDF actually show. This version renders the
+// real ExecutiveInvoiceEditor (same template as ExecutiveInvoicePreview
+// and the PDF export, via executive_invoice_stationary_layout.dart +
+// executive_invoice_logic_data.dart) with an InvoiceEditBundle wired to
 // InvoiceProvider — tapping any text on the page edits it in place, and
 // the page paginates for real via A4Paginator if line items overflow one
 // A4 page, instead of shrinking.
@@ -20,10 +32,10 @@ import 'package:provider/provider.dart';
 
 import '../../providers/invoice_provider.dart';
 import '../../models/invoice_data.dart';
-import '../../invoice_layout_templates/01_executive_cv_layout/executive_cv_logic_data.dart';
-import '../../invoice_layout_templates/01_executive_cv_layout/executive_page_stationary_layout.dart'
+import '../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
+import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show kPageW, InvoiceEditBundle;
-import '../../invoice_layout_templates/pagination/scaled_page_stack.dart';
+import '../../document_layout_templates/pagination/scaled_page_stack.dart';
 
 const _kDateFmt = 'd MMM yyyy';
 
@@ -270,7 +282,7 @@ class _InvoiceEditableCanvasScreenState
             icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context, false)),
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -283,6 +295,37 @@ class _InvoiceEditableCanvasScreenState
               const SizedBox(height: 10),
               SelectableText('$_loadError',
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+              // Captured in _loadData()'s catch block — previously discarded
+              // after debugPrint. Collapsed by default so the common case
+              // (a normal user hitting this) still just sees the message
+              // above; expanding it gives a copy-pasteable trace for a bug
+              // report or for debugging during development.
+              if (_loadStackTrace != null) ...[
+                const SizedBox(height: 12),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text('Technical details',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: SelectableText(
+                          '$_loadStackTrace',
+                          style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               ElevatedButton(onPressed: () => Navigator.pop(context, false), child: const Text('Go Back')),
             ],

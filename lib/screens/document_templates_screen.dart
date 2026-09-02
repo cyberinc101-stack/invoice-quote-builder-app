@@ -4,33 +4,42 @@
 // Grid of document template cards, reachable from the "Templates" button on
 // the home screen hero banner.
 //
+// MATCH-CHOOSER PASS (this update): this screen's card and grid now match
+// InvoiceTemplateChooserScreen / QuoteTemplateChooserScreen exactly —
+// same padding (16,20,16,24), same spacing (14/18), same aspect ratio
+// (0.66, taller/narrower cards), same card visuals (accent-colored footer
+// bar, name + radio-style dot below the card, tag beneath that). This
+// screen has no real "selection" concept (tapping opens a "use as..."
+// sheet rather than selecting), so the dot always renders in its
+// unselected/off state — purely visual parity with the choosers, not
+// functional selection.
+//
+// SAFE-AREA PASS (this update): this screen has no bottom "Save & Continue"
+// bar like the invoice/quote choosers do (those absorb the device's
+// gesture-nav inset via MediaQuery.of(context).padding.bottom in their own
+// bottom bar padding). Since this screen's GridView runs straight to the
+// bottom of the Scaffold, it now adds that same inset to its own bottom
+// padding so the last row of cards isn't hidden behind the Android nav
+// buttons.
+//
 // DEDUPE (earlier pass): kInvoiceTemplates and kQuoteTemplates describe the
 // exact same 10 designs (same ids, names, tags, accent colors) — each
 // design is already built once via DocTemplateAdapter and rendered
 // per-doc-type through invoiceToAdapter()/quoteToAdapter()/
 // receiptToAdapter(). The gallery sources from a single list
 // (kInvoiceTemplates — quote's list is identical) and shows each design
-// once. Confirmed fixed on-device: cards now read "Nordic · Minimal" etc,
-// not the old doubled "Invoice · Nordic" / "Quote · Nordic" pairs.
+// once.
 //
-// FILTERS REMOVED (this pass): the All/Invoices/Quotes/Receipts chip row
+// FILTERS REMOVED (earlier pass): the All/Invoices/Quotes/Receipts chip row
 // is gone per request — this screen now just shows the 10 designs, full
-// stop. Since there's no more chip to pre-select a doc type, tapping any
-// card always opens the small "use as Invoice/Quote/Receipt" sheet
-// (previously only shown under "All"). Card thumbnails always render via
-// the invoice-flavored preview widget now that there's no chip to switch
-// them to quote's.
+// stop. Tapping any card opens the "use as Invoice/Quote/Receipt" sheet.
 //
-// LONG-PRESS FULL PREVIEW: _TemplateCard wires showTemplateFullPreview()
-// (invoice_template_previews/template_full_preview_modal.dart) onto
-// onLongPress. That modal renders via buildInvoicePreview()/
-// sampleInvoiceData() regardless of doc type — same simplification as the
-// card thumbnail. _GalleryEntry carries the original InvoiceTemplateInfo
-// so the modal has what it needs without a second registry lookup.
+// LONG-PRESS FULL PREVIEW: showTemplateFullPreview()
+// (invoice_template_previews/template_full_preview_modal.dart) is wired
+// onto onLongPress.
 //
 // RECEIPTS: routable — CreateReceiptScreen accepts layoutTemplateId the
-// same way EditorScreen/QuoteEditorScreen do, and every template file
-// already exports a <Name>ReceiptPreview wrapper via receiptToAdapter().
+// same way EditorScreen/QuoteEditorScreen do.
 
 import 'package:flutter/material.dart';
 import '../create_receipt/create_receipt_screen.dart';
@@ -67,8 +76,6 @@ class _GalleryEntry {
   final Color accentColor;
   final bool available;
   final bool isPremium;
-  // Kept around so long-press preview doesn't need a second registry
-  // lookup — same object InvoiceStepChooserScaledPreview/showTemplateFullPreview expect.
   final InvoiceTemplateInfo original;
 
   const _GalleryEntry({
@@ -203,167 +210,170 @@ class DocumentTemplatesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Document Templates')),
       body: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        // Matches InvoiceTemplateChooserScreen / QuoteTemplateChooserScreen
+        // exactly — same padding, spacing, and aspect ratio. Bottom padding
+        // adds the device's safe-area/gesture-nav inset so the last row
+        // isn't hidden behind the Android nav buttons (this screen has no
+        // bottom bar like the invoice/quote choosers to absorb that inset).
+        padding: EdgeInsets.fromLTRB(
+          16, 20, 16, 24 + MediaQuery.of(context).padding.bottom,
+        ),
         itemCount: _kGalleryEntries.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisSpacing: 14,
           crossAxisSpacing: 14,
-          childAspectRatio: 0.78,
+          mainAxisSpacing: 18,
+          childAspectRatio: 0.66,
         ),
-        itemBuilder: (context, i) => _TemplateCard(
-          entry: _kGalleryEntries[i],
-          onTap: () => _select(context, _kGalleryEntries[i]),
-          onLongPress: () => showTemplateFullPreview(
-            context,
-            info: _kGalleryEntries[i].original,
-          ),
-        ),
+        itemBuilder: (context, i) {
+          final entry = _kGalleryEntries[i];
+          return _TemplateCard(
+            entry: entry,
+            onTap: () => _select(context, entry),
+            onLongPress: () => showTemplateFullPreview(
+              context,
+              info: entry.original,
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-// -----------------------------------------------------------------------------
-// _TemplateCard
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Grid card — matches InvoiceTemplateChooserScreen's/QuoteTemplateChooserScreen's
+// _TemplateCard exactly, minus the "selected" state (this screen has no
+// selection concept — tapping opens the "use as..." sheet directly).
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TemplateCard extends StatelessWidget {
   final _GalleryEntry entry;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback? onLongPress;
 
   const _TemplateCard({
     required this.entry,
     required this.onTap,
-    required this.onLongPress,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E2235) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(color: Colors.white),
-                  Opacity(
-                    opacity: entry.available ? 1.0 : 0.45,
-                    child: InvoiceStepChooserScaledPreview(templateId: entry.id),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: entry.accentColor.withValues(alpha: entry.available ? 0.22 : 0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
                   ),
-                  if (entry.isPremium && entry.available)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.star_rounded, color: Color(0xFFFFD54F), size: 11),
-                            SizedBox(width: 3),
-                            Text('PRO',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800)),
-                          ],
-                        ),
-                      ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: Colors.white),
+                    Opacity(
+                      opacity: entry.available ? 1.0 : 0.45,
+                      child: InvoiceStepChooserScaledPreview(templateId: entry.id),
                     ),
-                  if (!entry.available)
-                    Positioned.fill(
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        alignment: Alignment.center,
+                    if (entry.isPremium && entry.available)
+                      Positioned(
+                        top: 8, right: 8,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.65),
-                            borderRadius: BorderRadius.circular(20),
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'Coming Soon',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star_rounded, color: Color(0xFFFFD54F), size: 11),
+                              SizedBox(width: 3),
+                              Text('PRO', style: TextStyle(
+                                  color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                            ],
                           ),
                         ),
                       ),
+                    if (!entry.available)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Coming Soon',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 0, right: 0, bottom: 0,
+                      child: Container(
+                        height: 3,
+                        color: entry.accentColor.withValues(alpha: entry.available ? 1 : 0.4),
+                      ),
                     ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      height: 3,
-                      color: entry.accentColor.withValues(alpha: entry.available ? 1 : 0.4),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: entry.available
-                          ? cs.onSurface
-                          : cs.onSurface.withValues(alpha: 0.4),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  entry.name,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: entry.available
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurface.withValues(alpha: 0.4),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    entry.tag,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: entry.available
-                          ? entry.accentColor
-                          : cs.onSurface.withValues(alpha: 0.3),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              if (entry.available)
+                Icon(Icons.radio_button_off_rounded, size: 15, color: colorScheme.onSurface.withValues(alpha: 0.25)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            entry.tag,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: entry.available
+                  ? entry.accentColor
+                  : colorScheme.onSurface.withValues(alpha: 0.3),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

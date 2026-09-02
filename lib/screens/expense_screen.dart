@@ -1,6 +1,22 @@
 // lib/screens/expense_screen.dart
 //
-// HOME UI-PARITY PASS (this update): visual-only change, no data/logic
+// SHEET SAFE-AREA FIX (this update): two bottom sheets in this file were
+// getting clipped by the Android gesture-nav bar.
+//   - openExpenseFolderSheet ("Move to Folder", also used from
+//     ExpenseDetailScreen and the bulk-selection app bar): its bottom
+//     Padding only accounted for MediaQuery.viewInsets.bottom (the
+//     keyboard), never MediaQuery.padding.bottom (the system nav inset).
+//     Apply/Remove-from-Folder were rendering behind the nav buttons.
+//     Fixed by adding padding.bottom into that same Padding.
+//   - _showItemMenu's options sheet had the identical SafeArea-only bug
+//     that expense_detail_screen.dart's _showOptionsSheet had — swapped
+//     for the same explicit Padding(bottom: MediaQuery.of(ctx).padding.
+//     bottom) pattern, for consistency (its "Delete" row was one tap from
+//     the same clipping, even though it wasn't in the reported
+//     screenshots).
+// No other change in this file.
+//
+// HOME UI-PARITY PASS (earlier): visual-only change, no data/logic
 // changes — same treatment reports_screen.dart just got. The screen used
 // to open with a solid kExpenseAccent AppBar and a plain flat folder-chip
 // row above the search/filter bar — visually inconsistent with
@@ -167,7 +183,17 @@ void openExpenseFolderSheet(
           }
 
           return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            // SHEET SAFE-AREA FIX: was `MediaQuery.of(context).viewInsets.
+            // bottom` only — that clears the keyboard but not the Android
+            // gesture-nav bar, so Apply/Remove from Folder were rendering
+            // behind the nav buttons whenever the keyboard wasn't up.
+            // Now adds MediaQuery.of(context).padding.bottom (the system
+            // nav inset) on top of the keyboard inset, same idea as every
+            // other bottom bar/sheet in the app.
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom +
+                  MediaQuery.of(context).padding.bottom,
+            ),
             child: Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,
@@ -399,12 +425,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     openExpenseFolderSheet(context, ids: Set.of(_selected), onApplied: _cancelSelection);
   }
 
+  // SHEET SAFE-AREA FIX: builder now returns an explicit Padding using
+  // MediaQuery.of(ctx).padding.bottom instead of wrapping in a plain
+  // SafeArea — matches the identical fix in
+  // expense_detail_screen.dart's _showOptionsSheet, for the same reason
+  // (SafeArea alone doesn't reliably clear the gesture-nav bar here).
   void _showItemMenu(ExpenseEntry expense) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).padding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

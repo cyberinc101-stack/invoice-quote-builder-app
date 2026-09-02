@@ -676,3 +676,275 @@ class ReportsSectionHeader extends StatelessWidget {
     );
   }
 }
+
+// â”€â”€ Overdue aging buckets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//
+// Shows unpaid/overdue invoices split into 0-30 / 31-60 / 61+ days past
+// due, instead of one lump "Total Unpaid" figure. Only invoices with a
+// parseable due date that has actually passed are counted here - see
+// reports_screen.dart's _overdueAgingBuckets() for the source computation.
+
+class AgingBucketsCard extends StatelessWidget {
+  final double d0to30;
+  final double d31to60;
+  final double d61plus;
+  final bool isDark;
+
+  const AgingBucketsCard({
+    super.key,
+    required this.d0to30,
+    required this.d31to60,
+    required this.d61plus,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final total = d0to30 + d31to60 + d61plus;
+    if (total <= 0) return const SizedBox.shrink();
+
+    Widget row(String label, double amount, Color color) {
+      final fraction = total <= 0 ? 0.0 : amount / total;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                ),
+                Text(amount.toStringAsFixed(2), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: cs.onSurface)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: fraction.clamp(0.0, 1.0)),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeOutCubic,
+                builder: (context, animatedFraction, _) => LinearProgressIndicator(
+                  value: animatedFraction,
+                  minHeight: 6,
+                  backgroundColor: color.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.hourglass_bottom_rounded, size: 16, color: Color(0xFFFF9800)),
+              const SizedBox(width: 8),
+              Text('Overdue aging', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          row('0-30 days overdue', d0to30, const Color(0xFFFFB74D)),
+          row('31-60 days overdue', d31to60, const Color(0xFFFF7043)),
+          row('61+ days overdue', d61plus, const Color(0xFFE53935)),
+        ],
+      ),
+    );
+  }
+}
+
+// â”€â”€ Avg. days to get paid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class DaysToPaidCard extends StatelessWidget {
+  final double? averageDays;
+  final bool isDark;
+  final Color accent;
+
+  const DaysToPaidCard({
+    super.key,
+    required this.averageDays,
+    required this.isDark,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timer_outlined, size: 16, color: accent),
+              const SizedBox(width: 8),
+              Text('Avg. days to get paid', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6))),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (averageDays == null)
+            Text(
+              'No paid invoices with a usable date in this period yet.',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
+            )
+          else
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: averageDays!),
+              duration: const Duration(milliseconds: 650),
+              curve: Curves.easeOutCubic,
+              builder: (context, animatedValue, _) => Text(
+                '${animatedValue.toStringAsFixed(1)} days',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: accent),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// â”€â”€ Monthly income goal + progress bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//
+// Tap the pencil (or the "tap to set" prompt when no goal exists yet) to
+// edit. Goal is persisted via ReportsPrefs.monthlyIncomeGoal, same
+// pattern as taxRatePercent.
+
+class IncomeGoalCard extends StatelessWidget {
+  final double income;
+  final double goal;
+  final bool isDark;
+  final Color accent;
+  final ValueChanged<double> onGoalChanged;
+
+  const IncomeGoalCard({
+    super.key,
+    required this.income,
+    required this.goal,
+    required this.isDark,
+    required this.accent,
+    required this.onGoalChanged,
+  });
+
+  Future<void> _editGoal(BuildContext context) async {
+    final controller = TextEditingController(text: goal > 0 ? goal.toStringAsFixed(0) : '');
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Monthly income goal'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+          decoration: const InputDecoration(prefixText: '\$ ', hintText: 'e.g. 5000'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, double.tryParse(controller.text.trim())),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result != null) onGoalChanged(result.clamp(0.0, 100000000.0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasGoal = goal > 0;
+    final fraction = hasGoal ? (income / goal).clamp(0.0, 1.0) : 0.0;
+    final isMet = hasGoal && income >= goal;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_rounded, size: 16, color: accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Monthly income goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6))),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _editGoal(context),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.edit_rounded, size: 15, color: cs.onSurface.withValues(alpha: 0.4)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasGoal)
+            GestureDetector(
+              onTap: () => _editGoal(context),
+              child: Text(
+                'Tap to set a goal for this month.',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: accent),
+              ),
+            )
+          else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  income.toStringAsFixed(2),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: isMet ? const Color(0xFF4CAF50) : accent),
+                ),
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text('/ ${goal.toStringAsFixed(0)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.45))),
+                ),
+                const Spacer(),
+                if (isMet) const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF4CAF50)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: fraction),
+                duration: const Duration(milliseconds: 650),
+                curve: Curves.easeOutCubic,
+                builder: (context, animatedFraction, _) => LinearProgressIndicator(
+                  value: animatedFraction,
+                  minHeight: 8,
+                  backgroundColor: accent.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation(isMet ? const Color(0xFF4CAF50) : accent),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
