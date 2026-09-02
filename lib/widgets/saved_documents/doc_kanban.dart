@@ -3,7 +3,14 @@
 //
 // Part of saved_documents_section.dart — the kanban board layout.
 //
-// FOLDER-GROUPING PASS (this update): the client-grouped board
+// FOLDER BUTTON VISIBILITY PASS (this update): the per-column "convert to
+// folder" trigger in _DocKanbanClientColumn was a bare 14px outline icon
+// at low opacity — easy to miss as an actual button rather than a static
+// glyph. It's now wrapped in a filled, bordered pill (same visual language
+// as the sort/layout/groupBy toggle chips elsewhere in this file) with a
+// slightly larger icon and a Tooltip, so it reads clearly as tappable.
+//
+// FOLDER-GROUPING PASS (earlier update): the client-grouped board
 // (_DocKanbanBoardByClient) now groups an Expense entry by its assigned
 // folderName when one is set, instead of always grouping by vendor
 // (businessName). Previously an expense moved into a folder that shared
@@ -503,25 +510,41 @@ class _DocKanbanClientColumn extends StatelessWidget {
                 '${entries.length}',
                 style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.4)),
               ),
-              const SizedBox(width: 3),
+              const SizedBox(width: 4),
               // Convert-to-Folder trigger -- opens the "Create Folder"
               // sheet (saved_documents_section.dart) pre-filled with this
               // column's name and its full document list. The "No
               // Client" column passes an empty suggested name rather
               // than the literal placeholder label, since "No Client"
               // isn't a real folder name anyone would want.
-              InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => onConvertToFolder(
-                  clientName == _kNoClientLabel ? '' : clientName,
-                  entries,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.create_new_folder_outlined,
-                    size: 14,
-                    color: cs.onSurface.withValues(alpha: 0.45),
+              //
+              // FOLDER BUTTON VISIBILITY PASS: previously a bare 14px
+              // low-opacity icon with no fill -- easy to mistake for a
+              // static decoration rather than a tap target. Now a small
+              // filled, bordered pill (matches the sort/layout/groupBy
+              // toggle chip look used elsewhere in this file) with a
+              // larger icon and a Tooltip, so it visibly reads as a
+              // button.
+              Tooltip(
+                message: 'Create folder from this column',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => onConvertToFolder(
+                    clientName == _kNoClientLabel ? '' : clientName,
+                    entries,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: cs.primary.withValues(alpha: 0.35)),
+                    ),
+                    child: Icon(
+                      Icons.create_new_folder_outlined,
+                      size: 16,
+                      color: cs.primary,
+                    ),
                   ),
                 ),
               ),

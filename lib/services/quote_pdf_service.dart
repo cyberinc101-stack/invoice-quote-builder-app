@@ -2,7 +2,14 @@
 //
 // Generates and exports quote PDFs.
 //
-// LOGO PARITY PASS (this update): mirrors invoice_pdf_service.dart's own
+// HISTORY LOGGING PASS (this update): generateAndSharePDF now accepts an
+// optional [historyProvider], mirroring invoice_pdf_service.dart's own
+// HISTORY LOGGING PASS exactly — when provided, logs a
+// HistoryEventType.shared event with the just-shared file attached as
+// sourceFile, since Share.shareXFiles doesn't hand a path back to the
+// caller the way the download flow does. Omitted (null) is a no-op.
+//
+// LOGO PARITY PASS (earlier): mirrors invoice_pdf_service.dart's own
 // LOGO PARITY PASS exactly — the Executive builder's logo was hardcoded
 // to pw.ClipOval on a solid white background regardless of what LogoShape
 // the user actually picked via the Logo Sizer. Now clips to the real
@@ -27,6 +34,7 @@
 // Executive, built directly below; 2-10 route through
 // pdf_templates.dart's buildStyledDocument, shared with invoice/receipt).
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -36,6 +44,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/quote_data.dart';
+import '../models/history_event.dart' show HistoryDocType;
+import '../providers/history_provider.dart';
 import 'pdf_doc_adapter.dart';
 import 'pdf_templates.dart' as styled;
 
@@ -54,10 +64,15 @@ class QuotePdfService {
     return file.path;
   }
 
+  /// [historyProvider], when passed, logs a `shared` History event with
+  /// the shared file attached as sourceFile — mirrors
+  /// invoice_pdf_service.dart's identical treatment. Omitted (null) is a
+  /// no-op, so every existing call site behaves exactly as before.
   Future<void> generateAndSharePDF(
     SavedQuote quote, {
     int? layoutTemplateId,
     String? shareText,
+    HistoryProvider? historyProvider,
   }) async {
     final bytes = await _buildPdf(quote, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
@@ -69,6 +84,18 @@ class QuotePdfService {
       subject: 'Quote ${quote.data.quoteNumber}',
       text: shareText,
     );
+    if (historyProvider != null) {
+      final d = quote.data;
+      unawaited(historyProvider.logShared(
+        docType: HistoryDocType.quote,
+        docId: quote.id,
+        docNumber: d.quoteNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.grandTotal,
+        currency: d.currency,
+        sourceFile: file,
+      ));
+    }
   }
 
   Future<Uint8List> generatePdfBytes(

@@ -1,7 +1,19 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
 //
-// CONVERT FORMAT PASS (this update): added updateSavedReceiptFormat() —
+// HISTORY LOGGING PASS (this update): saveCurrentReceipt(),
+// addConvertedReceipt(), and deleteSavedReceipt() each gained an optional
+// [historyProvider] param, mirroring InvoiceProvider/QuoteProvider's
+// identical pass — see invoice_provider.dart's header comment for the
+// full rationale. saveCurrentReceipt/addConvertedReceipt log `created`;
+// deleteSavedReceipt logs `deleted` using the receipt's data captured
+// BEFORE removal. Omitted (null) is a no-op on all three, so every
+// existing call site behaves exactly as before this pass. Note
+// saveCurrentReceipt has two branches (update an existing draft vs. save
+// a brand-new one) — only the "brand-new" branch logs `created`, since
+// the update branch isn't a new document.
+//
+// CONVERT FORMAT PASS (earlier update): added updateSavedReceiptFormat() —
 // writes a new layoutTemplateId/paperFormat onto an already-SAVED
 // receipt's data, same pattern as updateSavedReceiptStatus/
 // updateReceiptFolder (find index, copyWith the data, persist,
@@ -42,8 +54,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/receipt_data.dart';
+import '../models/history_event.dart' show HistoryDocType;
 import '../filters/filter_logic.dart' show receiptIsDraft;
 import '../alerts/notifications/document_alert_scheduler.dart';
+import 'history_provider.dart';
 
 class ReceiptProvider extends ChangeNotifier {
   static const _storageKey = 'saved_receipts';
@@ -97,6 +111,20 @@ class ReceiptProvider extends ChangeNotifier {
     );
   }
 
+  // HISTORY LOGGING PASS: shared helper so saveCurrentReceipt and
+  // addConvertedReceipt don't duplicate the same logCreated(...) call.
+  void _logCreated(HistoryProvider? historyProvider, SavedReceipt receipt) {
+    if (historyProvider == null) return;
+    unawaited(historyProvider.logCreated(
+      docType: HistoryDocType.receipt,
+      docId: receipt.id,
+      docNumber: receipt.data.receiptNumber,
+      clientName: receipt.data.clientName.isEmpty ? null : receipt.data.clientName,
+      amount: receipt.data.amountPaid,
+      currency: receipt.data.currency,
+    ));
+  }
+
   // ── AlertPrefs push wiring ─────────────────────────────────────────────────
   // Called from alert_type_toggles.dart / settings_screen.dart whenever the
   // EFFECTIVE enabled state for drafts (alertsEnabled && draftsEnabled)
@@ -119,9 +147,14 @@ class ReceiptProvider extends ChangeNotifier {
 
   // -- Save current draft as a SavedReceipt ----------------------------------
 
+  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
+  // call site keeps working unchanged. Only the "brand-new receipt"
+  // branch below logs `created` — the "update an existing draft" branch
+  // isn't a new document, so it stays silent.
   Future<void> saveCurrentReceipt({
     required String title,
     required String templateName,
+    HistoryProvider? historyProvider,
   }) async {
     final now = DateTime.now();
     final percent = _calcCompletionPercent(_currentReceiptData);
@@ -160,6 +193,7 @@ class ReceiptProvider extends ChangeNotifier {
     await _persist();
     notifyListeners();
     unawaited(_syncDraftNudge(saved));
+    _logCreated(historyProvider, saved);
   }
 
   // Saves a converted ReceiptData (e.g. built from an invoice via
@@ -168,10 +202,14 @@ class ReceiptProvider extends ChangeNotifier {
   // which always saves/updates based on _currentReceiptData /
   // _currentReceiptId. Used by the "Convert to Receipt" action in
   // saved_document_detail_screen.dart.
+  //
+  // HISTORY LOGGING PASS: [historyProvider] is optional, same as
+  // saveCurrentReceipt above — logs a `created` event when passed.
   Future<SavedReceipt> addConvertedReceipt({
     required ReceiptData data,
     required String title,
     required String templateName,
+    HistoryProvider? historyProvider,
   }) async {
     final now = DateTime.now();
     final saved = SavedReceipt(
@@ -188,6 +226,7 @@ class ReceiptProvider extends ChangeNotifier {
     await _persist();
     notifyListeners();
     unawaited(_syncDraftNudge(saved));
+    _logCreated(historyProvider, saved);
     return saved;
   }
 
@@ -293,7 +332,17 @@ class ReceiptProvider extends ChangeNotifier {
 
   // -- Delete -------------------------------------------------------------
 
-  Future<void> deleteSavedReceipt(String id) async {
+  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
+  // `deleted` event using the receipt's data captured BEFORE removal.
+  // Omitted (null) is a no-op, so every existing call site behaves
+  // exactly as before.
+  Future<void> deleteSavedReceipt(String id, {HistoryProvider? historyProvider}) async {
+    SavedReceipt? deleted;
+    try {
+      deleted = _savedReceipts.firstWhere((r) => r.id == id);
+    } catch (_) {
+      deleted = null;
+    }
     _savedReceipts.removeWhere((r) => r.id == id);
     if (_currentReceiptId == id) {
       _currentReceiptId = null;
@@ -305,6 +354,14 @@ class ReceiptProvider extends ChangeNotifier {
       title: '',
       isDraft: false, // deleted -> always cancel, regardless of last-known draft state
     ));
+    if (historyProvider != null && deleted != null) {
+      unawaited(historyProvider.logDeleted(
+        docType: HistoryDocType.receipt,
+        docId: deleted.id,
+        docNumber: deleted.data.receiptNumber,
+        clientName: deleted.data.clientName.isEmpty ? null : deleted.data.clientName,
+      ));
+    }
   }
 
   // -- Persistence --------------------------------------------------------

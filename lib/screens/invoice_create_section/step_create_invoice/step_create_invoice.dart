@@ -1,87 +1,85 @@
 // lib/screens/invoice_create_section/step_create_invoice/step_create_invoice.dart
 //
-// LINE ITEM CONTAINERS PASS (this update): added the "Saved Item Sets"
-// panel (CreateInvoiceSavedItemSets, new file
-// create_invoice_saved_items_widgets.dart) directly above the Line Items
-// section. It lets a bundle of line items be saved under a name and
-// quick-added back onto any future invoice's Line Items with a tap,
-// mirroring the "tap a card to select it" pattern from Saved Customers/
-// Saved Templates -- except tapping a saved set here APPENDS fresh
-// copies of its items rather than replacing a persistent selection (see
-// the new file's own header note for why). Backed by two new methods on
-// this state:
-//   - _getCurrentItemsSnapshot(): flushes controller text into _items
-//     (same defensive re-sync _continue() already did) and returns
-//     copies, so a saved set always reflects exactly what's on screen.
-//   - _quickAddItems(): mirrors _addItem() exactly, just seeded with the
-//     saved set's item data instead of starting blank. Also clears away
-//     the single still-untouched default blank item first (if that's
-//     all that's present) so quick-adding a set onto a fresh invoice
-//     doesn't leave a stray empty "Item 1" above the added items.
-// No other behavior on this step changed.
+// INVOICE LIBRARY RESTRUCTURE PASS (this update): this step is now a
+// library screen, mirroring step_customers.dart/step_templates.dart's
+// pattern (header -> info banner -> "Create Invoice" button -> "Saved
+// Invoices" section with Hide/Show -> cards -> "Continue to Customise"
+// button in the StepNavBar) instead of being one long inline form.
 //
-// INVOICE NUMBER LENGTH FIX (earlier update): the auto-generated default
-// invoice number was 'INV-$ts' where ts is
-// DateTime.now().millisecondsSinceEpoch -- a 13-digit timestamp, producing
-// numbers like "INV-1788218487235" (17 chars). That's what was causing the
-// "#INV-..." header on the Executive template to wrap and misalign (see
-// executive_template.dart's DOC NUMBER WRAP/ALIGNMENT FIX note). The
-// default now uses only the last 6 digits of the timestamp
-// ("INV-184872", ~10 chars) -- still effectively unique for the purpose of
-// a placeholder default, and short enough to fit on one line in every
-// template's header. Paired with this, the Invoice Number field's max
-// character cap dropped from 30 -> 18, so a manually-typed number can't
-// reintroduce the same overflow.
+// The actual form (invoice number, dates, currency, customer override,
+// Saved Item Sets panel, line items, tax/discount, totals, notes) has
+// moved into a new bottom sheet, create_invoice_bottom_sheet.dart
+// (CreateInvoiceBottomSheet) — opened here via _showCreateSheet(),
+// exactly the way step_customers.dart opens _CustomerSheet and
+// step_templates.dart opens _TemplateSheet.
 //
-// CURRENCY SYMBOL CONDITIONAL (this update): the Display Format picker
-// (Code/Symbol/Both) now sits directly under Currency Code, and the
-// Currency Symbol field only renders when the picked mode is Symbol or
-// Both -- there's no point asking for a symbol while Code mode is active,
-// since it isn't shown anywhere. Picking Symbol/Both reveals the field
-// underneath the picker; switching back to Code hides it again (the typed
-// value in _currencySymbolCtrl is preserved either way, just not shown).
+// This screen owns a library of SavedInvoiceDraft (invoice_data.dart),
+// persisted as a single JSON-encoded SharedPreferences list under
+// 'invoice_saved_draft_list' — same persistence shape as
+// _kPrefCustomerList/_kPrefTemplateList/_kPrefLineItemSetList. Tapping
+// "Create Invoice" opens the sheet blank (seeded only from
+// widget.selectedCustomer/widget.selectedTemplate, same as before);
+// saving it appends a new draft to the library and selects it. Tapping
+// a saved card selects it (single-select, like Customers/Templates);
+// tapping its pencil icon reopens the sheet pre-filled with that draft's
+// data for further editing; tapping its trash icon deletes it.
 //
-// FILE SPLIT (earlier update): this used to be a single ~1,250-line file
-// (lib/screens/invoice_create_section/step_create_invoice.dart). It's now
-// split into three files under this new step_create_invoice/ folder,
-// matching the pattern already used by step_customize/ and
-// step_templates/:
+// "Continue to Customise" requires a selected draft. When tapped,
+// _syncSelectedToProvider() builds the same InvoiceData shape the old
+// _syncToProvider() did — business info / logo resolution against
+// widget.selectedTemplate and whatever's already on InvoiceProvider is
+// unchanged — except invoice-specific fields (customer override, dates,
+// currency, line items, tax/discount, notes) now come from the selected
+// SavedInvoiceDraft.data rather than this step's own controllers, since
+// this step no longer holds any of that state directly. Then it calls
+// widget.onNext() exactly as before.
 //
-//   - step_create_invoice.dart (this file)      — StepCreateInvoice
-//     widget/state: controllers, sync-to-provider, validation, build().
-//   - create_invoice_item_widgets.dart           — CreateInvoiceItemCard,
-//     CreateInvoiceTotalsCard (line items + totals card).
-//   - create_invoice_form_widgets.dart           — CreateInvoiceField,
-//     CreateInvoiceDateField, CreateInvoiceContextBanner,
-//     CreateInvoiceCurrencyDisplayModeSelector, CreateInvoiceBottomBar.
-//   - create_invoice_saved_items_widgets.dart    — CreateInvoiceSavedItemSets
-//     (new, see LINE ITEM CONTAINERS PASS above).
-//
-// All widget classes previously private to the single file (_ItemCard,
-// _TotalsCard, _InvoiceField, _DateField, _ContextBanner,
-// _InvoiceCurrencyDisplayModeSelector, _InvoiceBottomBar) are now public
-// (renamed with a CreateInvoice prefix, since Dart's `_` privacy is
-// file-scoped) so they can be imported here. No behavior changed — only
-// location and class names. See each new file's own header for what
-// moved there.
-//
-// Everything below (controllers, totals math, sync/validation logic,
-// build()) is otherwise unchanged from the pre-split file, including the
-// OVERFLOW FIX (tax/discount rate clamped 0-100 as the single source of
-// truth for totals math — see _taxRate/_discountRate and each field's
-// onChanged) and the item-description visible character counter, both
-// already verified correct and unchanged by this split.
+// CreateInvoiceBottomBar (create_invoice_form_widgets.dart) is no longer
+// used by this step — StepNavBar (invoice_edit_widgets.dart, already
+// used by step_customers.dart/step_templates.dart) takes over
+// Back/Continue navigation for the whole step, matching those two
+// screens exactly. CreateInvoiceBottomBar itself is left in place
+// (unused but harmless) in case anything else still references it.
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../models/invoice_models.dart';
 import '../../../providers/invoice_provider.dart';
 import '../invoice_edit_widgets.dart';
-import 'create_invoice_item_widgets.dart';
 import 'create_invoice_form_widgets.dart';
-import 'create_invoice_saved_items_widgets.dart';
+import 'create_invoice_bottom_sheet.dart';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const int _kMaxInvoiceDrafts = 100;
+const _kPrefInvoiceDraftList = 'invoice_saved_draft_list';
+
+// ---------------------------------------------------------------------------
+// Persistence helpers
+// ---------------------------------------------------------------------------
+Future<void> _persistDrafts(List<SavedInvoiceDraft> list) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(
+    _kPrefInvoiceDraftList,
+    jsonEncode(list.map((d) => d.toJson()).toList()),
+  );
+}
+
+Future<List<SavedInvoiceDraft>> _loadDrafts() async {
+  final prefs = await SharedPreferences.getInstance();
+  final raw = prefs.getString(_kPrefInvoiceDraftList);
+  if (raw == null || raw.isEmpty) return [];
+  try {
+    return (jsonDecode(raw) as List)
+        .map((e) => SavedInvoiceDraft.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return [];
+  }
+}
 
 // =============================================================================
 // StepCreateInvoice
@@ -111,295 +109,108 @@ class StepCreateInvoice extends StatefulWidget {
 }
 
 class _StepCreateInvoiceState extends State<StepCreateInvoice> {
-  static const _accent = Color(0xFF2196F3);
+  static const _accent = Color(0xFF2196F3); // blue accent for invoices
 
-  // INVOICE NUMBER LENGTH FIX: single source of truth for the field's max
-  // character cap, referenced both by the CreateInvoiceField below and its
-  // counter, so they can never drift out of sync with each other.
-  static const int _invoiceNumberMax = 18;
-
-  // Controllers
-  late TextEditingController _invoiceNumberCtrl;
-  late TextEditingController _notesCtrl;
-  late TextEditingController _taxCtrl;
-  late TextEditingController _discountCtrl;
-
-  // Customer override (if no customer passed from step 1)
-  late TextEditingController _custNameCtrl;
-  late TextEditingController _custEmailCtrl;
-  late TextEditingController _custPhoneCtrl;
-  late TextEditingController _custAddressCtrl;
-
-  // Items
-  late List<InvoiceItem> _items;
-  final List<TextEditingController> _descCtrl = [];
-  final List<TextEditingController> _qtyCtrl = [];
-  final List<TextEditingController> _priceCtrl = [];
-
-  // Dates
-  late DateTime _invoiceDate;
-  late DateTime _dueDate;
-
-  // Color scheme — no picker lives on this step; seeded from whatever's
-  // already on the provider in initState and carried straight back
-  // through in _syncToProvider() so this step never resets a color
-  // chosen on the Customise step.
-  late InvoiceColorScheme _colorScheme;
-
-  // Currency — free-text code + symbol + Code/Symbol/Both display mode.
-  // No hardcoded currency list; any code/symbol combination is accepted.
-  // These map straight onto InvoiceData.currency/currencySymbol/
-  // currencyDisplayMode.
-  late TextEditingController _currencyCodeCtrl;
-  late TextEditingController _currencySymbolCtrl;
-  String _currencyDisplayMode = 'code'; // 'code' | 'symbol' | 'both'
-
-  // Tax / discount rates -- the SOURCE OF TRUTH for all totals math and
-  // display (see OVERFLOW FIX note at the top of this file). Kept
-  // separate from _taxCtrl/_discountCtrl's raw text so a value typed
-  // outside 0-100 can be clamped for calculation purposes without
-  // fighting the text field's cursor position by rewriting its text
-  // mid-edit. Updated in each field's onChanged below.
-  double _taxRate = 0.0;
-  double _discountRate = 0.0;
-
-  static const _dateFmt = 'd MMM yyyy';
-
-  /// Local display prefix used only for the item/totals cards on this
-  /// step (cosmetic while editing) — symbol first, falling back to code.
-  /// The real generated PDF/preview already does the full
-  /// Code/Symbol/Both branching via fmtMoney(), so this doesn't need to
-  /// replicate that logic exactly.
-  String get _currencyPrefix {
-    final symbol = _currencySymbolCtrl.text.trim();
-    final code = _currencyCodeCtrl.text.trim().toUpperCase();
-    if (symbol.isNotEmpty) return symbol;
-    if (code.isNotEmpty) return '$code ';
-    return '';
-  }
-
-  double get _subtotal =>
-      _items.fold(0, (sum, item) => sum + item.total);
-
-  // OVERFLOW FIX: these now read the already-clamped _taxRate/
-  // _discountRate fields instead of re-parsing raw text on every access
-  // with no upper bound -- see the top-of-file note for why that mattered.
-  double get _taxAmount => _subtotal * _taxRate / 100;
-  double get _discountAmount => _subtotal * _discountRate / 100;
-  double get _total => _subtotal + _taxAmount - _discountAmount;
+  bool _loading = true;
+  List<SavedInvoiceDraft> _library = [];
+  int? _selectedIndex;
+  bool _showLibraryPanel = true;
 
   @override
   void initState() {
     super.initState();
-
-    // Seed everything from whatever's already on InvoiceProvider first —
-    // this is what makes going Customise -> Back -> this step not lose
-    // data. Falls back to widget.selectedCustomer / widget.selectedTemplate
-    // / sensible defaults for first-time entry.
-    final existing = context.read<InvoiceProvider>().invoiceData;
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    // INVOICE NUMBER LENGTH FIX: only the last 6 digits of the timestamp,
-    // not the full 13-digit epoch millis -- see top-of-file note.
-    final tsShort =
-        ts.toString().substring((ts.toString().length - 6).clamp(0, ts.toString().length));
-
-    _invoiceNumberCtrl = TextEditingController(
-      text: existing.invoiceNumber.isNotEmpty
-          ? existing.invoiceNumber
-          : 'INV-$tsShort',
-    );
-    _notesCtrl = TextEditingController(text: existing.notes);
-    _taxCtrl = TextEditingController(
-      text: existing.taxRate == 0 ? '0' : '${existing.taxRate}',
-    );
-    _discountCtrl = TextEditingController(
-      text: existing.discountRate == 0 ? '0' : '${existing.discountRate}',
-    );
-
-    // OVERFLOW FIX: clamp whatever was already stored too, in case it was
-    // saved before this pass existed (e.g. from an older build, or
-    // restored from a provider state that predates the clamp).
-    _taxRate = existing.taxRate.clamp(0.0, 100.0);
-    _discountRate = existing.discountRate.clamp(0.0, 100.0);
-
-    // Customer override fields — prefer the customer picked in step 1;
-    // otherwise fall back to whatever's already stored on the provider
-    // (covers returning to this step after typing manually).
-    _custNameCtrl = TextEditingController(
-      text: widget.selectedCustomer?.name ?? existing.clientName,
-    );
-    _custEmailCtrl = TextEditingController(
-      text: widget.selectedCustomer?.email ?? existing.clientEmail,
-    );
-    _custPhoneCtrl = TextEditingController(
-      text: widget.selectedCustomer?.phone ?? existing.clientPhone,
-    );
-    _custAddressCtrl = TextEditingController(
-      text: widget.selectedCustomer?.address ?? existing.clientAddress,
-    );
-
-    // Currency: template selection wins on first entry for the code;
-    // otherwise whatever was already on the provider. Free text — no
-    // hardcoded currency list.
-    final initialCurrencyCode = widget.selectedTemplate?.currency ??
-        (existing.currency.isNotEmpty ? existing.currency : 'USD');
-    _currencyCodeCtrl = TextEditingController(text: initialCurrencyCode);
-    _currencySymbolCtrl = TextEditingController(text: existing.currencySymbol);
-    _currencyDisplayMode = existing.currencyDisplayMode.isNotEmpty
-        ? existing.currencyDisplayMode
-        : 'code';
-
-    // Dates — parse back out of the stored display strings if present.
-    _invoiceDate = existing.issueDate.isNotEmpty
-        ? (DateFormat(_dateFmt).tryParse(existing.issueDate) ?? DateTime.now())
-        : DateTime.now();
-    _dueDate = existing.dueDate.isNotEmpty
-        ? (DateFormat(_dateFmt).tryParse(existing.dueDate) ??
-            DateTime.now().add(const Duration(days: 30)))
-        : DateTime.now().add(const Duration(days: 30));
-
-    _colorScheme = existing.colorScheme;
-
-    // Line items — restore from provider if present, else start with one
-    // blank item.
-    _items = existing.lineItems.isNotEmpty
-        ? existing.lineItems.map((i) => i.copyWith()).toList()
-        : [InvoiceItem()];
-    for (final item in _items) {
-      _descCtrl.add(TextEditingController(text: item.description));
-      _qtyCtrl.add(TextEditingController(
-        text: item.quantity == 1.0 ? '1' : '${item.quantity}',
-      ));
-      _priceCtrl.add(TextEditingController(
-        text: item.unitPrice == 0.0 ? '0' : '${item.unitPrice}',
-      ));
-    }
-
-    // Rebuild on changes for totals / live currency preview
-    for (final c in [_taxCtrl, _discountCtrl, _currencyCodeCtrl, _currencySymbolCtrl]) {
-      c.addListener(() => setState(() {}));
-    }
+    _init();
   }
 
-  @override
-  void dispose() {
-    for (final c in [
-      _invoiceNumberCtrl, _notesCtrl, _taxCtrl,
-      _discountCtrl, _custNameCtrl, _custEmailCtrl,
-      _custPhoneCtrl, _custAddressCtrl,
-      _currencyCodeCtrl, _currencySymbolCtrl,
-    ]) {
-      c.dispose();
-    }
-    for (final cList in [_descCtrl, _qtyCtrl, _priceCtrl]) {
-      for (final c in cList) c.dispose();
-    }
-    super.dispose();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Items
-  // ---------------------------------------------------------------------------
-  void _addItem() {
+  Future<void> _init() async {
+    final drafts = await _loadDrafts();
+    if (!mounted) return;
     setState(() {
-      _items.add(InvoiceItem());
-      _descCtrl.add(TextEditingController());
-      _qtyCtrl.add(TextEditingController(text: '1'));
-      _priceCtrl.add(TextEditingController(text: '0'));
+      _library = drafts;
+      _loading = false;
     });
   }
 
-  void _removeItem(int index) {
-    if (_items.length <= 1) return;
+  void _toggleDraft(int index) {
     setState(() {
-      _items.removeAt(index);
-      _descCtrl[index].dispose();
-      _qtyCtrl[index].dispose();
-      _priceCtrl[index].dispose();
-      _descCtrl.removeAt(index);
-      _qtyCtrl.removeAt(index);
-      _priceCtrl.removeAt(index);
+      _selectedIndex = _selectedIndex == index ? null : index;
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Saved item sets — quick add
-  //
-  // LINE ITEM CONTAINERS PASS: backs the new CreateInvoiceSavedItemSets
-  // panel above the Line Items section (see this file's top-of-file
-  // note and create_invoice_saved_items_widgets.dart).
-  //
-  // _getCurrentItemsSnapshot() flushes whatever's currently typed in
-  // each item's controllers into _items -- the same defensive re-sync
-  // _continue() already does before handing off to the provider -- and
-  // hands back fresh copies, so a saved set always reflects exactly
-  // what's on screen right now, not stale onChanged-mirrored data.
-  //
-  // _quickAddItems() mirrors _addItem() exactly, just seeded with the
-  // saved set's item data instead of starting blank. It also clears
-  // away the single still-untouched default blank item first (empty
-  // description, qty 1, price 0) if that's the only item present, so
-  // quick-adding a set onto a fresh invoice doesn't leave a stray empty
-  // "Item 1" sitting above the items that were just added.
-  // ---------------------------------------------------------------------------
-  List<InvoiceItem> _getCurrentItemsSnapshot() {
-    for (int i = 0; i < _items.length; i++) {
-      _items[i]
-        ..description = _descCtrl[i].text.trim()
-        ..quantity = double.tryParse(_qtyCtrl[i].text) ?? 1
-        ..unitPrice = double.tryParse(_priceCtrl[i].text) ?? 0;
-    }
-    return _items.map((i) => i.copyWith()).toList();
+  void _showCreateSheet({SavedInvoiceDraft? existing, int? editIndex}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => CreateInvoiceBottomSheet(
+        selectedCustomer: widget.selectedCustomer,
+        selectedTemplate: widget.selectedTemplate,
+        existing: existing,
+        onSaved: (draft) {
+          if (editIndex != null) {
+            setState(() => _library[editIndex] = draft);
+          } else {
+            final newIdx = _library.length;
+            setState(() {
+              _library.add(draft);
+              _selectedIndex = newIdx;
+              _showLibraryPanel = true;
+            });
+          }
+          _persistDrafts(_library);
+        },
+      ),
+    );
   }
 
-  void _quickAddItems(List<InvoiceItem> items) {
+  void _deleteDraft(int index) {
     setState(() {
-      if (_items.length == 1 &&
-          _items[0].description.trim().isEmpty &&
-          _items[0].quantity == 1.0 &&
-          _items[0].unitPrice == 0.0) {
-        _items.removeAt(0);
-        _descCtrl.removeAt(0).dispose();
-        _qtyCtrl.removeAt(0).dispose();
-        _priceCtrl.removeAt(0).dispose();
-      }
-      for (final item in items) {
-        final newItem = item.copyWith();
-        _items.add(newItem);
-        _descCtrl.add(TextEditingController(text: newItem.description));
-        _qtyCtrl.add(TextEditingController(
-          text: newItem.quantity == 1.0 ? '1' : '${newItem.quantity}',
-        ));
-        _priceCtrl.add(TextEditingController(
-          text: newItem.unitPrice == 0.0 ? '0' : '${newItem.unitPrice}',
-        ));
+      _library.removeAt(index);
+      if (_selectedIndex == index) {
+        _selectedIndex = null;
+      } else if (_selectedIndex != null && _selectedIndex! > index) {
+        _selectedIndex = _selectedIndex! - 1;
       }
     });
+    _persistDrafts(_library);
   }
 
   // ---------------------------------------------------------------------------
-  // Sync to InvoiceProvider
-  //
-  // Builds a full InvoiceData from everything on this step and writes it
-  // via provider.updateInvoiceData(). paymentStatus and fontFamily aren't
-  // edited on this step, so they're carried over from whatever's currently
-  // on the provider rather than reset to defaults. layoutTemplateId comes
-  // from the selected BusinessInfo template, falling back to whatever's
-  // already on the provider. currency/currencySymbol/currencyDisplayMode
-  // now come straight from the free-text fields on this step.
-  //
-  // LOGO OVERWRITE FIX: the business logo's path/offset/scale/shape is
-  // resolved as ONE unit rather than falling back independently per
-  // field — keep whatever's already on the provider if it already has a
-  // logo set (whether that came from the template originally or a later
-  // Customise edit); only pull from the template when the provider has
-  // no logo at all yet.
+  // Continue — requires a selected draft. Syncs it into InvoiceProvider
+  // (business info/logo resolution unchanged from the pre-restructure
+  // _syncToProvider()) then hands off to the parent flow via
+  // widget.onNext(), exactly as before.
   // ---------------------------------------------------------------------------
-  void _syncToProvider() {
+  void _continue() {
+    if (_selectedIndex == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select or create an invoice to continue.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _syncSelectedToProvider();
+    widget.onNext();
+  }
+
+  void _syncSelectedToProvider() {
+    final draft = _library[_selectedIndex!];
+    final d = draft.data;
     final provider = context.read<InvoiceProvider>();
     final current = provider.invoiceData;
     final businessInfo = widget.selectedTemplate?.businessInfo;
 
+    // LOGO OVERWRITE FIX (unchanged from the original step file): keep
+    // whatever's already on the provider if it already has a logo set;
+    // only pull from the template when the provider has none at all yet.
     final providerHasLogo = current.businessLogoPath != null &&
         current.businessLogoPath!.isNotEmpty;
     final useTemplateLogo = !providerHasLogo && businessInfo?.logoPath != null;
@@ -427,444 +238,47 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       businessLogoOffsetDy: resolvedLogoOffsetDy,
       businessLogoScale: resolvedLogoScale,
       businessLogoShape: resolvedLogoShape,
-      clientName: _custNameCtrl.text.trim(),
-      clientEmail: _custEmailCtrl.text.trim(),
-      clientPhone: _custPhoneCtrl.text.trim(),
-      clientAddress: _custAddressCtrl.text.trim(),
-      invoiceNumber: _invoiceNumberCtrl.text.trim(),
-      issueDate: DateFormat(_dateFmt).format(_invoiceDate),
-      dueDate: DateFormat(_dateFmt).format(_dueDate),
-      notes: _notesCtrl.text.trim(),
-      currency: _currencyCodeCtrl.text.trim().isEmpty
-          ? 'USD'
-          : _currencyCodeCtrl.text.trim().toUpperCase(),
-      currencySymbol: _currencySymbolCtrl.text.trim(),
-      currencyDisplayMode: _currencyDisplayMode,
-      lineItems: List<InvoiceItem>.from(_items),
-      taxRate: _taxRate,
-      discountRate: _discountRate,
+      clientName: d.clientName,
+      clientEmail: d.clientEmail,
+      clientPhone: d.clientPhone,
+      clientAddress: d.clientAddress,
+      invoiceNumber: d.invoiceNumber,
+      issueDate: d.issueDate,
+      dueDate: d.dueDate,
+      notes: d.notes,
+      currency: d.currency,
+      currencySymbol: d.currencySymbol,
+      currencyDisplayMode: d.currencyDisplayMode,
+      lineItems: d.lineItems.map((i) => i.copyWith()).toList(),
+      taxRate: d.taxRate,
+      discountRate: d.discountRate,
       paymentStatus: current.paymentStatus,
       fontFamily: current.fontFamily,
-      colorScheme: _colorScheme,
+      colorScheme: current.colorScheme,
       layoutTemplateId: widget.layoutTemplateId ?? current.layoutTemplateId,
     );
 
     provider.updateInvoiceData(data);
   }
 
-  // ---------------------------------------------------------------------------
-  // Validation
-  //
-  // Blocks Continue on: blank invoice number, blank customer name (when
-  // no customer was selected in step 1), whitespace-only item
-  // descriptions, and a tax/discount rate outside 0-100.
-  //
-  // OVERFLOW FIX: _taxRate/_discountRate are now clamped continuously as
-  // they're typed (see each field's onChanged below), so the last two
-  // checks should never actually trigger during normal use -- kept as a
-  // defensive backstop in case a bad value was ever restored from an
-  // older save that predates the clamp.
-  // ---------------------------------------------------------------------------
-  void _showValidationError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  bool _validateForm() {
-    if (_invoiceNumberCtrl.text.trim().isEmpty) {
-      _showValidationError('Please enter an invoice number.');
-      return false;
-    }
-
-    if (widget.selectedCustomer == null && _custNameCtrl.text.trim().isEmpty) {
-      _showValidationError('Please enter a customer name.');
-      return false;
-    }
-
-    for (final c in _descCtrl) {
-      if (c.text.trim().isEmpty) {
-        _showValidationError('Please fill in all item descriptions.');
-        return false;
-      }
-    }
-
-    if (_discountRate < 0 || _discountRate > 100) {
-      _showValidationError('Discount must be between 0 and 100%.');
-      return false;
-    }
-
-    if (_taxRate < 0 || _taxRate > 100) {
-      _showValidationError('Tax rate must be between 0 and 100%.');
-      return false;
-    }
-
-    return true;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Continue — validates the items on this step, syncs everything into
-  // InvoiceProvider, then hands off to the parent flow (the customise
-  // step) via widget.onNext().
-  // ---------------------------------------------------------------------------
-  void _continue() {
-    if (!_validateForm()) return;
-    // Push current controller text into _items before syncing, since
-    // description/qty/price are only mirrored into _items via onChanged
-    // callbacks below — this guards against any missed callback.
-    for (int i = 0; i < _items.length; i++) {
-      _items[i]
-        ..description = _descCtrl[i].text.trim()
-        ..quantity = double.tryParse(_qtyCtrl[i].text) ?? 1
-        ..unitPrice = double.tryParse(_priceCtrl[i].text) ?? 0;
-    }
-    _syncToProvider();
-    widget.onNext();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Date picker
-  // ---------------------------------------------------------------------------
-  Future<void> _pickDate(bool isDueDate) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: isDueDate ? _dueDate : _invoiceDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      setState(() {
-        if (isDueDate) {
-          _dueDate = picked;
-        } else {
-          _invoiceDate = picked;
-        }
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Section helpers
-  // ---------------------------------------------------------------------------
-  Widget _sectionHeader(String label, {IconData? icon}) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 3,
-            height: 16,
-            decoration: BoxDecoration(
-              color: _accent,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: _accent),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _counter(int current, int max) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, right: 2),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Text(
-          '$current / $max',
-          style: TextStyle(
-            fontSize: 11,
-            color: current > max
-                ? const Color(0xFFF44336)
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// OVERFLOW FIX: small caption shown under Tax %/Discount % whenever
-  /// the raw typed value is outside 0-100 -- since the field itself
-  /// still shows exactly what was typed (rewriting the controller's text
-  /// mid-edit would fight the cursor position rather than help), this
-  /// makes it visible that the totals below are using the clamped rate,
-  /// not the raw number sitting in the field.
-  Widget _rangeWarning(double raw, double clamped) {
-    if (raw == clamped) return const SizedBox.shrink();
-    final clampedLabel =
-        clamped % 1 == 0 ? clamped.toInt().toString() : clamped.toStringAsFixed(1);
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, left: 2),
-      child: Text(
-        'Using $clampedLabel% for totals (must be 0-100)',
-        style: const TextStyle(fontSize: 10.5, color: Color(0xFFF44336)),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dateFormat = DateFormat(_dateFmt);
+    final atMax = _library.length >= _kMaxInvoiceDrafts;
 
     return Column(
       children: [
-        // ── Scrollable body ─────────────────────────────────────────────────
         Expanded(
           child: CustomScrollView(
             slivers: [
+              // ── Header ──────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Page title ───────────────────────────────────────
-                      Text(
-                        'Create Invoice',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Fill in the details to generate your invoice',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onSurface.withValues(alpha: 0.45),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Context banner (template / customer selection) ────
-                      CreateInvoiceContextBanner(
-                        template: widget.selectedTemplate,
-                        customer: widget.selectedCustomer,
-                        isDark: isDark,
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Invoice number ───────────────────────────────────
-                      _sectionHeader('Invoice Details',
-                          icon: Icons.receipt_long_rounded),
-                      CreateInvoiceField(
-                        ctrl: _invoiceNumberCtrl,
-                        label: 'Invoice Number',
-                        hint: 'e.g. INV-001',
-                        icon: Icons.tag_rounded,
-                        // INVOICE NUMBER LENGTH FIX: 30 -> 18. See
-                        // top-of-file note; this is what stops a
-                        // manually-typed number from wrapping/misaligning
-                        // in the Executive header.
-                        max: _invoiceNumberMax,
-                        accent: _accent,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      _counter(_invoiceNumberCtrl.text.length, _invoiceNumberMax),
-                      const SizedBox(height: 12),
-
-                      // Dates
-                      Row(
-                        children: [
-                          Expanded(
-                            child: CreateInvoiceDateField(
-                              label: 'Invoice Date',
-                              value: dateFormat.format(_invoiceDate),
-                              onTap: () => _pickDate(false),
-                              accent: _accent,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: CreateInvoiceDateField(
-                              label: 'Due Date',
-                              value: dateFormat.format(_dueDate),
-                              onTap: () => _pickDate(true),
-                              accent: _accent,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Currency ─────────────────────────────────────────
-                      _sectionHeader('Currency',
-                          icon: Icons.attach_money_rounded),
-                      CreateInvoiceField(
-                        ctrl: _currencyCodeCtrl,
-                        label: 'Currency Code',
-                        hint: 'e.g. USD',
-                        icon: Icons.attach_money_rounded,
-                        max: 6,
-                        accent: _accent,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      _counter(_currencyCodeCtrl.text.length, 6),
-                      const SizedBox(height: 12),
-
-                      // CURRENCY SYMBOL CONDITIONAL: Display Format picker
-                      // now sits directly under Currency Code. The Currency
-                      // Symbol field below only renders once Symbol/Both is
-                      // selected -- see top-of-file note.
-                      CreateInvoiceCurrencyDisplayModeSelector(
-                        value: _currencyDisplayMode,
-                        accent: _accent,
-                        onChanged: (mode) =>
-                            setState(() => _currencyDisplayMode = mode),
-                        previewCode: _currencyCodeCtrl.text.trim().isEmpty
-                            ? 'USD'
-                            : _currencyCodeCtrl.text.trim().toUpperCase(),
-                        previewSymbol: _currencySymbolCtrl.text.trim(),
-                      ),
-                      if (_currencyDisplayMode != 'code') ...[
-                        const SizedBox(height: 12),
-                        CreateInvoiceField(
-                          ctrl: _currencySymbolCtrl,
-                          label: 'Currency Symbol',
-                          hint: 'e.g. \$, €, kr',
-                          icon: Icons.currency_exchange_rounded,
-                          max: 6,
-                          accent: _accent,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        _counter(_currencySymbolCtrl.text.length, 6),
-                      ],
-                      const SizedBox(height: 20),
-
-                      // ── Customer (if none selected in step 1) ───────────
-                      if (widget.selectedCustomer == null) ...[
-                        _sectionHeader('Customer Details',
-                            icon: Icons.person_rounded),
-                        CreateInvoiceField(
-                          ctrl: _custNameCtrl,
-                          label: 'Customer Name',
-                          hint: 'e.g. Acme Corp',
-                          icon: Icons.person_rounded,
-                          max: 100,
-                          accent: _accent,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: 12),
-                        CreateInvoiceField(
-                          ctrl: _custEmailCtrl,
-                          label: 'Customer Email',
-                          hint: 'e.g. billing@acme.com',
-                          icon: Icons.email_rounded,
-                          max: 100,
-                          keyboard: TextInputType.emailAddress,
-                          accent: _accent,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: 12),
-                        CreateInvoiceField(
-                          ctrl: _custPhoneCtrl,
-                          label: 'Customer Phone',
-                          hint: 'e.g. +1 555 000 1234',
-                          icon: Icons.phone_rounded,
-                          max: 20,
-                          keyboard: TextInputType.phone,
-                          accent: _accent,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: 12),
-                        CreateInvoiceField(
-                          ctrl: _custAddressCtrl,
-                          label: 'Customer Address',
-                          hint: 'e.g. 123 Main St, NYC',
-                          icon: Icons.location_on_rounded,
-                          max: 200,
-                          maxLines: 2,
-                          accent: _accent,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-
-                      // ── Saved item sets (quick-add) ──────────────────────
-                      // LINE ITEM CONTAINERS PASS: see top-of-file note.
-                      CreateInvoiceSavedItemSets(
-                        getCurrentItems: _getCurrentItemsSnapshot,
-                        onQuickAdd: _quickAddItems,
-                        currencySymbol: _currencyPrefix,
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Line items ───────────────────────────────────────
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _sectionHeader('Line Items',
-                                icon: Icons.list_alt_rounded),
-                          ),
-                          GestureDetector(
-                            onTap: _addItem,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF0D1B2E)
-                                    : const Color(0xFFE3F2FD),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.add_rounded,
-                                      size: 16, color: _accent),
-                                  const SizedBox(width: 4),
-                                  const Text('Add Item',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: _accent,
-                                          fontWeight: FontWeight.w700)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      ...List.generate(_items.length, (index) {
-                        return CreateInvoiceItemCard(
-                          index: index,
-                          item: _items[index],
-                          descCtrl: _descCtrl[index],
-                          qtyCtrl: _qtyCtrl[index],
-                          priceCtrl: _priceCtrl[index],
-                          currencySymbol: _currencyPrefix,
-                          canRemove: _items.length > 1,
-                          accent: _accent,
-                          onRemove: () => _removeItem(index),
-                          onChanged: () => setState(() {}),
-                        );
-                      }),
-                      const SizedBox(height: 12),
-
-                      // ── Tax / Discount ───────────────────────────────────
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -872,153 +286,547 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                CreateInvoiceField(
-                                  ctrl: _taxCtrl,
-                                  label: 'Tax %',
-                                  hint: 'e.g. 10',
-                                  icon: Icons.percent_rounded,
-                                  max: 5,
-                                  keyboard: const TextInputType
-                                      .numberWithOptions(decimal: true),
-                                  extraFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                        RegExp(r'^\d*\.?\d{0,2}')),
-                                  ],
-                                  accent: _accent,
-                                  onChanged: (v) => setState(() {
-                                    final parsed = double.tryParse(v) ?? 0.0;
-                                    _taxRate = parsed.clamp(0.0, 100.0);
-                                  }),
+                                Text(
+                                  'Create Invoice',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: colorScheme.onSurface,
+                                  ),
                                 ),
-                                _rangeWarning(
-                                    double.tryParse(_taxCtrl.text) ?? 0.0,
-                                    _taxRate),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Save one or more invoices, then continue with the one you want',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: colorScheme.onSurface
+                                        .withValues(alpha: 0.45),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CreateInvoiceField(
-                                  ctrl: _discountCtrl,
-                                  label: 'Discount %',
-                                  hint: 'e.g. 5',
-                                  icon: Icons.local_offer_rounded,
-                                  max: 5,
-                                  keyboard: const TextInputType
-                                      .numberWithOptions(decimal: true),
-                                  extraFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                        RegExp(r'^\d*\.?\d{0,2}')),
-                                  ],
-                                  accent: _accent,
-                                  onChanged: (v) => setState(() {
-                                    final parsed = double.tryParse(v) ?? 0.0;
-                                    _discountRate = parsed.clamp(0.0, 100.0);
-                                  }),
+                          const SizedBox(width: 8),
+                          if (_loading)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colorScheme.primary,
                                 ),
-                                _rangeWarning(
-                                    double.tryParse(_discountCtrl.text) ?? 0.0,
-                                    _discountRate),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Totals card ──────────────────────────────────────
-                      CreateInvoiceTotalsCard(
-                        subtotal: _subtotal,
-                        taxAmount: _taxAmount,
-                        discountAmount: _discountAmount,
-                        total: _total,
-                        taxRate: _taxRate,
-                        discountRate: _discountRate,
-                        currencySymbol: _currencyPrefix,
-                        isDark: isDark,
-                        accent: _accent,
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Notes ────────────────────────────────────────────
-                      _sectionHeader('Additional Info',
-                          icon: Icons.notes_rounded),
-                      CreateInvoiceField(
-                        ctrl: _notesCtrl,
-                        label: 'Notes / Payment Terms',
-                        hint: 'e.g. Payment due within 30 days...',
-                        icon: Icons.note_rounded,
-                        max: 500,
-                        maxLines: 3,
-                        accent: _accent,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      _counter(_notesCtrl.text.length, 500),
-                      const SizedBox(height: 20),
-
-                      // ── Done card ────────────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF1A1A2E),
-                              Color(0xFF0F3460)
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check_circle_rounded,
-                                color: Color(0xFF4CAF50), size: 32),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Invoice details ready!',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Tap Continue below to customise the look.',
-                                    style: TextStyle(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.6),
-                                        fontSize: 12),
-                                  ),
-                                ],
+                              ),
+                            )
+                          else
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                '${_library.length}/$_kMaxInvoiceDrafts',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: atMax
+                                      ? const Color(0xFFEF5350)
+                                      : colorScheme.onSurface
+                                          .withValues(alpha: 0.45),
+                                ),
                               ),
                             ),
-                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Context banner (template / customer selection) ─
+                      CreateInvoiceContextBanner(
+                        template: widget.selectedTemplate,
+                        customer: widget.selectedCustomer,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // ── Create Invoice button ──────────────────────
+                      GestureDetector(
+                        onTap: atMax
+                            ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Maximum of $_kMaxInvoiceDrafts invoices reached.',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                )
+                            : () => _showCreateSheet(),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: atMax
+                                ? (isDark
+                                    ? colorScheme.surfaceContainerHighest
+                                    : const Color(0xFFF5F5F5))
+                                : (isDark
+                                    ? const Color(0xFF0D1B2E)
+                                    : const Color(0xFFE3F2FD)),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: atMax
+                                  ? colorScheme.outline.withValues(alpha: 0.3)
+                                  : (isDark
+                                      ? _accent.withValues(alpha: 0.5)
+                                      : const Color(0xFF90CAF9)),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.add_rounded,
+                                color: atMax
+                                    ? colorScheme.onSurface.withValues(alpha: 0.3)
+                                    : _accent,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  atMax
+                                      ? 'Maximum Invoices Reached'
+                                      : 'Create Invoice',
+                                  style: TextStyle(
+                                    color: atMax
+                                        ? colorScheme.onSurface
+                                            .withValues(alpha: 0.3)
+                                        : _accent,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+
+              // ── Library header ────────────────────────────────────────
+              if (!_loading && _library.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.bookmark_rounded,
+                                size: 16, color: _accent),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Saved Invoices',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _selectedIndex != null ? '1 ✓' : 'none',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: _selectedIndex != null
+                                      ? _accent
+                                      : colorScheme.onSurface
+                                          .withValues(alpha: 0.45),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => setState(
+                                  () => _showLibraryPanel = !_showLibraryPanel),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF0D1B2E)
+                                      : const Color(0xFFE3F2FD),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _showLibraryPanel ? 'Hide' : 'Show',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: _accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Icon(
+                                      _showLibraryPanel
+                                          ? Icons.keyboard_arrow_up_rounded
+                                          : Icons.keyboard_arrow_down_rounded,
+                                      size: 16,
+                                      color: _accent,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap a card to select it for this invoice.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // ── Draft cards ────────────────────────────────────────────
+              if (!_loading && _showLibraryPanel && _library.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, displayIdx) {
+                        final i = _library.length - 1 - displayIdx; // newest first
+                        return _InvoiceDraftCard(
+                          draft: _library[i],
+                          isSelected: _selectedIndex == i,
+                          onTap: () => _toggleDraft(i),
+                          onEdit: () => _showCreateSheet(
+                              existing: _library[i], editIndex: i),
+                          onDelete: () => _deleteDraft(i),
+                        );
+                      },
+                      childCount: _library.length,
+                    ),
+                  ),
+                ),
+
+              // ── Empty state ─────────────────────────────────────────
+              if (!_loading && _library.isEmpty)
+                SliverFillRemaining(
+                  child: EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    message: 'No invoices created yet',
+                    sub: 'Tap above to create your first invoice',
+                  ),
+                ),
+
+              if (_loading)
+                SliverFillRemaining(
+                  child: Center(
+                    child: CircularProgressIndicator(color: colorScheme.primary),
+                  ),
+                ),
             ],
           ),
         ),
 
-        // ── Bottom action bar ────────────────────────────────────────────────
-        CreateInvoiceBottomBar(
-          onBack: widget.onBack,
-          onContinue: _continue,
+        // ── Bottom nav bar (Back / Continue to Customise) ───────────────
+        SafeArea(
+          top: false,
+          bottom: true,
+          child: StepNavBar(
+            onBack: widget.onBack,
+            onNext: _continue,
+            nextLabel: 'Continue to Customise',
+          ),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// Invoice Draft Card
+// =============================================================================
+
+class _InvoiceDraftCard extends StatelessWidget {
+  final SavedInvoiceDraft draft;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  static const _accent = Color(0xFF2196F3);
+
+  const _InvoiceDraftCard({
+    required this.draft,
+    required this.isSelected,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final d = draft.data;
+    final currencyPrefix = d.currencySymbol.trim().isNotEmpty
+        ? d.currencySymbol.trim()
+        : (d.currency.trim().isNotEmpty ? '${d.currency.trim()} ' : '');
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? (isDark ? const Color(0xFF0D1B2E) : Colors.white)
+            : (isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                : const Color(0xFFF9F9F9)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isSelected
+              ? _accent.withValues(alpha: isDark ? 0.6 : 0.5)
+              : colorScheme.outline.withValues(alpha: 0.3),
+          width: isSelected ? 1.5 : 1,
+        ),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: _accent.withValues(alpha: isDark ? 0.12 : 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : [],
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Radio indicator
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 22,
+                height: 22,
+                margin: const EdgeInsets.only(top: 2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? _accent : Colors.transparent,
+                  border: Border.all(
+                    color: isSelected
+                        ? _accent
+                        : colorScheme.onSurface.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check_rounded,
+                        color: Colors.white, size: 13)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+
+              // Icon block
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: isSelected
+                      ? (isDark
+                          ? _accent.withValues(alpha: 0.15)
+                          : const Color(0xFFE3F2FD))
+                      : colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                  border: Border.all(
+                    color: isSelected
+                        ? _accent.withValues(alpha: 0.4)
+                        : colorScheme.outline.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.receipt_long_rounded,
+                  color: isSelected
+                      ? _accent
+                      : colorScheme.onSurface.withValues(alpha: 0.3),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      draft.displayName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected
+                            ? colorScheme.onSurface
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (d.invoiceNumber.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        d.invoiceNumber,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isSelected
+                              ? _accent
+                              : colorScheme.onSurface.withValues(alpha: 0.3),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color:
+                                _accent.withValues(alpha: isDark ? 0.18 : 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${draft.itemCount} item${draft.itemCount == 1 ? '' : 's'}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _accent,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '$currencyPrefix${draft.total.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Edited ${draft.lastEditedDisplay()}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    if (isSelected) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _accent.withValues(alpha: isDark ? 0.18 : 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'Selected to continue',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: _accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Action buttons
+              Column(
+                children: [
+                  GestureDetector(
+                    onTap: onEdit,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? _accent.withValues(alpha: 0.12)
+                            : const Color(0xFFE3F2FD),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child:
+                          const Icon(Icons.edit_rounded, color: _accent, size: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: onDelete,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFFEF5350).withValues(alpha: 0.12)
+                            : const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.delete_rounded,
+                          color: Color(0xFFEF5350), size: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

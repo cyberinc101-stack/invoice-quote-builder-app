@@ -1,7 +1,19 @@
 // invoice_provider.dart
 // lib/providers/invoice_provider.dart
 //
-// FIELD VISIBILITY RELOCATION PASS (this update): added
+// HISTORY LOGGING PASS (this update): saveCurrentInvoice(),
+// addConvertedInvoice(), and deleteInvoice() each gained an optional
+// [historyProvider] param. When passed:
+//  - saveCurrentInvoice / addConvertedInvoice log a `created` event
+//    (fire-and-forget, unawaited — logging to History should never block
+//    or fail the actual save).
+//  - deleteInvoice logs a `deleted` event, using the invoice's data
+//    captured BEFORE it's removed from _savedInvoices (removeWhere leaves
+//    nothing to read from afterwards).
+// Omitted (null) is a no-op on all three — every existing call site that
+// doesn't pass historyProvider behaves exactly as before this pass.
+//
+// FIELD VISIBILITY RELOCATION PASS (earlier update): added
 // updateEnabledFields(), mirroring updateColorScheme()/updateFontFamily()'s
 // shape — a thin pass-through to InvoiceData.copyWith. Backs the new
 // "Invoice Fields"/"Customer Fields" toggle section on the Customise step
@@ -75,7 +87,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/invoice_data.dart';
+import '../models/history_event.dart' show HistoryDocType;
 import '../alerts/notifications/document_alert_scheduler.dart';
+import 'history_provider.dart';
 
 const String _kSavedInvoicesKey = 'saved_invoices_v1';
 
@@ -151,6 +165,20 @@ class InvoiceProvider extends ChangeNotifier {
     }
   }
 
+  // HISTORY LOGGING PASS: shared helper so saveCurrentInvoice and
+  // addConvertedInvoice don't duplicate the same logCreated(...) call.
+  void _logCreated(HistoryProvider? historyProvider, SavedInvoice inv) {
+    if (historyProvider == null) return;
+    unawaited(historyProvider.logCreated(
+      docType: HistoryDocType.invoice,
+      docId: inv.id,
+      docNumber: inv.data.invoiceNumber,
+      clientName: inv.data.clientName.isEmpty ? null : inv.data.clientName,
+      amount: inv.data.grandTotal,
+      currency: inv.data.currency,
+    ));
+  }
+
   // ── AlertPrefs push wiring ─────────────────────────────────────────────────
   // Called from alert_type_toggles.dart / settings_screen.dart whenever the
   // EFFECTIVE enabled state for a category (alertsEnabled && the per-type
@@ -210,9 +238,14 @@ class InvoiceProvider extends ChangeNotifier {
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
+  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
+  // call site keeps working unchanged. Pass
+  // historyProvider: context.read<HistoryProvider>() from a normal
+  // "create new invoice" save flow to log a `created` History event.
   SavedInvoice saveCurrentInvoice({
     required String title,
     required String templateName,
+    HistoryProvider? historyProvider,
   }) {
     final now = DateTime.now();
     final inv = SavedInvoice(
@@ -233,6 +266,7 @@ class InvoiceProvider extends ChangeNotifier {
     // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
+    _logCreated(historyProvider, inv);
     return inv;
   }
 
@@ -241,10 +275,14 @@ class InvoiceProvider extends ChangeNotifier {
   // touching the active editor draft — unlike saveCurrentInvoice(), which
   // always saves whatever's currently in _invoiceData. Used by the
   // "Convert to Invoice" action in saved_document_detail_screen.dart.
+  //
+  // HISTORY LOGGING PASS: [historyProvider] is optional, same as
+  // saveCurrentInvoice above — logs a `created` event when passed.
   SavedInvoice addConvertedInvoice({
     required InvoiceData data,
     required String title,
     required String templateName,
+    HistoryProvider? historyProvider,
   }) {
     final now = DateTime.now();
     final inv = SavedInvoice(
@@ -262,6 +300,7 @@ class InvoiceProvider extends ChangeNotifier {
     // First save of this invoice — see saveCurrentInvoice()'s comment.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
+    _logCreated(historyProvider, inv);
     return inv;
   }
 
@@ -299,12 +338,25 @@ class InvoiceProvider extends ChangeNotifier {
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
-  void deleteInvoice(String id) {
+  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
+  // `deleted` event using the invoice's data captured BEFORE removal
+  // (removeWhere leaves nothing to read afterwards). Omitted (null) is a
+  // no-op, so every existing call site behaves exactly as before.
+  void deleteInvoice(String id, {HistoryProvider? historyProvider}) {
+    final deleted = getInvoiceById(id);
     _savedInvoices.removeWhere((i) => i.id == id);
     if (_activeInvoiceId == id) _activeInvoiceId = null;
     _persist();
     notifyListeners();
     unawaited(DocumentAlertScheduler.instance.cancelAllForInvoice(id));
+    if (historyProvider != null && deleted != null) {
+      unawaited(historyProvider.logDeleted(
+        docType: HistoryDocType.invoice,
+        docId: deleted.id,
+        docNumber: deleted.data.invoiceNumber,
+        clientName: deleted.data.clientName.isEmpty ? null : deleted.data.clientName,
+      ));
+    }
   }
 
   SavedInvoice? getInvoiceById(String id) {

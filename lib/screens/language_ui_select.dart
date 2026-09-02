@@ -1,7 +1,10 @@
 // lib/screens/language_ui_select.dart
 //
 // Language selector screen.
-// Flow: Splash → THIS SCREEN → OnboardingFlow → HomeScreen
+// Flow: Splash → THIS SCREEN → HomeScreen
+// (previously Splash → THIS SCREEN → OnboardingFlow → HomeScreen —
+// onboarding_screens/ was deleted, it was a leftover from the forked
+// CV-builder app. See splash_screen.dart's header comment.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:country_flags/country_flags.dart';
 import '../providers/invoice_provider.dart';
-import 'onboarding_screens/onboarding_flow.dart';
+import 'home_screen.dart';
 
 // -- Language translation maps -------------------------------------------------
 import '../language_keys/lang_en_english.dart';
@@ -183,12 +186,12 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen> {
         'translations': _translationMap[code] ?? enEnglish,
       });
     } else {
+      // Onboarding was removed (see splash_screen.dart header comment) —
+      // go straight to HomeScreen instead of OnboardingFlow.
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => OnboardingFlow(
-            translations: _translationMap[code] ?? enEnglish,
-          ),
+          pageBuilder: (_, __, ___) => const HomeScreen(),
           transitionsBuilder: (_, anim, __, child) =>
               FadeTransition(opacity: anim, child: child),
           transitionDuration: const Duration(milliseconds: 400),

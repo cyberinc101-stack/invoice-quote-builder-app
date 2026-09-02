@@ -1,7 +1,20 @@
 // receipt_data.dart
 // lib/models/receipt_data.dart
 //
-// FONT SIZE PASS (this update): added fontSize (double, default 12.0) —
+// RECEIPT DRAFT LIBRARY PASS (this update): added SavedReceiptDraft — a
+// named, editable receipt-in-progress, saved from the Create Receipt
+// step's new library screen (create_receipt/step_create_receipt.dart)
+// and reopened via CreateReceiptBottomSheet
+// (create_receipt/create_receipt_bottom_sheet.dart) to keep editing it.
+// Mirrors SavedInvoiceDraft/SavedQuoteDraft exactly — see
+// invoice_data.dart's INVOICE DRAFT LIBRARY PASS note for the full
+// rationale. Also added SavedReceiptLineItemSet — a Receipt-only mirror
+// of SavedLineItemSet, kept as a separate class/library (own
+// SharedPreferences key) so Receipt's saved item-set bundles never mix
+// with Invoice's or Quote's, backing the new
+// create_receipt/receipt_saved_items_widgets.dart panel.
+//
+// FONT SIZE PASS (earlier): added fontSize (double, default 12.0) —
 // same gap as QuoteData: Receipt had a fontFamily field but no numeric
 // size field, and no UI for either. Added so Receipt's Customise step
 // can show Font Family + Text Size controls matching Invoice's, via the
@@ -554,5 +567,135 @@ class SavedReceipt {
         lastEditedAt:      lastEditedAt      ?? this.lastEditedAt,
         completionPercent: completionPercent ?? this.completionPercent,
         folderName: clearFolderName ? null : (folderName ?? this.folderName),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedReceiptDraft — a named, editable receipt-in-progress. Mirrors
+// SavedInvoiceDraft/SavedQuoteDraft exactly — see invoice_data.dart's
+// INVOICE DRAFT LIBRARY PASS note for the full rationale. Stores a
+// complete ReceiptData snapshot; only the fields actually editable on
+// the Create Receipt step (customer override, receipt number, payment
+// date, currency, payment method, line items, tax/discount, notes) are
+// ever set into it — every other field (business info, logo, thermal
+// settings, social handles, font, colour) is preserved unchanged via
+// copyWith when CreateReceiptBottomSheet builds the data, since those
+// stay owned by create_receipt_screen.dart's own Customise-step state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedReceiptDraft {
+  String id;
+  String name;
+  ReceiptData data;
+  DateTime createdAt;
+  DateTime lastEditedAt;
+
+  SavedReceiptDraft({
+    required this.id,
+    required this.name,
+    required this.data,
+    required this.createdAt,
+    required this.lastEditedAt,
+  });
+
+  /// What the library card shows as its title — the explicit label if one
+  /// was typed, else the client name, else the receipt number, else a
+  /// generic fallback. Never blank.
+  String get displayName {
+    if (name.trim().isNotEmpty) return name.trim();
+    if (data.clientName.trim().isNotEmpty) return data.clientName.trim();
+    if (data.receiptNumber.trim().isNotEmpty) return data.receiptNumber.trim();
+    return 'Untitled Draft';
+  }
+
+  int get itemCount => data.lineItems.length;
+  double get total => data.amountPaid;
+
+  String lastEditedDisplay() {
+    final diff = DateTime.now().difference(lastEditedAt);
+    if (diff.inMinutes < 1)  return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours   < 24) return '${diff.inHours}h ago';
+    if (diff.inDays    == 1) return 'Yesterday';
+    if (diff.inDays    <  7) return '${diff.inDays}d ago';
+    return '${(diff.inDays / 7).floor()}w ago';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'data': data.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+        'lastEditedAt': lastEditedAt.toIso8601String(),
+      };
+
+  factory SavedReceiptDraft.fromJson(Map<String, dynamic> j) => SavedReceiptDraft(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        data: ReceiptData.fromJson(j['data'] as Map<String, dynamic>? ?? {}),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+      );
+
+  SavedReceiptDraft copyWith({
+    String? name,
+    ReceiptData? data,
+    DateTime? lastEditedAt,
+  }) =>
+      SavedReceiptDraft(
+        id: id,
+        name: name ?? this.name,
+        data: data ?? this.data.deepCopy(),
+        createdAt: createdAt,
+        lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedReceiptLineItemSet — a named, reusable bundle of line items for
+// the Receipt flow. Mirrors SavedLineItemSet/SavedQuoteLineItemSet
+// exactly, but kept as a SEPARATE library (own SharedPreferences key,
+// own class) so Receipt's saved item sets never mix with Invoice's or
+// Quote's — see receipt_saved_items_widgets.dart
+// (ReceiptSavedItemSets) for the UI this backs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedReceiptLineItemSet {
+  String id;
+  String name;
+  List<LineItem> items;
+
+  SavedReceiptLineItemSet({
+    required this.id,
+    required this.name,
+    required this.items,
+  });
+
+  int get itemCount => items.length;
+  double get total => items.fold(0.0, (sum, i) => sum + i.total);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'items': items.map((i) => i.toJson()).toList(),
+      };
+
+  factory SavedReceiptLineItemSet.fromJson(Map<String, dynamic> j) =>
+      SavedReceiptLineItemSet(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        items: (j['items'] as List<dynamic>? ?? [])
+            .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  SavedReceiptLineItemSet copyWith({
+    String? name,
+    List<LineItem>? items,
+  }) =>
+      SavedReceiptLineItemSet(
+        id: id,
+        name: name ?? this.name,
+        items: items ?? this.items.map((i) => i.copyWith()).toList(),
       );
 }

@@ -1,6 +1,15 @@
 // lib/services/receipt_pdf_service.dart
 //
-// FIELD VISIBILITY PASS (this update): _buildExecutivePdf (the A4 export
+// HISTORY LOGGING PASS (this update): generateAndSharePDF and
+// printReceipt now accept an optional [historyProvider], mirroring
+// invoice_pdf_service.dart's own HISTORY LOGGING PASS. Share logs a
+// `shared` event with the shared file attached (Share.shareXFiles
+// doesn't return a path, so this is the only place that can attach the
+// real file); print logs a `printed` event (no file attached — printing
+// doesn't produce a reusable artifact the way share/download do).
+// Omitted (null) is a no-op on both.
+//
+// FIELD VISIBILITY PASS (earlier update): _buildExecutivePdf (the A4 export
 // path) now checks the same pre-existing ReceiptData show* toggles the
 // thermal export (_buildThermalPdf, below) already checked — showLogo,
 // showBusinessDetails, showReceiptNumber, showDateTime,
@@ -98,6 +107,7 @@
 // Executive, built directly below; 2-10 route through
 // pdf_templates.dart's buildStyledDocument, shared with invoice/quote).
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -110,6 +120,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../create_receipt/receipt_paper_format.dart';
 import '../models/receipt_data.dart';
+import '../models/history_event.dart' show HistoryDocType;
+import '../providers/history_provider.dart';
 import 'pdf_doc_adapter.dart';
 import 'pdf_templates.dart' as styled;
 
@@ -128,10 +140,15 @@ class ReceiptPdfService {
     return file.path;
   }
 
+  /// [historyProvider], when passed, logs a `shared` History event with
+  /// the shared file attached as sourceFile — mirrors
+  /// invoice_pdf_service.dart's identical treatment. Omitted (null) is a
+  /// no-op, so every existing call site behaves exactly as before.
   Future<void> generateAndSharePDF(
     SavedReceipt receipt, {
     int? layoutTemplateId,
     String? shareText,
+    HistoryProvider? historyProvider,
   }) async {
     final bytes = await _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
@@ -143,6 +160,18 @@ class ReceiptPdfService {
       subject: 'Receipt ${receipt.data.receiptNumber}',
       text: shareText,
     );
+    if (historyProvider != null) {
+      final d = receipt.data;
+      unawaited(historyProvider.logShared(
+        docType: HistoryDocType.receipt,
+        docId: receipt.id,
+        docNumber: d.receiptNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.amountPaid,
+        currency: d.currency,
+        sourceFile: file,
+      ));
+    }
   }
 
   Future<Uint8List> generatePdfBytes(
@@ -161,10 +190,14 @@ class ReceiptPdfService {
   /// layout here too, not the A4 Executive/styled layouts — and the print
   /// dialog's page format below is set to match (real thermal roll width
   /// vs A4), not left at the printing package's default.
+  /// [historyProvider], when passed, logs a `printed` History event —
+  /// no file attached, since printing doesn't leave behind a reusable
+  /// artifact the way share/download do.
   Future<void> printReceipt(
     SavedReceipt receipt, {
     int? layoutTemplateId,
     String? paperFormat,
+    HistoryProvider? historyProvider,
   }) async {
     final bytes = await _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
     final format = receiptPaperFormatFromString(paperFormat ?? receipt.data.paperFormat);
@@ -174,6 +207,17 @@ class ReceiptPdfService {
           'Receipt_${receipt.data.receiptNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf',
       format: format.isThermal ? _thermalPageFormat(format) : PdfPageFormat.a4,
     );
+    if (historyProvider != null) {
+      final d = receipt.data;
+      unawaited(historyProvider.logPrinted(
+        docType: HistoryDocType.receipt,
+        docId: receipt.id,
+        docNumber: d.receiptNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.amountPaid,
+        currency: d.currency,
+      ));
+    }
   }
 
   // ── Layout dispatcher ───────────────────────────────────────────────────────

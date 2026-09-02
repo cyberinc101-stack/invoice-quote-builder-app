@@ -1,7 +1,17 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// FONT SIZE PASS (this update): added updateFontSize(), mirroring
+// HISTORY LOGGING PASS (this update): saveCurrentQuote() and
+// deleteQuote() each gained an optional [historyProvider] param, mirroring
+// InvoiceProvider's identical pass — see that file's header comment for
+// the full rationale. saveCurrentQuote logs `created`; deleteQuote logs
+// `deleted` using the quote's data captured BEFORE removal. Omitted
+// (null) is a no-op on both, so every existing call site behaves exactly
+// as before this pass. Quotes have no addConverted* method (nothing in
+// this app converts INTO a quote — only invoice/receipt are conversion
+// targets), so this is the only creation path that needs wiring here.
+//
+// FONT SIZE PASS (earlier update): added updateFontSize(), mirroring
 // updateFontFamily()'s shape exactly — a thin pass-through to
 // QuoteData.copyWith's new fontSize field. Called from the new Text Size
 // slider on quote_step_customise.dart via quote_editor_screen.dart's
@@ -64,7 +74,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/quote_data.dart';
 import '../models/invoice_data.dart' show LineItem;
+import '../models/history_event.dart' show HistoryDocType;
 import '../alerts/notifications/document_alert_scheduler.dart';
+import 'history_provider.dart';
 
 const String _kSavedQuotesKey = 'saved_quotes_v1';
 
@@ -195,9 +207,14 @@ class QuoteProvider extends ChangeNotifier {
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
+  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
+  // call site keeps working unchanged. Pass
+  // historyProvider: context.read<HistoryProvider>() from a normal
+  // "create new quote" save flow to log a `created` History event.
   SavedQuote saveCurrentQuote({
     required String title,
     required String templateName,
+    HistoryProvider? historyProvider,
   }) {
     final now = DateTime.now();
     final quote = SavedQuote(
@@ -218,6 +235,16 @@ class QuoteProvider extends ChangeNotifier {
     // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(quote));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(quote));
+    if (historyProvider != null) {
+      unawaited(historyProvider.logCreated(
+        docType: HistoryDocType.quote,
+        docId: quote.id,
+        docNumber: quote.data.quoteNumber,
+        clientName: quote.data.clientName.isEmpty ? null : quote.data.clientName,
+        amount: quote.data.grandTotal,
+        currency: quote.data.currency,
+      ));
+    }
     return quote;
   }
 
@@ -255,12 +282,25 @@ class QuoteProvider extends ChangeNotifier {
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
-  void deleteQuote(String id) {
+  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
+  // `deleted` event using the quote's data captured BEFORE removal.
+  // Omitted (null) is a no-op, so every existing call site behaves
+  // exactly as before.
+  void deleteQuote(String id, {HistoryProvider? historyProvider}) {
+    final deleted = getQuoteById(id);
     _savedQuotes.removeWhere((q) => q.id == id);
     if (_activeQuoteId == id) _activeQuoteId = null;
     _persist();
     notifyListeners();
     unawaited(DocumentAlertScheduler.instance.cancelAllForQuote(id));
+    if (historyProvider != null && deleted != null) {
+      unawaited(historyProvider.logDeleted(
+        docType: HistoryDocType.quote,
+        docId: deleted.id,
+        docNumber: deleted.data.quoteNumber,
+        clientName: deleted.data.clientName.isEmpty ? null : deleted.data.clientName,
+      ));
+    }
   }
 
   SavedQuote? getQuoteById(String id) {

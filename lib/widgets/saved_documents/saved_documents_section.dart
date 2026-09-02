@@ -321,7 +321,13 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   QuickFilter      _selectedQuickFilter    = QuickFilter.none;
 
   DocLayoutMode    _selectedLayout         = DocLayoutMode.list;
-  _KanbanGroupBy   _kanbanGroupBy         = _KanbanGroupBy.status;
+  // DEFAULT GROUP-BY PASS: was _KanbanGroupBy.status -- Jesse wants the
+  // Kanban board to default to grouping by Client rather than Status
+  // whenever Kanban is selected as the layout. This only changes the
+  // initial value; the "Group by: Status / Client" toggle
+  // (_GroupByToggleButton above) still lets the user switch back to
+  // Status per-session exactly as before.
+  _KanbanGroupBy   _kanbanGroupBy         = _KanbanGroupBy.client;
   String           _searchQuery            = '';
   DateRangePreset  _selectedDateRange      = DateRangePreset.all;
   DateTime?        _customRangeStart;

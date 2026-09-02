@@ -1,13 +1,32 @@
 // lib/main.dart
 //
-// SPLASH SKIP PASS (this update): SplashScreen is commented out of the
-// startup flow — `home:` now goes straight to LanguageSelectScreen
-// instead. The splash_screen.dart import is commented out (not deleted)
-// and its old import line is left directly above as a marker, so
-// re-enabling it later is a one-line swap back. SplashScreen's own file
-// is untouched — nothing in it needed to change, since none of its
-// animation/timer logic does anything except eventually navigate to
-// LanguageSelectScreen, which this now does immediately instead.
+// SPLASH SCREEN REBUILD (this update): the old splash_screen.dart and the
+// entire lib/screens/onboarding_screens/ folder were leftovers from the
+// forked CV-builder app (wrong copy/branding — "Create a CV That Opens
+// Doors", CV template chips, etc.) and have been deleted. Replaced with a
+// single new lib/screens/splash_screen.dart themed for this app (an
+// Invoice/Quote/Receipt document-stack visual, blue/purple/green to match
+// the home-screen hero card + ColorScheme seed 0xFF2196F3), shown for
+// ~1.8s then fading into LanguageSelectScreen. Wired back in below: the
+// import is uncommented, and `home:` now resolves to SplashScreen instead
+// of going straight to LanguageSelectScreen. LanguageSelectScreen's own
+// next-step push was repointed from the now-deleted OnboardingFlow
+// straight to HomeScreen (see lib/screens/language_ui_select.dart) — the
+// flow is now Splash -> LanguageSelectScreen -> HomeScreen.
+// NOTE: the onboarding_complete/onboarding_version SharedPreferences
+// bookkeeping further down in main() (the _kAlwaysShowFlow block) is now
+// dead code — nothing reads onboarding_complete anymore since
+// OnboardingFlow is gone. Left in place for now since it's harmless
+// (just clears a couple of prefs keys on a version bump); say the word
+// and it can come out too.
+//
+// HISTORY PROVIDER WIRING (earlier pass): registered HistoryProvider the
+// same way every other provider here is — instantiated above runApp,
+// loaded in the startup Future.wait via its own loadHistory() (mirroring
+// invoiceProvider.loadPersistedInvoices() etc.), and provided via
+// ChangeNotifierProvider.value so every screen reads from the same
+// instance. See lib/providers/history_provider.dart and
+// lib/screens/history_screen.dart.
 //
 // RELEASE PASS (earlier pass): flipped both dev-only toggles off.
 //   - _kAlwaysShowFlow: true -> false. Was wiping onboarding_complete/
@@ -17,11 +36,13 @@
 //     opened the app. Now the persisted value is respected and the
 //     version-bump branch (below) is what actually runs.
 //   - _kSkipToHomeDev: true -> false. Was skipping splash/onboarding
-//     entirely and opening HomeScreen directly. Now `home:` in
-//     InvoiceBuilderApp resolves to LanguageSelectScreen as intended
-//     (previously SplashScreen — see SPLASH SKIP PASS above).
-// Left _kOnboardingVersion as-is (1) — bump this in a future release if
-// onboarding content changes and existing users need to see it again.
+//     entirely and opening HomeScreen directly. `home:` in
+//     InvoiceBuilderApp now resolves to SplashScreen as intended (this
+//     line went through a couple of intermediate states — briefly
+//     LanguageSelectScreen directly, before the SPLASH SCREEN REBUILD
+//     pass above put SplashScreen back at the front of the flow).
+// Left _kOnboardingVersion as-is (1) — now unused (see NOTE above), kept
+// only because the dead _kAlwaysShowFlow block still references it.
 //
 // CLIENT COLOR PREFS (earlier pass): registered ClientColorPrefs — the
 // persisted client-name -> logo-background-color mapping (lib/widgets/
@@ -95,6 +116,7 @@ import 'providers/receipt_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/expense_provider.dart';
+import 'providers/history_provider.dart';
 import 'alerts/alert_prefs.dart';
 import 'alerts/custom_reminders/reminder_provider.dart';
 import 'alerts/custom_reminders/reminder_screen.dart';
@@ -103,10 +125,7 @@ import 'alerts/notifications/digest_scheduler.dart';
 import 'screens/saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'screens/reports/reports_prefs.dart';
 import 'screens/reports/reports_screen.dart';
-// SPLASH SKIP PASS: splash screen is out of the startup flow for now —
-// import commented out alongside its `home:` usage below. Uncomment both
-// to bring it back.
-// import 'screens/splash_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/language_ui_select.dart';
 import 'screens/home_screen.dart';
 import 'widgets/saved_documents/card_display_prefs.dart';
@@ -238,6 +257,7 @@ Future<void> main() async {
   final cardDisplayPrefs = CardDisplayPrefs();
   final savedLayoutPrefs = SavedLayoutPrefs();
   final clientColorPrefs = ClientColorPrefs();
+  final historyProvider  = HistoryProvider();
 
   await NotificationService.instance.init();
   // Prompts for notification + exact-alarm permission on Android 13+/12+.
@@ -325,6 +345,7 @@ Future<void> main() async {
     cardDisplayPrefs.load(),
     savedLayoutPrefs.load(),
     clientColorPrefs.load(),
+    historyProvider.loadHistory(),
   ]);
 
   // (Re)confirms the recurring weekly-summary notification is scheduled,
@@ -349,6 +370,7 @@ Future<void> main() async {
         ChangeNotifierProvider<CardDisplayPrefs>.value(value: cardDisplayPrefs),
         ChangeNotifierProvider<SavedLayoutPrefs>.value(value: savedLayoutPrefs),
         ChangeNotifierProvider<ClientColorPrefs>.value(value: clientColorPrefs),
+        ChangeNotifierProvider<HistoryProvider>.value(value: historyProvider),
       ],
       child: const InvoiceBuilderApp(),
     ),
@@ -433,14 +455,7 @@ class InvoiceBuilderApp extends StatelessWidget {
       themeMode: themeMode,
       theme: _light,
       darkTheme: _dark,
-      // SPLASH SKIP PASS: was `_kSkipToHomeDev ? const HomeScreen() : const
-      // SplashScreen()`. SplashScreen is commented out of the flow for
-      // now (see the commented import above) — non-dev launches now go
-      // straight to LanguageSelectScreen instead of sitting through the
-      // splash animation first. To bring the splash screen back: uncomment
-      // its import above and swap the line below back to
-      // `const SplashScreen()`.
-      home: _kSkipToHomeDev ? const HomeScreen() : const LanguageSelectScreen(),
+      home: _kSkipToHomeDev ? const HomeScreen() : const SplashScreen(),
     );
   }
 }

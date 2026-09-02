@@ -1,6 +1,19 @@
 // lib/create_receipt/receipt_step_customise.dart
 //
-// NEW FILE (this pass): extracted out of create_receipt_screen.dart's
+// FIELD TOGGLE OVERFLOW FIX (this update): _fieldToggleRow()'s label was
+// a bare Text() inside a Row with no Expanded/Flexible wrapper, so any
+// label too wide for the row (e.g. "Business Details (address/phone/
+// email)", "Customer Details (name/email/phone/address)") just grew
+// past the available width instead of wrapping — visible as the
+// "RIGHT OVERFLOWED BY N PIXELS" yellow/black stripe. This is also a
+// latent bug against translations: a longer string in another language
+// hits the exact same overflow even for labels that fit fine in
+// English. Fixed by wrapping the label in Expanded with softWrap
+// enabled, and removing `dense: true` from the SwitchListTile (dense
+// locks the tile to a fixed single-line height, which would clip a
+// wrapped 2-3 line label instead of letting the tile grow to fit it).
+//
+// NEW FILE (earlier pass): extracted out of create_receipt_screen.dart's
 // inline _customiseStep()/_fieldToggleRow()/_receiptFieldsSection()
 // methods and the private _ReceiptPreviewCard class, giving Receipt's
 // Customise step its own file at last — matching Invoice/Quote's
@@ -16,7 +29,7 @@
 // create_receipt_screen.dart's _customiseStep() now just constructs one
 // of these and hands it callbacks.
 //
-// REORDER PASS (this pass, same file): the A4 "Receipt Fields" /
+// REORDER PASS (earlier pass, same file): the A4 "Receipt Fields" /
 // "Customer Fields" toggle section (previously placed after Accent
 // Color, per the old FIELD VISIBILITY RELOCATION PASS comment) now sits
 // directly under Live Preview, before Business Logo — matching where
@@ -26,7 +39,7 @@
 // it never showed this section; it keeps its own live toggle section
 // (ReceiptThermalSettingsSection) further down, unchanged.
 //
-// FONT SIZE PASS (this pass): added Font Family and Text Size sections
+// FONT SIZE PASS (earlier pass): added Font Family and Text Size sections
 // for the A4 (non-thermal) branch — new, Receipt previously had
 // neither, unlike Invoice/Quote's own Font Family/Text Size controls.
 // Positioned directly after Accent Color, matching Invoice/Quote's
@@ -252,15 +265,32 @@ class ReceiptStepCustomise extends StatelessWidget {
         color: isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : Colors.white,
       ),
       child: SwitchListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        // OVERFLOW FIX: `dense: true` removed — it locks the tile to a
+        // fixed single-line height, which would clip a wrapped 2-3 line
+        // label instead of letting the tile grow to fit it. Vertical
+        // padding bumped slightly (0 -> 8) so a wrapped multi-line label
+        // still has breathing room top/bottom.
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         title: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             if (icon != null) ...[
               Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
               const SizedBox(width: 10),
             ],
-            Text(label, style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+            // OVERFLOW FIX: label now wraps onto multiple lines instead
+            // of overflowing past the switch — a bare Text() here had no
+            // Expanded/Flexible wrapper, so long labels (and longer
+            // translated strings, which run this same risk in any
+            // language regardless of how well the English text fits)
+            // just grew past the available width instead of wrapping.
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
+                softWrap: true,
+              ),
+            ),
           ],
         ),
         value: value,

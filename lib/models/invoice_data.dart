@@ -1,7 +1,23 @@
 // invoice_data.dart
 // lib/models/invoice_data.dart
 //
-// LINE ITEM CONTAINERS PASS (this update): added SavedLineItemSet — a
+// INVOICE DRAFT LIBRARY PASS (this update): added SavedInvoiceDraft — a
+// named, editable invoice-in-progress, saved from the Create Invoice
+// step's new library screen (step_create_invoice.dart) and reopened via
+// CreateInvoiceBottomSheet (create_invoice_bottom_sheet.dart) to keep
+// editing it. Mirrors Customer/InvoiceTemplate/SavedLineItemSet's shape
+// (id/name + toJson/fromJson/copyWith) so it persists the same way, via
+// a single JSON-encoded SharedPreferences list. Unlike SavedInvoice (the
+// finished, fully-rendered invoice with completionPercent/folderName/etc),
+// SavedInvoiceDraft only carries what's actually editable on the Create
+// Invoice step — it stores a full InvoiceData snapshot for convenience
+// (so nothing about the shape of an in-progress invoice needs to be
+// duplicated here), but business info/logo and layoutTemplateId are
+// deliberately re-resolved from the selected template + provider state
+// at "Continue to Customise" time (see StepCreateInvoice.
+// _syncSelectedToProvider), not read back out of the draft.
+//
+// LINE ITEM CONTAINERS PASS (earlier): added SavedLineItemSet — a
 // named, reusable bundle of line items, saved from the Create Invoice
 // step's Line Items section and quick-added back onto any future
 // invoice with a tap. Mirrors Customer/InvoiceTemplate's shape (id/name
@@ -593,5 +609,83 @@ class SavedLineItemSet {
         id: id,
         name: name ?? this.name,
         items: items ?? this.items.map((i) => i.copyWith()).toList(),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedInvoiceDraft — a named, editable invoice-in-progress. See
+// INVOICE DRAFT LIBRARY PASS note at the top of this file for the full
+// rationale. Stores a complete InvoiceData snapshot of everything
+// editable on the Create Invoice step (customer override, dates,
+// currency, line items, tax/discount, notes) plus a user-facing `name`
+// for the library card, independent of any customer/invoice-number
+// text so a draft can be labelled before either is filled in.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedInvoiceDraft {
+  String id;
+  String name;
+  InvoiceData data;
+  DateTime createdAt;
+  DateTime lastEditedAt;
+
+  SavedInvoiceDraft({
+    required this.id,
+    required this.name,
+    required this.data,
+    required this.createdAt,
+    required this.lastEditedAt,
+  });
+
+  /// What the library card shows as its title — the explicit label if one
+  /// was typed, else the customer name, else the invoice number, else a
+  /// generic fallback. Never blank.
+  String get displayName {
+    if (name.trim().isNotEmpty) return name.trim();
+    if (data.clientName.trim().isNotEmpty) return data.clientName.trim();
+    if (data.invoiceNumber.trim().isNotEmpty) return data.invoiceNumber.trim();
+    return 'Untitled Draft';
+  }
+
+  int get itemCount => data.lineItems.length;
+  double get total => data.grandTotal;
+
+  String lastEditedDisplay() {
+    final diff = DateTime.now().difference(lastEditedAt);
+    if (diff.inMinutes < 1)  return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours   < 24) return '${diff.inHours}h ago';
+    if (diff.inDays    == 1) return 'Yesterday';
+    if (diff.inDays    <  7) return '${diff.inDays}d ago';
+    return '${(diff.inDays / 7).floor()}w ago';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'data': data.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+        'lastEditedAt': lastEditedAt.toIso8601String(),
+      };
+
+  factory SavedInvoiceDraft.fromJson(Map<String, dynamic> j) => SavedInvoiceDraft(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        data: InvoiceData.fromJson(j['data'] as Map<String, dynamic>? ?? {}),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+      );
+
+  SavedInvoiceDraft copyWith({
+    String? name,
+    InvoiceData? data,
+    DateTime? lastEditedAt,
+  }) =>
+      SavedInvoiceDraft(
+        id: id,
+        name: name ?? this.name,
+        data: data ?? this.data.deepCopy(),
+        createdAt: createdAt,
+        lastEditedAt: lastEditedAt ?? this.lastEditedAt,
       );
 }

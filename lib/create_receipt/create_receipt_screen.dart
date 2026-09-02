@@ -1,68 +1,48 @@
 // lib/create_receipt/create_receipt_screen.dart
 //
-// CUSTOMISE STEP EXTRACTION PASS (this update): the Customise step's
-// UI (_customiseStep()/_fieldToggleRow()/_receiptFieldsSection() plus
-// the private _ReceiptPreviewCard class) moved out into its own file,
-// receipt_step_customise.dart — matching Invoice/Quote's convention of
-// a dedicated step_customise.dart. This screen now just builds a
-// ReceiptStepCustomise widget and hands it callbacks; every underlying
-// field (logo, toggles, color scheme, etc.) is unchanged and still
-// lives right here in _CreateReceiptScreenState.
+// RECEIPT LIBRARY RESTRUCTURE PASS (this update): mirrors Invoice/Quote's
+// own library restructure. The entire _createReceiptStep() body (receipt
+// number, payment date, currency, client override, payment method, Saved
+// Item Sets panel, line items, tax/discount, notes) has moved out into a
+// bottom sheet (create_receipt/create_receipt_bottom_sheet.dart,
+// CreateReceiptBottomSheet), opened from a new library screen embedded
+// at this step (create_receipt/step_create_receipt.dart,
+// StepCreateReceipt). Like Quote (and unlike Invoice), Receipt keeps its
+// existing single shared bottomNavigationBar (ReceiptStepNavBar) —
+// StepCreateReceipt is an embedded widget (like
+// ReceiptStepCustomerSection/ReceiptStepTemplateSection), not a
+// standalone screen with its own nav.
 //
-// Also added _fontFamily/_fontSize state (new — Receipt previously had
-// no UI for either, despite ReceiptData.fontSize already existing per
-// receipt_data.dart's own FONT SIZE PASS). Initialized from
-// currentReceiptData in initState() and written back in
-// _syncToProvider(), same pattern already used for _colorScheme; no
-// ReceiptProvider changes were needed since Receipt's customise state
-// lives directly on this State object rather than routed through
-// provider update methods the way Quote/Invoice's does.
+// New state: _selectedReceiptDraft (SavedReceiptDraft?) replaces every
+// piece of per-receipt-details/line-item local state this screen used
+// to own directly (_receiptNumber, _paymentDate, _custNameCtrl etc.,
+// _currencyCodeCtrl/_currencySymbolCtrl/_currencyDisplayMode,
+// _paymentMethod, _descCtrls/_qtyCtrls/_priceCtrls, _taxRate/
+// _discountRate, _taxCtrl/_discountCtrl — all removed).
+// StepCreateReceipt reports the selected draft via onDraftSelected();
+// _syncToProvider() now pulls receipt number/payment date/currency/
+// client override/line items/tax/discount/payment method from
+// _selectedReceiptDraft?.data (falling back to whatever's already on the
+// provider before any draft is selected). _stepBlockReason(2) and
+// _save() now just check that a draft is selected, since the bottom
+// sheet does its own full field validation before it will hand back a
+// draft at all.
 //
-// CUSTOMER STEP RENAME PASS (earlier update): the "Client" step is now
-// "Customer" throughout — StepMeta label, the ReceiptStepCustomerSection
-// widget (was ReceiptClientLibrarySection, now living in
-// receipt_step_customer.dart instead of receipt_client_library.dart),
-// and the step's own helper text. Mirrors the identical rename just
-// done for the quote flow (quote_client_library.dart ->
-// quote_step_customer.dart). Naming/wording + import-path change only —
-// _selectedClient stays typed as ReceiptClient and every provider field
-// (clientName, etc.) is untouched.
-//
-// Also applied the CURRENCY SYMBOL CONDITIONAL fix from
-// step_create_invoice.dart / quote_step_customer.dart to this screen's
-// own inline Currency Symbol field on the Create Receipt step: the field
-// now only shows once Symbol or Both is picked in Display Format.
-//
-// STEP REORDER PASS (earlier): step order now matches the invoice
-// flow's skeleton — Customer → Template → Create Receipt → Customise —
-// instead of Template → Client & Details → Line Items → Customise.
-// Customer selection is now its own standalone first step, Template
-// stays step 1, and receipt number/date/currency/payment method/notes +
-// line items + tax/discount are combined into a single "Create Receipt"
-// step (mirrors invoice's step_create_invoice.dart).
-//
-// NO-CLIENT INLINE FIELDS PASS (earlier): mirrors invoice's
-// step_create_invoice.dart — if no customer was selected on the
-// Customer step, the Create Receipt step shows inline "Client Details"
-// fields (name/email/phone/address) so the receipt can still be filled
-// out without forcing a saved customer to be created first.
-//
-// FIELD VISIBILITY RELOCATION PASS (earlier, superseded): last step
-// renamed "Customise"; the A4 field-toggle section's position has since
-// moved again — see receipt_step_customise.dart's own REORDER PASS
-// comment for where it sits now.
-//
-// TEMPLATE UNIFICATION PASS (earlier): a single saved, reusable
-// ReceiptTemplate replaces the old separate business-profile library +
-// inline non-reusable toggle step.
+// Everything else — thermal/POS fields, social handles, font/colour,
+// logo, field-visibility toggles, and the Customise step itself — is
+// UNCHANGED and still lives directly on this State object exactly as
+// before this pass; only the Create Receipt step's internals changed.
+// Customise step's totals/currency prefix now read from _draftData
+// (getter: _selectedReceiptDraft?.data ?? current provider ReceiptData)
+// instead of locally-computed getters over removed controllers.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/receipt_provider.dart';
+import '../providers/history_provider.dart';
 import '../models/receipt_data.dart';
-import '../models/invoice_data.dart' show LineItem;
+import '../models/history_event.dart';
 import '../widgets/step_editor_header.dart';
 import '../widgets/shared_logo_picker.dart';
 import '../screens/saved_invoice_details_section/saved_document_detail_screen.dart';
@@ -72,6 +52,7 @@ import 'receipt_step_customer.dart';
 import 'receipt_step_template.dart';
 import 'receipt_step_customise.dart';
 import 'receipt_paper_format.dart';
+import 'step_create_receipt.dart';
 
 class CreateReceiptScreen extends StatefulWidget {
   final int layoutTemplateId;
@@ -92,9 +73,6 @@ class CreateReceiptScreen extends StatefulWidget {
 class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   static const Color _accent = Color(0xFF2E7D32);
 
-  // CUSTOMER STEP RENAME PASS: Customer is step 0 (standalone), Template
-  // is step 1, receipt details + line items are combined into "Create
-  // Receipt" at step 2, Customise stays last at step 3.
   static const List<StepMeta> _steps = [
     StepMeta(label: 'Customer', icon: Icons.person_rounded),
     StepMeta(label: 'Template', icon: Icons.tune_rounded),
@@ -112,45 +90,21 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   ReceiptTemplate? _selectedTemplate;
   ReceiptClient? _selectedClient;
 
+  // RECEIPT LIBRARY RESTRUCTURE PASS: the selected draft from the Create
+  // Receipt step's library — carries receipt number/payment date/
+  // currency/client override/line items/tax/discount/payment method.
+  // Null until one is created or selected on that step.
+  SavedReceiptDraft? _selectedReceiptDraft;
+
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
   LogoShape _logoShape = LogoShape.roundedSquare;
   double _logoSize = 44.0;
 
-  late TextEditingController _receiptNumber;
-  late TextEditingController _notes;
-  String _paymentDate = '';
-
-  // NO-CLIENT INLINE FIELDS PASS: manual client override fields, shown
-  // on Create Receipt only when _selectedClient is null.
-  late TextEditingController _custNameCtrl;
-  late TextEditingController _custEmailCtrl;
-  late TextEditingController _custPhoneCtrl;
-  late TextEditingController _custAddressCtrl;
-
-  late TextEditingController _currencyCodeCtrl;
-  late TextEditingController _currencySymbolCtrl;
-  String _currencyDisplayMode = 'code';
-
-  PaymentMethod _paymentMethod = PaymentMethod.cash;
-
-  late List<TextEditingController> _descCtrls;
-  late List<TextEditingController> _qtyCtrls;
-  late List<TextEditingController> _priceCtrls;
-  double _taxRate = 0.0;
-  double _discountRate = 0.0;
-
-  late TextEditingController _taxCtrl;
-  late TextEditingController _discountCtrl;
-
   ReceiptColor _colorScheme = ReceiptColor.green;
   late TextEditingController _titleCtrl;
 
-  // CUSTOMISE STEP EXTRACTION PASS: new — Receipt had a fontFamily field
-  // synced straight through from `existing` (never editable) and no
-  // fontSize UI at all. Now both are real editable state, same pattern
-  // as _colorScheme above.
   String _fontFamily = 'Roboto';
   double _fontSize = 12.0;
 
@@ -183,9 +137,16 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   bool _showInstagram = false;
   bool _showTwitter = false;
 
+  /// The data driving totals/currency display on the Customise step —
+  /// the selected draft's data if one is selected, else whatever's
+  /// already on the provider (e.g. before any draft has been picked).
+  ReceiptData get _draftData =>
+      _selectedReceiptDraft?.data ??
+      context.read<ReceiptProvider>().currentReceiptData;
+
   String get _currencyPrefix {
-    final symbol = _currencySymbolCtrl.text.trim();
-    final code = _currencyCodeCtrl.text.trim().toUpperCase();
+    final symbol = _draftData.currencySymbol.trim();
+    final code = _draftData.currency.trim().toUpperCase();
     if (symbol.isNotEmpty) return symbol;
     if (code.isNotEmpty) return '$code ';
     return '';
@@ -202,35 +163,9 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
         : (r.paperFormat.isNotEmpty ? r.paperFormat : 'a4');
     _logoSize = r.businessLogoDisplaySize;
 
-    final now = DateTime.now();
-    _receiptNumber = TextEditingController(
-      text: r.receiptNumber.isNotEmpty ? r.receiptNumber : 'R-${now.millisecondsSinceEpoch.toString().substring(7)}',
-    );
-    _notes         = TextEditingController(text: r.notes);
-    _paymentDate   = r.paymentDate.isNotEmpty ? r.paymentDate : DateFormat('d MMM yyyy').format(now);
-
-    _custNameCtrl    = TextEditingController(text: r.clientName);
-    _custEmailCtrl   = TextEditingController(text: r.clientEmail);
-    _custPhoneCtrl   = TextEditingController(text: r.clientPhone);
-    _custAddressCtrl = TextEditingController(text: r.clientAddress);
-
-    _currencyCodeCtrl = TextEditingController(text: r.currency.isNotEmpty ? r.currency : 'USD');
-    _currencySymbolCtrl = TextEditingController(text: r.currencySymbol);
-    _currencyDisplayMode = r.currencyDisplayMode.isNotEmpty ? r.currencyDisplayMode : 'code';
-    _taxRate       = r.taxRate;
-    _discountRate  = r.discountRate;
-    _paymentMethod = r.paymentMethod;
     _colorScheme   = r.colorScheme;
     _fontFamily    = r.fontFamily;
     _fontSize      = r.fontSize;
-
-    _taxCtrl      = TextEditingController(text: _taxRate == 0 ? '' : '$_taxRate');
-    _discountCtrl = TextEditingController(text: _discountRate == 0 ? '' : '$_discountRate');
-
-    final items = r.lineItems.isNotEmpty ? r.lineItems : [LineItem()];
-    _descCtrls  = items.map((i) => TextEditingController(text: i.description)).toList();
-    _qtyCtrls   = items.map((i) => TextEditingController(text: i.quantity == 1.0 ? '1' : '${i.quantity}')).toList();
-    _priceCtrls = items.map((i) => TextEditingController(text: i.unitPrice == 0.0 ? '' : '${i.unitPrice}')).toList();
 
     _titleCtrl = TextEditingController(
       text: r.clientName.isNotEmpty ? '${r.clientName} Receipt' : '',
@@ -271,31 +206,15 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   @override
   void dispose() {
     for (final c in [
-      _receiptNumber, _notes, _titleCtrl, _taxCtrl, _discountCtrl,
-      _currencyCodeCtrl, _currencySymbolCtrl,
-      _custNameCtrl, _custEmailCtrl, _custPhoneCtrl, _custAddressCtrl,
+      _titleCtrl,
       _cashierNameCtrl, _posIdCtrl, _taxIdCtrl, _paymentReferenceCtrl,
       _authCodeCtrl, _cardLast4Ctrl, _footerMessageCtrl, _qrDataCtrl,
       _websiteCtrl, _facebookCtrl, _instagramCtrl, _twitterCtrl,
-      ..._descCtrls, ..._qtyCtrls, ..._priceCtrls,
     ]) {
       c.dispose();
     }
     super.dispose();
   }
-
-  List<LineItem> get _currentLineItems => List.generate(_descCtrls.length, (i) {
-        return LineItem(
-          description: _descCtrls[i].text,
-          quantity: double.tryParse(_qtyCtrls[i].text) ?? 1.0,
-          unitPrice: double.tryParse(_priceCtrls[i].text) ?? 0.0,
-        );
-      });
-
-  double get _subtotal => _currentLineItems.fold(0.0, (s, i) => s + i.total);
-  double get _discountAmount => _subtotal * (_discountRate / 100);
-  double get _taxAmount => (_subtotal - _discountAmount) * (_taxRate / 100);
-  double get _amountPaid => _subtotal - _discountAmount + _taxAmount;
 
   void _applyClient(ReceiptClient? client) {
     setState(() {
@@ -313,7 +232,9 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
       _logoOffset = template?.logoOffset ?? Offset.zero;
       _logoScale = template?.logoScale ?? 1.0;
       _logoShape = template?.shape ?? LogoShape.roundedSquare;
-      _currencyCodeCtrl.text = template?.currency ?? 'USD';
+      // Currency code now lives on the selected draft (see
+      // CreateReceiptBottomSheet's own template-currency prefill for new
+      // drafts) rather than a local controller here.
       _showLogo            = template?.showLogo ?? true;
       _showBusinessDetails = template?.showBusinessDetails ?? true;
       _showCustomerDetails = template?.showCustomerDetails ?? true;
@@ -325,12 +246,16 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     });
   }
 
-  // NO-CLIENT INLINE FIELDS PASS: client fields come from the selected
-  // ReceiptClient if one is chosen, otherwise from the inline manual
-  // fields on the Create Receipt step.
+  // RECEIPT LIBRARY RESTRUCTURE PASS: client fields and receipt-detail
+  // fields now come from _selectedReceiptDraft?.data, falling back to
+  // whatever's already on the provider before any draft is selected.
+  // Every other field (business info, logo, thermal/POS, social,
+  // font/colour, toggles) is unchanged from before this pass.
   void _syncToProvider() {
     final provider = context.read<ReceiptProvider>();
     final existing = provider.currentReceiptData;
+    final d = _selectedReceiptDraft?.data;
+
     final data = ReceiptData(
       businessName: _selectedTemplate?.businessName ?? '',
       businessEmail: _selectedTemplate?.businessEmail ?? '',
@@ -342,27 +267,21 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
       businessLogoScale: _logoScale,
       businessLogoShape: _logoShape.storageName,
       businessLogoDisplaySize: _logoSize,
-      clientName: _selectedClient?.name ?? _custNameCtrl.text.trim(),
-      clientEmail: _selectedClient?.email ?? _custEmailCtrl.text.trim(),
-      clientPhone: _selectedClient?.phone ?? _custPhoneCtrl.text.trim(),
-      clientAddress: _selectedClient?.address ?? _custAddressCtrl.text.trim(),
-      receiptNumber: _receiptNumber.text,
-      paymentDate: _paymentDate,
-      notes: _notes.text,
-      currency: _currencyCodeCtrl.text.trim().isEmpty
-          ? 'USD'
-          : _currencyCodeCtrl.text.trim().toUpperCase(),
-      currencySymbol: _currencySymbolCtrl.text.trim(),
-      currencyDisplayMode: _currencyDisplayMode,
-      lineItems: _currentLineItems,
-      taxRate: _taxRate,
-      discountRate: _discountRate,
-      paymentMethod: _paymentMethod,
+      clientName: _selectedClient?.name ?? d?.clientName ?? existing.clientName,
+      clientEmail: _selectedClient?.email ?? d?.clientEmail ?? existing.clientEmail,
+      clientPhone: _selectedClient?.phone ?? d?.clientPhone ?? existing.clientPhone,
+      clientAddress: _selectedClient?.address ?? d?.clientAddress ?? existing.clientAddress,
+      receiptNumber: d?.receiptNumber ?? existing.receiptNumber,
+      paymentDate: d?.paymentDate ?? existing.paymentDate,
+      notes: d?.notes ?? existing.notes,
+      currency: d?.currency ?? existing.currency,
+      currencySymbol: d?.currencySymbol ?? existing.currencySymbol,
+      currencyDisplayMode: d?.currencyDisplayMode ?? existing.currencyDisplayMode,
+      lineItems: (d?.lineItems ?? existing.lineItems).map((i) => i.copyWith()).toList(),
+      taxRate: d?.taxRate ?? existing.taxRate,
+      discountRate: d?.discountRate ?? existing.discountRate,
+      paymentMethod: d?.paymentMethod ?? existing.paymentMethod,
       status: existing.status,
-      // CUSTOMISE STEP EXTRACTION PASS: was `existing.fontFamily`
-      // (never editable). Now both fontFamily and fontSize come from
-      // this screen's own editable state, written by the new Font
-      // Family / Text Size controls on receipt_step_customise.dart.
       fontFamily: _fontFamily,
       fontSize: _fontSize,
       colorScheme: _colorScheme,
@@ -400,39 +319,8 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     provider.updateReceiptData(data);
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      setState(() => _paymentDate = DateFormat('d MMM yyyy').format(picked));
-    }
-  }
-
-  void _addLineItem() {
-    setState(() {
-      _descCtrls.add(TextEditingController());
-      _qtyCtrls.add(TextEditingController(text: '1'));
-      _priceCtrls.add(TextEditingController());
-    });
-  }
-
-  void _removeLineItem(int index) {
-    setState(() {
-      _descCtrls.removeAt(index).dispose();
-      _qtyCtrls.removeAt(index).dispose();
-      _priceCtrls.removeAt(index).dispose();
-    });
-  }
-
-  // STEP-TAP BYPASS FIX: same fix applied to the quote flow — tapping a
-  // step tab in the header used to jump straight there regardless of
-  // whether earlier steps were actually filled in. Forward jumps now
-  // re-run the same per-step validation _nextStep() does, stopping at
-  // the first unmet requirement. Backward jumps are always allowed.
+  // STEP-TAP BYPASS FIX (unchanged): tapping a step tab re-runs the same
+  // per-step validation _nextStep() enforces when pressing Next.
   void _goToStep(int index) {
     if (index > _step) {
       for (int i = _step; i < index; i++) {
@@ -448,31 +336,13 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   }
 
   /// Returns the validation message to show if step [i] isn't complete
-  /// enough to move past, or null if it's fine to continue. Mirrors the
-  /// per-step checks in _nextStep(), factored out so both the Next
-  /// button and step-tap navigation enforce the same rules.
+  /// enough to move past, or null if it's fine to continue.
   String? _stepBlockReason(int i) {
     if (i == 1 && _selectedTemplate == null) {
       return 'Select or add a template to continue';
     }
-    if (i == 2) {
-      if (_receiptNumber.text.trim().isEmpty) {
-        return 'Please enter a receipt number.';
-      }
-      if (_selectedClient == null && _custNameCtrl.text.trim().isEmpty) {
-        return 'Please enter a client name.';
-      }
-      for (final c in _descCtrls) {
-        if (c.text.trim().isEmpty) {
-          return 'Please fill in all item descriptions.';
-        }
-      }
-      if (_discountRate < 0 || _discountRate > 100) {
-        return 'Discount must be between 0 and 100%.';
-      }
-      if (_taxRate < 0) {
-        return 'Tax rate cannot be negative.';
-      }
+    if (i == 2 && _selectedReceiptDraft == null) {
+      return 'Select or create a receipt to continue';
     }
     return null;
   }
@@ -492,42 +362,6 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  bool _validateDetailsStep() {
-    if (_receiptNumber.text.trim().isEmpty) {
-      _showValidationError('Please enter a receipt number.');
-      return false;
-    }
-    if (_selectedClient == null && _custNameCtrl.text.trim().isEmpty) {
-      _showValidationError('Please enter a client name.');
-      return false;
-    }
-    return true;
-  }
-
-  bool _validateLineItemsStep() {
-    for (final c in _descCtrls) {
-      if (c.text.trim().isEmpty) {
-        _showValidationError('Please fill in all item descriptions.');
-        return false;
-      }
-    }
-
-    if (_discountRate < 0 || _discountRate > 100) {
-      _showValidationError('Discount must be between 0 and 100%.');
-      return false;
-    }
-
-    if (_taxRate < 0) {
-      _showValidationError('Tax rate cannot be negative.');
-      return false;
-    }
-
-    return true;
-  }
-
-  // STEP REORDER PASS: step 1 (Template) requires a selection; step 2
-  // (Create Receipt) validates receipt number/client name/items/tax/
-  // discount; step 3 (Customise) is the "else" branch -> _save().
   void _nextStep() {
     final blocked = _stepBlockReason(_step);
     if (blocked != null) {
@@ -564,14 +398,21 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
+  // RECEIPT LIBRARY RESTRUCTURE PASS: field-level validation (receipt
+  // number, client name, line item descriptions, tax/discount range)
+  // now lives entirely in CreateReceiptBottomSheet's own _validateForm()
+  // — a draft can't be handed back to this screen unless it already
+  // passed those checks. This screen's own final validation is reduced
+  // to "was everything actually selected/entered".
   Future<void> _save() async {
     if (_selectedTemplate == null) {
       _showSelectionRequiredSnack('template');
       return;
     }
-    if (!_validateDetailsStep()) return;
-    if (!_validateLineItemsStep()) return;
-
+    if (_selectedReceiptDraft == null) {
+      _showValidationError('Select or create a receipt before saving');
+      return;
+    }
     if (_titleCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Give this receipt a title before saving')),
@@ -596,6 +437,20 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
       Navigator.pop(context);
       return;
     }
+
+    // HISTORY WIRING: logs this save as a 'created' activity-feed event —
+    // see history_screen.dart / history_provider.dart. Fire-and-forget:
+    // history logging should never block or fail the actual save.
+    unawaited(context.read<HistoryProvider>().logCreated(
+          docType: HistoryDocType.receipt,
+          docId: saved.first.id,
+          docNumber: saved.first.data.receiptNumber,
+          clientName: saved.first.data.clientName.isNotEmpty
+              ? saved.first.data.clientName
+              : null,
+          amount: saved.first.data.amountPaid,
+          currency: saved.first.data.currency,
+        ));
 
     Navigator.pushReplacement(
       context,
@@ -677,9 +532,6 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  // CUSTOMER STEP RENAME PASS: renamed from _clientStep(); now renders
-  // ReceiptStepCustomerSection (receipt_step_customer.dart) instead of
-  // the old ReceiptClientLibrarySection.
   Widget _customerStep() {
     final label = _selectedClient == null
         ? 'Select a saved customer, or enter one manually on the next Create Receipt step.'
@@ -716,198 +568,22 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  // STEP REORDER PASS: merges the old Client & Details receipt-detail
-  // fields with the old Line Items step into one "Create Receipt" step.
-  //
-  // NO-CLIENT INLINE FIELDS PASS: if no customer was picked on the
-  // Customer step, a "Client Details" section appears here so the
-  // receipt can still be filled in manually.
+  // RECEIPT LIBRARY RESTRUCTURE PASS: now just embeds StepCreateReceipt
+  // (create_receipt/step_create_receipt.dart) — the entire form has
+  // moved into CreateReceiptBottomSheet, opened from that library
+  // screen.
   Widget _createReceiptStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        receiptSectionHeader(context, 'Receipt Details', _accent, icon: Icons.receipt_rounded),
-        ReceiptField(ctrl: _receiptNumber, label: 'Receipt Number', accent: _accent, icon: Icons.tag_rounded, max: 40),
-        const SizedBox(height: 12),
-        ReceiptDateField(label: 'Payment Date', value: _paymentDate, accent: _accent, onTap: _pickDate),
-        const SizedBox(height: 20),
-
-        receiptSectionHeader(context, 'Currency', _accent, icon: Icons.attach_money_rounded),
-        // CURRENCY SYMBOL CONDITIONAL: Display Format picker sits above,
-        // and the Currency Symbol field below only renders once Symbol/
-        // Both is picked — matches step_create_invoice.dart /
-        // receipt_step_customer.dart.
-        _ReceiptCurrencyDisplayModeSelector(
-          value: _currencyDisplayMode,
-          accent: _accent,
-          onChanged: (mode) => setState(() => _currencyDisplayMode = mode),
-          previewCode: _currencyCodeCtrl.text.trim().isEmpty
-              ? 'USD'
-              : _currencyCodeCtrl.text.trim().toUpperCase(),
-          previewSymbol: _currencySymbolCtrl.text.trim(),
-        ),
-        if (_currencyDisplayMode != 'code') ...[
-          const SizedBox(height: 12),
-          ReceiptField(
-            ctrl: _currencySymbolCtrl,
-            label: 'Currency Symbol',
-            accent: _accent,
-            icon: Icons.currency_exchange_rounded,
-            max: 6,
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
-        const SizedBox(height: 20),
-
-        // NO-CLIENT INLINE FIELDS PASS: only shown when no saved
-        // customer was picked on the Customer step.
-        if (_selectedClient == null) ...[
-          receiptSectionHeader(context, 'Client Details', _accent, icon: Icons.person_rounded),
-          ReceiptField(
-            ctrl: _custNameCtrl,
-            label: 'Client Name',
-            accent: _accent,
-            icon: Icons.person_rounded,
-            max: 100,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          ReceiptField(
-            ctrl: _custEmailCtrl,
-            label: 'Client Email',
-            accent: _accent,
-            icon: Icons.email_rounded,
-            max: 100,
-            keyboard: TextInputType.emailAddress,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          ReceiptField(
-            ctrl: _custPhoneCtrl,
-            label: 'Client Phone',
-            accent: _accent,
-            icon: Icons.phone_rounded,
-            max: 20,
-            keyboard: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          ReceiptField(
-            ctrl: _custAddressCtrl,
-            label: 'Client Address',
-            accent: _accent,
-            icon: Icons.location_on_rounded,
-            max: 200,
-            maxLines: 2,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        receiptSectionHeader(context, 'Payment Method', _accent, icon: Icons.payments_rounded),
-        ReceiptPaymentMethodPicker(
-          selected: _paymentMethod,
-          accent: _accent,
-          onChanged: (m) => setState(() => _paymentMethod = m),
-        ),
-        const SizedBox(height: 20),
-
-        receiptSectionHeader(context, 'Line Items', _accent, icon: Icons.list_alt_rounded),
-        ...List.generate(_descCtrls.length, (i) {
-          final qty = double.tryParse(_qtyCtrls[i].text) ?? 0.0;
-          final price = double.tryParse(_priceCtrls[i].text) ?? 0.0;
-          return ReceiptItemCard(
-            index: i,
-            descCtrl: _descCtrls[i],
-            qtyCtrl: _qtyCtrls[i],
-            priceCtrl: _priceCtrls[i],
-            total: qty * price,
-            currencySymbol: _currencyPrefix,
-            canRemove: _descCtrls.length > 1,
-            accent: _accent,
-            onRemove: () => _removeLineItem(i),
-            onChanged: () => setState(() {}),
-          );
-        }),
-        const SizedBox(height: 4),
-        OutlinedButton.icon(
-          onPressed: _addLineItem,
-          icon: Icon(Icons.add_rounded, color: _accent),
-          label: Text('Add Item', style: TextStyle(color: _accent, fontWeight: FontWeight.w700)),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: _accent.withValues(alpha: 0.4)),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        const SizedBox(height: 20),
-        receiptSectionHeader(context, 'Tax & Discount', _accent, icon: Icons.percent_rounded),
-        Row(
-          children: [
-            Expanded(
-              child: ReceiptField(
-                ctrl: _taxCtrl,
-                label: 'Tax %',
-                accent: _accent,
-                keyboard: const TextInputType.numberWithOptions(decimal: true),
-                max: 5,
-                extraFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                ],
-                onChanged: (v) => setState(() => _taxRate = double.tryParse(v) ?? 0.0),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ReceiptField(
-                ctrl: _discountCtrl,
-                label: 'Discount %',
-                accent: _accent,
-                keyboard: const TextInputType.numberWithOptions(decimal: true),
-                max: 5,
-                extraFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                ],
-                onChanged: (v) => setState(() => _discountRate = double.tryParse(v) ?? 0.0),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        ReceiptTotalsCard(
-          subtotal: _subtotal,
-          taxAmount: _taxAmount,
-          discountAmount: _discountAmount,
-          amountPaid: _amountPaid,
-          taxRate: _taxRate,
-          discountRate: _discountRate,
-          currencySymbol: _currencyPrefix,
-          accent: _accent,
-        ),
-        const SizedBox(height: 20),
-
-        // NOTES PLACEMENT PASS: moved below the totals card, matching
-        // Invoice's step_create_invoice.dart layout (Notes / Payment
-        // Terms sits right after the Totals card there) — professional
-        // convention is notes/terms trailing the numbers, not sitting up
-        // near Payment Method disconnected from the total they refer to.
-        receiptSectionHeader(context, 'Additional Info', _accent, icon: Icons.notes_rounded),
-        ReceiptField(
-          ctrl: _notes,
-          label: 'Notes',
-          accent: _accent,
-          icon: Icons.notes_rounded,
-          maxLines: 3,
-          max: _isThermal ? 200 : 500,
-        ),
-      ],
+    return StepCreateReceipt(
+      accent: _accent,
+      selectedClient: _selectedClient,
+      selectedTemplate: _selectedTemplate,
+      onDraftSelected: (draft) {
+        setState(() => _selectedReceiptDraft = draft);
+        _syncToProvider();
+      },
     );
   }
 
-  // CUSTOMISE STEP EXTRACTION PASS: was _customiseStep() — now builds
-  // the extracted ReceiptStepCustomise widget (receipt_step_customise.dart)
-  // instead of the old inline Column. Every value/callback below maps
-  // 1:1 onto what the old inline code read/wrote directly on this State.
   Widget _customiseStepWidget() {
     return ReceiptStepCustomise(
       accent: _accent,
@@ -992,127 +668,14 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
       onShowFacebookChanged: (v) { setState(() => _showFacebook = v); _syncToProvider(); },
       onShowInstagramChanged: (v) { setState(() => _showInstagram = v); _syncToProvider(); },
       onShowTwitterChanged: (v) { setState(() => _showTwitter = v); _syncToProvider(); },
-      subtotal: _subtotal,
-      taxAmount: _taxAmount,
-      discountAmount: _discountAmount,
-      amountPaid: _amountPaid,
-      taxRate: _taxRate,
-      discountRate: _discountRate,
+      subtotal: _draftData.subtotal,
+      taxAmount: _draftData.taxAmount,
+      discountAmount: _draftData.discountAmount,
+      amountPaid: _draftData.amountPaid,
+      taxRate: _draftData.taxRate,
+      discountRate: _draftData.discountRate,
       currencySymbol: _currencyPrefix,
       onOpenFullPreview: _openFullPreview,
-    );
-  }
-}
-
-class _ReceiptCurrencyDisplayModeSelector extends StatelessWidget {
-  final String value;
-  final Color accent;
-  final ValueChanged<String> onChanged;
-  final String previewCode;
-  final String previewSymbol;
-
-  const _ReceiptCurrencyDisplayModeSelector({
-    required this.value,
-    required this.accent,
-    required this.onChanged,
-    required this.previewCode,
-    required this.previewSymbol,
-  });
-
-  String _previewFor(String mode) {
-    const amount = '200.00';
-    final hasSymbol = previewSymbol.trim().isNotEmpty;
-    final hasCode = previewCode.trim().isNotEmpty;
-    switch (mode) {
-      case 'symbol':
-        return hasSymbol ? '$previewSymbol$amount' : (hasCode ? '$previewCode $amount' : amount);
-      case 'both':
-        if (hasSymbol && hasCode) return '$previewCode $previewSymbol$amount';
-        if (hasSymbol) return '$previewSymbol$amount';
-        return hasCode ? '$previewCode $amount' : amount;
-      case 'code':
-      default:
-        return hasCode ? '$previewCode $amount' : (hasSymbol ? '$previewSymbol$amount' : amount);
-    }
-  }
-
-  static const _options = [
-    ('code', 'Code'),
-    ('symbol', 'Symbol'),
-    ('both', 'Both'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Display Format',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: _options.map((opt) {
-              final (mode, label) = opt;
-              final selected = value == mode;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onChanged(mode),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(
-                      color: selected ? accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _previewFor(mode),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: selected
-                                ? Colors.white.withValues(alpha: 0.85)
-                                : colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 }

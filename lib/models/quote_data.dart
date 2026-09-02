@@ -1,7 +1,20 @@
 // quote_data.dart
 // lib/models/quote_data.dart
 //
-// FONT SIZE PASS (this update): added fontSize (double, default 12.0) —
+// QUOTE DRAFT LIBRARY PASS (this update): added SavedQuoteDraft — a
+// named, editable quote-in-progress, saved from the Create Quote step's
+// new library screen (create_quote_section/step_create_quote.dart) and
+// reopened via CreateQuoteBottomSheet
+// (create_quote_section/create_quote_bottom_sheet.dart) to keep editing
+// it. Mirrors SavedInvoiceDraft (invoice_data.dart) exactly — see that
+// file's INVOICE DRAFT LIBRARY PASS note for the full rationale. Also
+// added SavedQuoteLineItemSet — a Quote-only mirror of
+// SavedLineItemSet (invoice_data.dart), kept as a separate class/library
+// (own SharedPreferences key) so Quote's saved item-set bundles never
+// mix with Invoice's, backing the new
+// create_quote_section/quote_saved_items_widgets.dart panel.
+//
+// FONT SIZE PASS (earlier): added fontSize (double, default 12.0) —
 // Quote had a fontFamily field but no numeric size field at all, unlike
 // InvoiceData's own font size support (see step_customise.dart's
 // _SizeSection / InvoiceProvider.fontSize). Added so Quote's Customise
@@ -498,5 +511,133 @@ class SavedQuote {
         lastEditedAt:      lastEditedAt      ?? this.lastEditedAt,
         completionPercent: completionPercent ?? this.completionPercent,
         folderName: clearFolderName ? null : (folderName ?? this.folderName),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedQuoteDraft — a named, editable quote-in-progress. Mirrors
+// SavedInvoiceDraft (invoice_data.dart) exactly — see that file's
+// INVOICE DRAFT LIBRARY PASS note for the full rationale. Stores a
+// complete QuoteData snapshot of everything editable on the Create Quote
+// step (customer override, dates, currency, line items, tax/discount,
+// notes) plus a user-facing `name` for the library card, independent of
+// any customer/quote-number text so a draft can be labelled before
+// either is filled in.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedQuoteDraft {
+  String id;
+  String name;
+  QuoteData data;
+  DateTime createdAt;
+  DateTime lastEditedAt;
+
+  SavedQuoteDraft({
+    required this.id,
+    required this.name,
+    required this.data,
+    required this.createdAt,
+    required this.lastEditedAt,
+  });
+
+  /// What the library card shows as its title — the explicit label if one
+  /// was typed, else the client name, else the quote number, else a
+  /// generic fallback. Never blank.
+  String get displayName {
+    if (name.trim().isNotEmpty) return name.trim();
+    if (data.clientName.trim().isNotEmpty) return data.clientName.trim();
+    if (data.quoteNumber.trim().isNotEmpty) return data.quoteNumber.trim();
+    return 'Untitled Draft';
+  }
+
+  int get itemCount => data.lineItems.length;
+  double get total => data.grandTotal;
+
+  String lastEditedDisplay() {
+    final diff = DateTime.now().difference(lastEditedAt);
+    if (diff.inMinutes < 1)  return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours   < 24) return '${diff.inHours}h ago';
+    if (diff.inDays    == 1) return 'Yesterday';
+    if (diff.inDays    <  7) return '${diff.inDays}d ago';
+    return '${(diff.inDays / 7).floor()}w ago';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'data': data.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+        'lastEditedAt': lastEditedAt.toIso8601String(),
+      };
+
+  factory SavedQuoteDraft.fromJson(Map<String, dynamic> j) => SavedQuoteDraft(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        data: QuoteData.fromJson(j['data'] as Map<String, dynamic>? ?? {}),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+      );
+
+  SavedQuoteDraft copyWith({
+    String? name,
+    QuoteData? data,
+    DateTime? lastEditedAt,
+  }) =>
+      SavedQuoteDraft(
+        id: id,
+        name: name ?? this.name,
+        data: data ?? this.data.deepCopy(),
+        createdAt: createdAt,
+        lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedQuoteLineItemSet — a named, reusable bundle of line items for the
+// Quote flow. Mirrors SavedLineItemSet (invoice_data.dart) exactly, but
+// kept as a SEPARATE library (own SharedPreferences key, own class) so
+// Quote's saved item sets never mix with Invoice's — see
+// quote_saved_items_widgets.dart (QuoteSavedItemSets) for the UI this
+// backs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedQuoteLineItemSet {
+  String id;
+  String name;
+  List<LineItem> items;
+
+  SavedQuoteLineItemSet({
+    required this.id,
+    required this.name,
+    required this.items,
+  });
+
+  int get itemCount => items.length;
+  double get total => items.fold(0.0, (sum, i) => sum + i.total);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'items': items.map((i) => i.toJson()).toList(),
+      };
+
+  factory SavedQuoteLineItemSet.fromJson(Map<String, dynamic> j) =>
+      SavedQuoteLineItemSet(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        items: (j['items'] as List<dynamic>? ?? [])
+            .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  SavedQuoteLineItemSet copyWith({
+    String? name,
+    List<LineItem>? items,
+  }) =>
+      SavedQuoteLineItemSet(
+        id: id,
+        name: name ?? this.name,
+        items: items ?? this.items.map((i) => i.copyWith()).toList(),
       );
 }

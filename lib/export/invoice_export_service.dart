@@ -2,6 +2,13 @@
 //
 // Generates and exports invoices as XLSX and CSV — single-document and bulk.
 //
+// HISTORY LOGGING PASS: every public share/download method now takes an
+// optional `historyProvider` param. When passed, the exported file gets
+// logged to HistoryProvider (copied into persistent app storage so
+// "send again" from the History screen works later) right after it's
+// written. Omitting it keeps the old behavior exactly — nothing else
+// changed below this comment block.
+//
 // Built to match invoice_pdf_service.dart's existing conventions exactly:
 //  - "download" methods write to the same Downloads directory helper
 //    (Android: /storage/emulated/0/Download, else: app documents dir)
@@ -10,21 +17,10 @@
 //  - Filenames follow the same Invoice_<number-with-non-word-chars-stripped>
 //    pattern used for PDFs.
 //
-// Field usage (description, quantity, unitPrice, total on line items;
-// businessName/Email/Phone/Address, clientName/Email/Phone/Address,
-// invoiceNumber, issueDate, dueDate, currency, subtotal, taxRate, taxAmount,
-// discountRate, discountAmount, grandTotal, notes on InvoiceData) is taken
-// directly from what invoice_pdf_service.dart reads off SavedInvoice.data —
-// nothing here is guessed beyond that.
-//
 // NEW DEPENDENCY: this file needs the `excel` package for XLSX generation.
 // Add one line to pubspec.yaml under dependencies:
 //   excel: ^4.0.6
 // CSV needs no package — it's built with plain string joining below.
-// I haven't seen the invoice/quote app's actual pubspec.yaml, so if `excel`
-// is already pinned there at a different version, just keep the existing
-// pin; nothing in this file depends on a specific excel version beyond the
-// basic Workbook/Sheet API used below.
 
 import 'dart:io';
 
@@ -32,22 +28,31 @@ import 'package:excel/excel.dart' as xls;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/history_event.dart';
 import '../models/invoice_data.dart';
+import '../providers/history_provider.dart';
 
 class InvoiceExportService {
   // ── Public API: single document ─────────────────────────────────────────
 
   /// Writes a single invoice as an .xlsx file to Downloads and returns the path.
-  Future<String> exportSingleXlsxToDownloads(SavedInvoice invoice) async {
+  Future<String> exportSingleXlsxToDownloads(
+    SavedInvoice invoice, {
+    HistoryProvider? historyProvider,
+  }) async {
     final bytes = _buildSingleXlsxBytes(invoice);
     final dir = await _downloadsDir();
     final file = File('${dir.path}/${_baseFileName(invoice)}.xlsx');
     await file.writeAsBytes(bytes);
+    await _logSingle(invoice, HistoryEventType.downloaded, file, historyProvider);
     return file.path;
   }
 
   /// Writes a single invoice as an .xlsx file to a temp dir and shares it.
-  Future<void> shareSingleXlsx(SavedInvoice invoice) async {
+  Future<void> shareSingleXlsx(
+    SavedInvoice invoice, {
+    HistoryProvider? historyProvider,
+  }) async {
     final bytes = _buildSingleXlsxBytes(invoice);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/${_baseFileName(invoice)}.xlsx');
@@ -58,19 +63,27 @@ class InvoiceExportService {
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')],
       subject: 'Invoice ${invoice.data.invoiceNumber}',
     );
+    await _logSingle(invoice, HistoryEventType.shared, file, historyProvider);
   }
 
   /// Writes a single invoice as a .csv file to Downloads and returns the path.
-  Future<String> exportSingleCsvToDownloads(SavedInvoice invoice) async {
+  Future<String> exportSingleCsvToDownloads(
+    SavedInvoice invoice, {
+    HistoryProvider? historyProvider,
+  }) async {
     final csv = _buildSingleCsvString(invoice);
     final dir = await _downloadsDir();
     final file = File('${dir.path}/${_baseFileName(invoice)}.csv');
     await file.writeAsString(csv);
+    await _logSingle(invoice, HistoryEventType.downloaded, file, historyProvider);
     return file.path;
   }
 
   /// Writes a single invoice as a .csv file to a temp dir and shares it.
-  Future<void> shareSingleCsv(SavedInvoice invoice) async {
+  Future<void> shareSingleCsv(
+    SavedInvoice invoice, {
+    HistoryProvider? historyProvider,
+  }) async {
     final csv = _buildSingleCsvString(invoice);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/${_baseFileName(invoice)}.csv');
@@ -79,21 +92,29 @@ class InvoiceExportService {
       [XFile(file.path, mimeType: 'text/csv')],
       subject: 'Invoice ${invoice.data.invoiceNumber}',
     );
+    await _logSingle(invoice, HistoryEventType.shared, file, historyProvider);
   }
 
   // ── Public API: bulk export ─────────────────────────────────────────────
 
   /// Writes one row per invoice (summary totals, no line-item breakdown)
   /// as an .xlsx file to Downloads and returns the path.
-  Future<String> exportBulkXlsxToDownloads(List<SavedInvoice> invoices) async {
+  Future<String> exportBulkXlsxToDownloads(
+    List<SavedInvoice> invoices, {
+    HistoryProvider? historyProvider,
+  }) async {
     final bytes = _buildBulkXlsxBytes(invoices);
     final dir = await _downloadsDir();
     final file = File('${dir.path}/Invoices_Export_${_timestamp()}.xlsx');
     await file.writeAsBytes(bytes);
+    await _logBulk(invoices, HistoryEventType.downloaded, file, historyProvider);
     return file.path;
   }
 
-  Future<void> shareBulkXlsx(List<SavedInvoice> invoices) async {
+  Future<void> shareBulkXlsx(
+    List<SavedInvoice> invoices, {
+    HistoryProvider? historyProvider,
+  }) async {
     final bytes = _buildBulkXlsxBytes(invoices);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/Invoices_Export_${_timestamp()}.xlsx');
@@ -104,17 +125,25 @@ class InvoiceExportService {
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')],
       subject: 'Invoices Export',
     );
+    await _logBulk(invoices, HistoryEventType.shared, file, historyProvider);
   }
 
-  Future<String> exportBulkCsvToDownloads(List<SavedInvoice> invoices) async {
+  Future<String> exportBulkCsvToDownloads(
+    List<SavedInvoice> invoices, {
+    HistoryProvider? historyProvider,
+  }) async {
     final csv = _buildBulkCsvString(invoices);
     final dir = await _downloadsDir();
     final file = File('${dir.path}/Invoices_Export_${_timestamp()}.csv');
     await file.writeAsString(csv);
+    await _logBulk(invoices, HistoryEventType.downloaded, file, historyProvider);
     return file.path;
   }
 
-  Future<void> shareBulkCsv(List<SavedInvoice> invoices) async {
+  Future<void> shareBulkCsv(
+    List<SavedInvoice> invoices, {
+    HistoryProvider? historyProvider,
+  }) async {
     final csv = _buildBulkCsvString(invoices);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/Invoices_Export_${_timestamp()}.csv');
@@ -122,6 +151,45 @@ class InvoiceExportService {
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'text/csv')],
       subject: 'Invoices Export',
+    );
+    await _logBulk(invoices, HistoryEventType.shared, file, historyProvider);
+  }
+
+  // ── History logging helpers ─────────────────────────────────────────────
+
+  Future<void> _logSingle(
+    SavedInvoice invoice,
+    HistoryEventType type,
+    File file,
+    HistoryProvider? historyProvider,
+  ) async {
+    if (historyProvider == null) return;
+    final d = invoice.data;
+    await historyProvider.logEvent(
+      type: type,
+      docType: HistoryDocType.invoice,
+      docId: d.invoiceNumber,
+      docNumber: d.invoiceNumber,
+      clientName: d.clientName,
+      amount: d.grandTotal,
+      currency: d.currency,
+      sourceFile: file,
+    );
+  }
+
+  Future<void> _logBulk(
+    List<SavedInvoice> invoices,
+    HistoryEventType type,
+    File file,
+    HistoryProvider? historyProvider,
+  ) async {
+    if (historyProvider == null) return;
+    await historyProvider.logEvent(
+      type: type,
+      docType: HistoryDocType.invoice,
+      docId: 'bulk_${_timestamp()}',
+      docNumber: 'Bulk export (${invoices.length})',
+      sourceFile: file,
     );
   }
 
@@ -132,8 +200,6 @@ class InvoiceExportService {
     final workbook = xls.Excel.createExcel();
     final sheetName = 'Invoice';
     final sheet = workbook[sheetName];
-    // The excel package creates a default 'Sheet1' — remove it once our
-    // named sheet exists so the file doesn't ship an empty extra tab.
     if (workbook.sheets.containsKey('Sheet1') && sheetName != 'Sheet1') {
       workbook.delete('Sheet1');
     }
@@ -159,9 +225,8 @@ class InvoiceExportService {
     header('Client Phone', d.clientPhone);
     header('Client Address', d.clientAddress);
     header('Currency', d.currency);
-    r++; // blank row
+    r++;
 
-    // Line items table
     const cols = ['Description', 'Quantity', 'Unit Price', 'Total'];
     for (int c = 0; c < cols.length; c++) {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
@@ -179,7 +244,7 @@ class InvoiceExportService {
           .value = xls.DoubleCellValue(item.total);
       r++;
     }
-    r++; // blank row
+    r++;
 
     void totalRow(String label, double value) {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: r))
@@ -329,8 +394,6 @@ class InvoiceExportService {
     return buf.toString();
   }
 
-  /// Minimal CSV field escaping: wraps in quotes and doubles internal quotes
-  /// whenever the value contains a comma, quote, or newline.
   static String _csv(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';

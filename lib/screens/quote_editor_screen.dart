@@ -1,75 +1,49 @@
 // lib/screens/quote_editor_screen.dart
 //
-// CUSTOMISE STEP EXTRACTION + FONT PASS (this update): the entire
-// _customiseStep() body (Title/Live Preview/Business Logo/Logo Size/
-// Accent Color/Fields/Summary), its two helper methods
-// (_fieldToggleRow/_quoteFieldsSection), and the private
-// _QuotePreviewCard class have all moved out into their own file,
-// create_quote_section/quote_step_customise.dart — matching Invoice's
-// convention of a dedicated step_customise.dart, and fixing the
-// file-naming gap that meant Quote's Customise step never got its own
-// file the way Invoice's did. _customiseStep() here is now just a thin
-// wrapper that builds a QuoteStepCustomise with the current local state
-// and callbacks that update that state + call _syncToProvider().
+// QUOTE LIBRARY RESTRUCTURE PASS (this update): mirrors Invoice's own
+// library restructure. The entire _createQuoteStep() body (quote
+// number, dates, currency, client override, Saved Item Sets panel, line
+// items, tax/discount, notes) has moved out into a bottom sheet
+// (create_quote_section/create_quote_bottom_sheet.dart,
+// CreateQuoteBottomSheet), opened from a new library screen embedded at
+// this step (create_quote_section/step_create_quote.dart,
+// StepCreateQuote). Unlike Invoice's per-step StepNavBar, Quote keeps
+// its existing single shared bottomNavigationBar (QuoteStepNavBar) —
+// StepCreateQuote is an embedded widget (like QuoteStepCustomerSection/
+// QuoteStepTemplateSection), not a standalone screen with its own nav.
 //
-// Also added _fontFamily/_fontSize local state (previously untracked —
-// this screen had no font controls at all despite QuoteData already
-// having a fontFamily field), initialized from the loaded QuoteData and
-// synced to QuoteProvider on every _syncToProvider() call via the new
-// updateFontFamily()/updateFontSize() provider methods. See
-// quote_data.dart's FONT SIZE PASS and quote_provider.dart's matching
-// update.
+// New state: _selectedQuoteDraft (SavedQuoteDraft?) replaces every piece
+// of per-quote-details/line-item local state this screen used to own
+// directly (_quoteNumber, _issueDate/_expiryDate, _custNameCtrl etc.,
+// _currencyCodeCtrl/_currencySymbolCtrl/_currencyDisplayMode,
+// _descCtrls/_qtyCtrls/_priceCtrls, _taxRate/_discountRate,
+// _taxCtrl/_discountCtrl — all removed). StepCreateQuote reports the
+// selected draft via onDraftSelected(); _syncToProvider() now pulls
+// quote number/dates/currency/line items/tax/discount from
+// _selectedQuoteDraft?.data (falling back to whatever's already on the
+// provider before any draft is selected, same fallback pattern Invoice
+// uses). _stepBlockReason(2) and _validateForm() now just check that a
+// draft is selected, since the bottom sheet does its own full field
+// validation before it will hand back a draft at all.
 //
-// CUSTOMER STEP RENAME PASS (earlier): the "Client" step is now
-// "Customer" throughout — StepMeta label, the QuoteStepCustomerSection
-// widget (was QuoteClientLibrarySection, now living in
-// create_quote_section/quote_step_customer.dart instead of
-// quote_client_library.dart), and the step's own helper text. This is a
-// naming/wording + import-path change only — _selectedClient stays typed
-// as QuoteClient (unchanged model name) and every provider field
-// (clientName, sourceClientId, etc.) is untouched, since renaming those
-// would ripple into quote_data.dart and QuoteProvider outside the scope
-// of this pass.
+// Customise step's totals/currency prefix now read from _draftData
+// (getter: _selectedQuoteDraft?.data ?? current provider QuoteData)
+// instead of locally-computed getters over removed controllers.
 //
-// FIELD VISIBILITY POSITION PASS (earlier): "Quote Fields" / "Client
-// Fields" toggle section previously moved to sit directly under Live
-// Preview. SUPERSEDED by this update's CUSTOMISE STEP EXTRACTION +
-// FONT PASS — the Fields section now sits after Font Family + Text Size
-// instead, matching Invoice's own Fields section position relative to
-// its last styling control. See quote_step_customise.dart's own doc
-// comment for the full reasoning.
-//
-// STEP REORDER PASS (earlier): step order now matches the invoice
-// flow's skeleton — Customer → Template → Create Quote → Customise —
-// instead of Template → Client & Details → Line Items → Customise.
-// Customer selection is now its own standalone first step (mirrors
-// invoice's step_customers.dart being step 0), Template stays step 1,
-// and quote number/dates/currency/notes + line items + tax/discount are
-// now combined into a single "Create Quote" step (mirrors invoice's
-// step_create_invoice.dart combining Invoice Details + Line Items).
-//
-// NO-CLIENT INLINE FIELDS PASS (earlier): mirrors invoice's
-// step_create_invoice.dart behaviour exactly — if no customer was
-// selected on the Customer step, the Create Quote step now shows inline
-// "Client Details" fields (name/email/phone/address) so the quote can
-// still be filled out without forcing a saved customer to be created
-// first. These write straight into _custNameCtrl etc. and feed
-// _syncToProvider() the same way a selected QuoteClient's fields would.
-// If a customer WAS selected, this section is hidden entirely (same as
-// invoice) and the selected customer's info is used instead.
-//
-// RESTORE-ON-EDIT PASS (earlier): opening an existing saved quote to
-// edit it restores _selectedTemplate/_selectedClient from that quote's
-// stored sourceTemplateId/sourceClientId — see _restoreTemplate()/
-// _restoreClient() below and quote_data.dart's doc comment.
+// Everything below this point in the doc history (CUSTOMISE STEP
+// EXTRACTION + FONT PASS, CUSTOMER STEP RENAME PASS, FIELD VISIBILITY
+// POSITION PASS, STEP REORDER PASS, NO-CLIENT INLINE FIELDS PASS,
+// RESTORE-ON-EDIT PASS) is UNCHANGED and still describes the Customer/
+// Template/Customise steps exactly as before — only the Create Quote
+// step's internals changed in this pass.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/quote_provider.dart';
+import '../providers/history_provider.dart';
+import '../models/history_event.dart';
 import '../models/quote_data.dart';
-import '../models/invoice_data.dart' show LineItem;
 import '../widgets/step_editor_header.dart';
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'create_quote_section/quote_edit_widgets.dart';
@@ -77,6 +51,7 @@ import 'create_quote_section/quote_full_preview_screen.dart';
 import 'create_quote_section/quote_step_customer.dart';
 import 'create_quote_section/quote_step_customise.dart';
 import 'create_quote_section/quote_step_template.dart';
+import 'create_quote_section/step_create_quote.dart';
 import '../widgets/shared_logo_picker.dart';
 
 class QuoteEditorScreen extends StatefulWidget {
@@ -115,6 +90,12 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   String? _initialTemplateId;
   String? _initialClientId;
 
+  // QUOTE LIBRARY RESTRUCTURE PASS: the selected draft from the Create
+  // Quote step's library — carries quote number/dates/currency/client
+  // override/line items/tax/discount/notes. Null until one is created or
+  // selected on that step.
+  SavedQuoteDraft? _selectedQuoteDraft;
+
   late Map<String, bool> _enabledFields;
 
   String? _logoPath;
@@ -123,42 +104,21 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   LogoShape _logoShape = LogoShape.roundedSquare;
   double _logoSize = 44.0;
 
-  late TextEditingController _quoteNumber;
-  late TextEditingController _notes;
-  String _issueDate = '';
-  String _expiryDate = '';
-
-  late TextEditingController _custNameCtrl;
-  late TextEditingController _custEmailCtrl;
-  late TextEditingController _custPhoneCtrl;
-  late TextEditingController _custAddressCtrl;
-
-  late TextEditingController _currencyCodeCtrl;
-  late TextEditingController _currencySymbolCtrl;
-  String _currencyDisplayMode = 'code';
-
-  late List<TextEditingController> _descCtrls;
-  late List<TextEditingController> _qtyCtrls;
-  late List<TextEditingController> _priceCtrls;
-  double _taxRate = 0.0;
-  double _discountRate = 0.0;
-
-  late TextEditingController _taxCtrl;
-  late TextEditingController _discountCtrl;
-
   QuoteColor _colorScheme = QuoteColor.purple;
   late TextEditingController _titleCtrl;
 
-  // CUSTOMISE STEP EXTRACTION + FONT PASS: previously untracked — this
-  // screen had no font controls despite QuoteData already having a
-  // fontFamily field. Initialized from the loaded QuoteData in
-  // initState, synced to QuoteProvider in _syncToProvider().
   late String _fontFamily;
   late double _fontSize;
 
+  /// The data driving totals/currency display on the Customise step —
+  /// the selected draft's data if one is selected, else whatever's
+  /// already on the provider (e.g. before any draft has been picked).
+  QuoteData get _draftData =>
+      _selectedQuoteDraft?.data ?? context.read<QuoteProvider>().quoteData;
+
   String get _currencyPrefix {
-    final symbol = _currencySymbolCtrl.text.trim();
-    final code = _currencyCodeCtrl.text.trim().toUpperCase();
+    final symbol = _draftData.currencySymbol.trim();
+    final code = _draftData.currency.trim().toUpperCase();
     if (symbol.isNotEmpty) return symbol;
     if (code.isNotEmpty) return '$code ';
     return '';
@@ -177,36 +137,9 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     _initialTemplateId = q.sourceTemplateId;
     _initialClientId = q.sourceClientId;
 
-    final now = DateTime.now();
-    _quoteNumber = TextEditingController(
-      text: q.quoteNumber.isNotEmpty ? q.quoteNumber : 'Q-${now.millisecondsSinceEpoch.toString().substring(7)}',
-    );
-    _notes        = TextEditingController(text: q.notes);
-    _issueDate    = q.issueDate.isNotEmpty ? q.issueDate : DateFormat('d MMM yyyy').format(now);
-    _expiryDate   = q.expiryDate.isNotEmpty ? q.expiryDate : DateFormat('d MMM yyyy').format(now.add(const Duration(days: 14)));
-
-    _custNameCtrl    = TextEditingController(text: q.clientName);
-    _custEmailCtrl   = TextEditingController(text: q.clientEmail);
-    _custPhoneCtrl   = TextEditingController(text: q.clientPhone);
-    _custAddressCtrl = TextEditingController(text: q.clientAddress);
-
-    _currencyCodeCtrl   = TextEditingController(text: q.currency.isNotEmpty ? q.currency : 'USD');
-    _currencySymbolCtrl = TextEditingController(text: q.currencySymbol);
-    _currencyDisplayMode = q.currencyDisplayMode.isNotEmpty ? q.currencyDisplayMode : 'code';
-
-    _taxRate      = q.taxRate.clamp(0.0, 100.0);
-    _discountRate = q.discountRate.clamp(0.0, 100.0);
     _colorScheme  = q.colorScheme;
     _fontFamily   = q.fontFamily;
     _fontSize     = q.fontSize;
-
-    _taxCtrl      = TextEditingController(text: _taxRate == 0 ? '' : '$_taxRate');
-    _discountCtrl = TextEditingController(text: _discountRate == 0 ? '' : '$_discountRate');
-
-    final items = q.lineItems.isNotEmpty ? q.lineItems : [LineItem()];
-    _descCtrls  = items.map((i) => TextEditingController(text: i.description)).toList();
-    _qtyCtrls   = items.map((i) => TextEditingController(text: i.quantity == 1.0 ? '1' : '${i.quantity}')).toList();
-    _priceCtrls = items.map((i) => TextEditingController(text: i.unitPrice == 0.0 ? '' : '${i.unitPrice}')).toList();
 
     _titleCtrl = TextEditingController(
       text: q.clientName.isNotEmpty ? '${q.clientName} Quote' : '',
@@ -215,29 +148,9 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
 
   @override
   void dispose() {
-    for (final c in [
-      _quoteNumber, _notes, _titleCtrl, _taxCtrl, _discountCtrl,
-      _currencyCodeCtrl, _currencySymbolCtrl,
-      _custNameCtrl, _custEmailCtrl, _custPhoneCtrl, _custAddressCtrl,
-      ..._descCtrls, ..._qtyCtrls, ..._priceCtrls,
-    ]) {
-      c.dispose();
-    }
+    _titleCtrl.dispose();
     super.dispose();
   }
-
-  List<LineItem> get _currentLineItems => List.generate(_descCtrls.length, (i) {
-        return LineItem(
-          description: _descCtrls[i].text,
-          quantity: double.tryParse(_qtyCtrls[i].text) ?? 1.0,
-          unitPrice: double.tryParse(_priceCtrls[i].text) ?? 0.0,
-        );
-      });
-
-  double get _subtotal => _currentLineItems.fold(0.0, (s, i) => s + i.total);
-  double get _discountAmount => _subtotal * (_discountRate / 100);
-  double get _taxAmount => (_subtotal - _discountAmount) * (_taxRate / 100);
-  double get _total => _subtotal - _discountAmount + _taxAmount;
 
   void _applyClient(QuoteClient? client) {
     setState(() {
@@ -257,7 +170,9 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       _logoShape = template?.shape ?? LogoShape.roundedSquare;
       if (template != null) {
         _enabledFields = Map<String, bool>.from(template.enabledFields);
-        _currencyCodeCtrl.text = template.currency;
+        // Currency code now lives on the selected draft (see
+        // CreateQuoteBottomSheet's own template-currency prefill for new
+        // drafts) rather than a local controller here.
       }
     });
   }
@@ -270,8 +185,16 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     setState(() => _selectedClient = client);
   }
 
+  // QUOTE LIBRARY RESTRUCTURE PASS: business info/client info sync is
+  // unchanged; quote number/dates/currency/line items/tax/discount now
+  // come from _selectedQuoteDraft?.data, falling back to whatever's
+  // already on the provider before any draft is selected (mirrors
+  // Invoice's own current-value fallback in _syncSelectedToProvider()).
   void _syncToProvider() {
     final provider = context.read<QuoteProvider>();
+    final current = provider.quoteData;
+    final d = _selectedQuoteDraft?.data;
+
     provider.updateBusinessInfo(
       businessName: _selectedTemplate?.businessName ?? '',
       businessEmail: _selectedTemplate?.businessEmail ?? '',
@@ -288,78 +211,38 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       clearSourceTemplateId: _selectedTemplate == null,
     );
     provider.updateClientInfo(
-      clientName: _selectedClient?.name ?? _custNameCtrl.text.trim(),
-      clientEmail: _selectedClient?.email ?? _custEmailCtrl.text.trim(),
-      clientPhone: _selectedClient?.phone ?? _custPhoneCtrl.text.trim(),
-      clientAddress: _selectedClient?.address ?? _custAddressCtrl.text.trim(),
+      clientName: _selectedClient?.name ?? d?.clientName ?? current.clientName,
+      clientEmail: _selectedClient?.email ?? d?.clientEmail ?? current.clientEmail,
+      clientPhone: _selectedClient?.phone ?? d?.clientPhone ?? current.clientPhone,
+      clientAddress: _selectedClient?.address ?? d?.clientAddress ?? current.clientAddress,
       sourceClientId: _selectedClient?.id,
       clearSourceClientId: _selectedClient == null,
     );
     provider.updateQuoteDetails(
-      quoteNumber: _quoteNumber.text,
-      issueDate: _issueDate,
-      expiryDate: _expiryDate,
-      notes: _notes.text,
-      currency: _currencyCodeCtrl.text.trim().isEmpty
-          ? 'USD'
-          : _currencyCodeCtrl.text.trim().toUpperCase(),
-      currencySymbol: _currencySymbolCtrl.text.trim(),
-      currencyDisplayMode: _currencyDisplayMode,
-      taxRate: _taxRate,
-      discountRate: _discountRate,
+      quoteNumber: d?.quoteNumber ?? current.quoteNumber,
+      issueDate: d?.issueDate ?? current.issueDate,
+      expiryDate: d?.expiryDate ?? current.expiryDate,
+      notes: d?.notes ?? current.notes,
+      currency: d?.currency ?? current.currency,
+      currencySymbol: d?.currencySymbol ?? current.currencySymbol,
+      currencyDisplayMode: d?.currencyDisplayMode ?? current.currencyDisplayMode,
+      taxRate: d?.taxRate ?? current.taxRate,
+      discountRate: d?.discountRate ?? current.discountRate,
     );
     provider.updateEnabledFields(_enabledFields);
-    provider.updateQuoteData(provider.quoteData.copyWith(lineItems: _currentLineItems));
+    if (d != null) {
+      provider.updateQuoteData(provider.quoteData.copyWith(
+        lineItems: d.lineItems.map((i) => i.copyWith()).toList(),
+      ));
+    }
     provider.updateColorScheme(_colorScheme);
     provider.updateFontFamily(_fontFamily);
     provider.updateFontSize(_fontSize);
     provider.updateLayoutTemplateId(_layoutTemplateId);
   }
 
-  Future<void> _pickDate({required bool isExpiry}) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      setState(() {
-        final formatted = DateFormat('d MMM yyyy').format(picked);
-        if (isExpiry) {
-          _expiryDate = formatted;
-        } else {
-          _issueDate = formatted;
-        }
-      });
-    }
-  }
-
-  void _addLineItem() {
-    setState(() {
-      _descCtrls.add(TextEditingController());
-      _qtyCtrls.add(TextEditingController(text: '1'));
-      _priceCtrls.add(TextEditingController());
-    });
-  }
-
-  void _removeLineItem(int index) {
-    setState(() {
-      _descCtrls.removeAt(index).dispose();
-      _qtyCtrls.removeAt(index).dispose();
-      _priceCtrls.removeAt(index).dispose();
-    });
-  }
-
-  // STEP-TAP BYPASS FIX: tapping a step tab in the header used to jump
-  // straight there regardless of whether earlier steps were actually
-  // filled in — e.g. tapping "Create Quote" or "Customise" with no
-  // template selected skipped the same check _nextStep() enforces when
-  // pressing Next. Forward jumps now re-run the same per-step
-  // validation _nextStep() does, stopping (with the same snack message)
-  // at the first unmet requirement instead of landing on the tapped
-  // step. Backward jumps are always allowed — nothing to validate when
-  // returning to a step already visited.
+  // STEP-TAP BYPASS FIX (unchanged): tapping a step tab re-runs the same
+  // per-step validation _nextStep() enforces when pressing Next.
   void _goToStep(int index) {
     if (index > _step) {
       for (int i = _step; i < index; i++) {
@@ -375,30 +258,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   }
 
   /// Returns the validation message to show if step [i] isn't complete
-  /// enough to move past, or null if it's fine to continue. Mirrors the
-  /// per-step checks in _nextStep() exactly, factored out so both the
-  /// Next button and step-tap navigation enforce the same rules.
+  /// enough to move past, or null if it's fine to continue.
   String? _stepBlockReason(int i) {
     if (i == 1 && _selectedTemplate == null) {
       return 'Select or add a template to continue';
     }
-    if (i == 2) {
-      if (_quoteNumber.text.trim().isEmpty) {
-        return 'Enter a quote number to continue';
-      }
-      if (_selectedClient == null && _custNameCtrl.text.trim().isEmpty) {
-        return 'Enter a client name to continue';
-      }
-      final items = _currentLineItems;
-      if (items.any((i) => i.description.trim().isEmpty)) {
-        return 'Give every line item a description';
-      }
-      if (_discountRate < 0 || _discountRate > 100) {
-        return 'Discount must be between 0 and 100%';
-      }
-      if (_taxRate < 0 || _taxRate > 100) {
-        return 'Tax must be between 0 and 100%';
-      }
+    if (i == 2 && _selectedQuoteDraft == null) {
+      return 'Select or create a quote to continue';
     }
     return null;
   }
@@ -407,34 +273,18 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _showSelectionRequiredSnack(String what) {
-    _showSnack('Select or add a $what to continue');
-  }
-
+  // QUOTE LIBRARY RESTRUCTURE PASS: field-level validation (quote
+  // number, client name, line item descriptions, tax/discount range)
+  // now lives entirely in CreateQuoteBottomSheet's own _validateForm() —
+  // a draft can't be handed back to this screen unless it already passed
+  // those checks. This screen's own final validation is reduced to
+  // "was everything actually selected/entered".
   String? _validateForm() {
-    if (_selectedClient == null && _custNameCtrl.text.trim().isEmpty) {
-      return 'Select a customer or enter a client name before saving';
-    }
     if (_selectedTemplate == null) return 'Select or add a template before saving';
-    if (_quoteNumber.text.trim().isEmpty) return 'Enter a quote number before saving';
-
-    final items = _currentLineItems;
-    if (items.isEmpty || items.every((i) => i.description.trim().isEmpty)) {
-      return 'Add at least one item with a description';
+    if (_selectedQuoteDraft == null) {
+      return 'Select or create a quote before saving';
     }
-    if (items.any((i) => i.description.trim().isEmpty)) {
-      return 'Give every line item a description';
-    }
-
-    if (_discountRate < 0 || _discountRate > 100) {
-      return 'Discount must be between 0 and 100%';
-    }
-    if (_taxRate < 0 || _taxRate > 100) {
-      return 'Tax must be between 0 and 100%';
-    }
-
     if (_titleCtrl.text.trim().isEmpty) return 'Give this quote a title before saving';
-
     return null;
   }
 
@@ -486,6 +336,17 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
           title: _titleCtrl.text,
           templateName: 'Standard',
         );
+    // HISTORY WIRING: logs this save as a 'created' activity-feed event —
+    // see history_screen.dart / history_provider.dart. Fire-and-forget:
+    // history logging should never block or fail the actual save.
+    unawaited(context.read<HistoryProvider>().logCreated(
+          docType: HistoryDocType.quote,
+          docId: saved.id,
+          docNumber: saved.data.quoteNumber,
+          clientName: saved.data.clientName.isNotEmpty ? saved.data.clientName : null,
+          amount: saved.data.grandTotal,
+          currency: saved.data.currency,
+        ));
     setState(() => _saving = false);
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -568,9 +429,6 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     );
   }
 
-  // CUSTOMER STEP RENAME PASS: renamed from _clientStep(); now renders
-  // QuoteStepCustomerSection (create_quote_section/quote_step_customer.dart)
-  // instead of the old QuoteClientLibrarySection.
   Widget _customerStep() {
     final label = _selectedClient == null
         ? 'Select a saved customer, or enter one manually on the next Create Quote step.'
@@ -611,193 +469,21 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     );
   }
 
+  // QUOTE LIBRARY RESTRUCTURE PASS: now just embeds StepCreateQuote
+  // (create_quote_section/step_create_quote.dart) — the entire form has
+  // moved into CreateQuoteBottomSheet, opened from that library screen.
   Widget _createQuoteStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        quoteSectionHeader(context, 'Quote Details', _accent, icon: Icons.request_quote_rounded),
-        QuoteField(ctrl: _quoteNumber, label: 'Quote Number', accent: _accent, icon: Icons.tag_rounded, max: 40, required: true),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: QuoteDateField(label: 'Issue Date', value: _issueDate, accent: _accent, onTap: () => _pickDate(isExpiry: false))),
-            const SizedBox(width: 12),
-            Expanded(child: QuoteDateField(label: 'Valid Until', value: _expiryDate, accent: _accent, onTap: () => _pickDate(isExpiry: true))),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        quoteSectionHeader(context, 'Currency', _accent, icon: Icons.attach_money_rounded),
-        QuoteField(
-          ctrl: _currencyCodeCtrl,
-          label: 'Currency Code',
-          accent: _accent,
-          icon: Icons.attach_money_rounded,
-          max: 6,
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-
-        // CURRENCY SYMBOL CONDITIONAL: Display Format picker sits
-        // directly under Currency Code; Currency Symbol field below only
-        // renders once Symbol/Both is picked — matches
-        // step_create_invoice.dart / quote_step_customer.dart.
-        _QuoteCurrencyDisplayModeSelector(
-          value: _currencyDisplayMode,
-          accent: _accent,
-          onChanged: (mode) => setState(() => _currencyDisplayMode = mode),
-          previewCode: _currencyCodeCtrl.text.trim().isEmpty ? 'USD' : _currencyCodeCtrl.text.trim().toUpperCase(),
-          previewSymbol: _currencySymbolCtrl.text.trim(),
-        ),
-        if (_currencyDisplayMode != 'code') ...[
-          const SizedBox(height: 12),
-          QuoteField(
-            ctrl: _currencySymbolCtrl,
-            label: 'Currency Symbol',
-            accent: _accent,
-            icon: Icons.currency_exchange_rounded,
-            max: 6,
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
-        const SizedBox(height: 20),
-
-        if (_selectedClient == null) ...[
-          quoteSectionHeader(context, 'Client Details', _accent, icon: Icons.person_rounded),
-          QuoteField(
-            ctrl: _custNameCtrl,
-            label: 'Client Name',
-            accent: _accent,
-            icon: Icons.person_rounded,
-            max: 100,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          QuoteField(
-            ctrl: _custEmailCtrl,
-            label: 'Client Email',
-            accent: _accent,
-            icon: Icons.email_rounded,
-            max: 100,
-            keyboard: TextInputType.emailAddress,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          QuoteField(
-            ctrl: _custPhoneCtrl,
-            label: 'Client Phone',
-            accent: _accent,
-            icon: Icons.phone_rounded,
-            max: 20,
-            keyboard: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          QuoteField(
-            ctrl: _custAddressCtrl,
-            label: 'Client Address',
-            accent: _accent,
-            icon: Icons.location_on_rounded,
-            max: 200,
-            maxLines: 2,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        quoteSectionHeader(context, 'Line Items', _accent, icon: Icons.list_alt_rounded),
-        ...List.generate(_descCtrls.length, (i) {
-          final qty = double.tryParse(_qtyCtrls[i].text) ?? 0.0;
-          final price = double.tryParse(_priceCtrls[i].text) ?? 0.0;
-          return QuoteItemCard(
-            index: i,
-            descCtrl: _descCtrls[i],
-            qtyCtrl: _qtyCtrls[i],
-            priceCtrl: _priceCtrls[i],
-            total: qty * price,
-            currencySymbol: _currencyPrefix,
-            canRemove: _descCtrls.length > 1,
-            accent: _accent,
-            onRemove: () => _removeLineItem(i),
-            onChanged: () => setState(() {}),
-          );
-        }),
-        const SizedBox(height: 4),
-        OutlinedButton.icon(
-          onPressed: _addLineItem,
-          icon: Icon(Icons.add_rounded, color: _accent),
-          label: Text('Add Item', style: TextStyle(color: _accent, fontWeight: FontWeight.w700)),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: _accent.withValues(alpha: 0.4)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        const SizedBox(height: 20),
-        quoteSectionHeader(context, 'Tax & Discount', _accent, icon: Icons.percent_rounded),
-        Row(
-          children: [
-            Expanded(
-              child: QuoteField(
-                ctrl: _taxCtrl,
-                label: 'Tax %',
-                accent: _accent,
-                keyboard: const TextInputType.numberWithOptions(decimal: true),
-                max: 5,
-                extraFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                onChanged: (v) => setState(() {
-                  final parsed = double.tryParse(v) ?? 0.0;
-                  _taxRate = parsed.clamp(0.0, 100.0);
-                }),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: QuoteField(
-                ctrl: _discountCtrl,
-                label: 'Discount %',
-                accent: _accent,
-                keyboard: const TextInputType.numberWithOptions(decimal: true),
-                max: 5,
-                extraFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                onChanged: (v) => setState(() {
-                  final parsed = double.tryParse(v) ?? 0.0;
-                  _discountRate = parsed.clamp(0.0, 100.0);
-                }),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        QuoteTotalsCard(
-          subtotal: _subtotal,
-          taxAmount: _taxAmount,
-          discountAmount: _discountAmount,
-          total: _total,
-          taxRate: _taxRate,
-          discountRate: _discountRate,
-          currencySymbol: _currencyPrefix,
-          accent: _accent,
-        ),
-        const SizedBox(height: 20),
-
-        // NOTES PLACEMENT PASS: moved below the totals card, matching
-        // Invoice's step_create_invoice.dart layout (Notes / Payment
-        // Terms sits right after the Totals card there) — professional
-        // convention is notes/terms trailing the numbers, not sitting up
-        // near the client fields disconnected from the total they refer
-        // to.
-        quoteSectionHeader(context, 'Additional Info', _accent, icon: Icons.notes_rounded),
-        QuoteField(ctrl: _notes, label: 'Notes', accent: _accent, icon: Icons.notes_rounded, maxLines: 3, max: 500),
-      ],
+    return StepCreateQuote(
+      accent: _accent,
+      selectedClient: _selectedClient,
+      selectedTemplate: _selectedTemplate,
+      onDraftSelected: (draft) {
+        setState(() => _selectedQuoteDraft = draft);
+        _syncToProvider();
+      },
     );
   }
 
-  // CUSTOMISE STEP EXTRACTION + FONT PASS: this is now a thin wrapper
-  // around QuoteStepCustomise (quote_step_customise.dart) — all the
-  // section widgets/layout previously inline here have moved into that
-  // file. Every callback below updates local state then calls
-  // _syncToProvider(), exactly matching what the old inline handlers did.
   Widget _customiseStep() {
     return QuoteStepCustomise(
       accent: _accent,
@@ -844,127 +530,14 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
         setState(() => _fontSize = v);
         _syncToProvider();
       },
-      subtotal: _subtotal,
-      taxAmount: _taxAmount,
-      discountAmount: _discountAmount,
-      total: _total,
-      taxRate: _taxRate,
-      discountRate: _discountRate,
+      subtotal: _draftData.subtotal,
+      taxAmount: _draftData.taxAmount,
+      discountAmount: _draftData.discountAmount,
+      total: _draftData.grandTotal,
+      taxRate: _draftData.taxRate,
+      discountRate: _draftData.discountRate,
       currencySymbol: _currencyPrefix,
       onOpenFullPreview: _openFullPreview,
-    );
-  }
-}
-
-class _QuoteCurrencyDisplayModeSelector extends StatelessWidget {
-  final String value;
-  final Color accent;
-  final ValueChanged<String> onChanged;
-  final String previewCode;
-  final String previewSymbol;
-
-  const _QuoteCurrencyDisplayModeSelector({
-    required this.value,
-    required this.accent,
-    required this.onChanged,
-    required this.previewCode,
-    required this.previewSymbol,
-  });
-
-  String _previewFor(String mode) {
-    const amount = '200.00';
-    final hasSymbol = previewSymbol.trim().isNotEmpty;
-    final hasCode = previewCode.trim().isNotEmpty;
-    switch (mode) {
-      case 'symbol':
-        return hasSymbol ? '$previewSymbol$amount' : (hasCode ? '$previewCode $amount' : amount);
-      case 'both':
-        if (hasSymbol && hasCode) return '$previewCode $previewSymbol$amount';
-        if (hasSymbol) return '$previewSymbol$amount';
-        return hasCode ? '$previewCode $amount' : amount;
-      case 'code':
-      default:
-        return hasCode ? '$previewCode $amount' : (hasSymbol ? '$previewSymbol$amount' : amount);
-    }
-  }
-
-  static const _options = [
-    ('code', 'Code'),
-    ('symbol', 'Symbol'),
-    ('both', 'Both'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Display Format',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: isDark ? colorScheme.surfaceContainerHighest : const Color(0xFFF9F9F9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: _options.map((opt) {
-              final (mode, label) = opt;
-              final selected = value == mode;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onChanged(mode),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(
-                      color: selected ? accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _previewFor(mode),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: selected
-                                ? Colors.white.withValues(alpha: 0.85)
-                                : colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 }

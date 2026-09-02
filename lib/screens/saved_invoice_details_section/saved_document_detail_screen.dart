@@ -1,6 +1,47 @@
 // lib/screens/saved_invoice_details_section/saved_document_detail_screen.dart
 //
-// CONVERT-FORMAT (RECEIPT) PASS (this update): added a "Convert Format
+// HISTORY WIRING PASS (this update, revised): Download PDF, Export as
+// Excel, and Export as CSV each log a 'downloaded' activity-feed event
+// via HistoryProvider (see history_provider.dart / history_screen.dart)
+// once their action actually succeeds, with the generated file passed
+// through as `sourceFile` so History's "send again" button works on it.
+// _handleDownloadPdf/_handleExportXlsx/_handleExportCsv do this
+// themselves via the local _logHistoryEvent() helper, since they're the
+// ones holding the generated file's path.
+//
+// Share PDF is different: InvoicePdfService/QuotePdfService/
+// ReceiptPdfService's generateAndSharePDF now accept historyProvider
+// directly and log the 'shared' event THEMSELVES, with the actual shared
+// file attached as sourceFile — they're the only place that ever has
+// that file in hand, since Share.shareXFiles doesn't hand a path back to
+// this caller the way the download flow does. _handleSharePdf just
+// passes `history` straight through rather than logging again after the
+// fact.
+//
+// Two small helpers support the download/export handlers:
+// _historyDocType maps widget.type (DocType) to HistoryDocType, and
+// _historyDocInfo pulls docNumber/clientName/amount/currency straight
+// off whichever saved object (widget.invoice!/quote!/receipt!) is live
+// for this screen — no dependency on the `state` record already computed
+// elsewhere, since these handlers don't receive it. Logging is
+// fire-and-forget (unawaited where used) and skipped entirely in demo
+// mode, so it can never block or fail the actual action it's recording.
+//
+// NOT wired in this pass: the initial "created" event for a NEW invoice —
+// unlike Quote/Receipt (wired directly in their own editor screens' save
+// flow), Invoice's actual save happens inside
+// invoice_create_section/step_customize/step_customise.dart, not here or
+// in editor_screen.dart — see that file for its own logCreated() wiring.
+// Also not wired here: a "printed" event for receipts — ReceiptPdfService.
+// printReceipt already accepts historyProvider and logs it internally the
+// same way share does, but nothing on THIS screen calls printReceipt (no
+// print button exists here) — that lives on
+// receipt_full_preview_screen.dart, which isn't part of this file. Also
+// not wired: a "deleted" event on _showDeleteDialog's confirm — see the
+// note at that call site for why that's a deliberate follow-up, not an
+// oversight.
+//
+// CONVERT-FORMAT (RECEIPT) PASS (earlier update): added a "Convert Format
 // (A4 / Thermal)" option to the options sheet, receipt-only. Reuses
 // ReceiptTemplateChooserScreen exactly the way "Convert to Receipt"
 // already does — as a plain paper-format/design picker via its
@@ -93,11 +134,6 @@
 //     screen where it's the unmissable headline it should be for a
 //     financial document.
 //
-// Everything else in this header comment block is unchanged from the
-// previous pass — see prior history for the Edit-wiring, convert,
-// rename/delete, and per-type export dispatch notes (all preserved
-// below).
-//
 // FIX (earlier pass): PDF / Excel / CSV export in the options sheet was
 // previously invoice-only — _handleDownloadPdf, _handleSharePdf,
 // _handleExportXlsx, and _handleExportCsv all early-returned with an
@@ -112,6 +148,7 @@
 // match the other branches.
 // -----------------------------------------------------------------------------
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -119,9 +156,11 @@ import 'package:provider/provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/quote_provider.dart';
 import '../../providers/receipt_provider.dart';
+import '../../providers/history_provider.dart';
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
+import '../../models/history_event.dart';
 import '../../services/invoice_pdf_service.dart';
 import '../../services/quote_pdf_service.dart';
 import '../../services/receipt_pdf_service.dart';
@@ -369,6 +408,76 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
       case DocType.quote:   return widget.quote!.id;
       case DocType.receipt: return widget.receipt!.id;
     }
+  }
+
+  // HISTORY WIRING: maps this screen's DocType to HistoryProvider's own
+  // HistoryDocType — the two enums are deliberately identical in name/
+  // order but live in separate files (widgets/saved_documents_containers.
+  // dart vs models/history_event.dart), so they aren't interchangeable
+  // without an explicit mapping.
+  HistoryDocType get _historyDocType {
+    switch (widget.type) {
+      case DocType.invoice: return HistoryDocType.invoice;
+      case DocType.quote:   return HistoryDocType.quote;
+      case DocType.receipt: return HistoryDocType.receipt;
+    }
+  }
+
+  // HISTORY WIRING: docNumber/clientName/amount/currency pulled straight
+  // off whichever saved object is live for this screen. Separate from
+  // _liveState() (used by build()) since the export/share handlers below
+  // don't receive that record and don't need the full set of fields it
+  // computes (status, items, dates, etc).
+  ({String docNumber, String? clientName, double amount, String currency}) get _historyDocInfo {
+    switch (widget.type) {
+      case DocType.invoice:
+        final d = widget.invoice!.data;
+        return (
+          docNumber: d.invoiceNumber,
+          clientName: d.clientName.isNotEmpty ? d.clientName : null,
+          amount: d.grandTotal,
+          currency: d.currency,
+        );
+      case DocType.quote:
+        final d = widget.quote!.data;
+        return (
+          docNumber: d.quoteNumber,
+          clientName: d.clientName.isNotEmpty ? d.clientName : null,
+          amount: d.grandTotal,
+          currency: d.currency,
+        );
+      case DocType.receipt:
+        final d = widget.receipt!.data;
+        return (
+          docNumber: d.receiptNumber,
+          clientName: d.clientName.isNotEmpty ? d.clientName : null,
+          amount: d.amountPaid,
+          currency: d.currency,
+        );
+    }
+  }
+
+  // HISTORY WIRING: logs one activity-feed event for this document.
+  // Fire-and-forget from every call site (wrapped in `unawaited`) so a
+  // history-logging failure can never surface as a failure of the actual
+  // download/share/export it's recording. No-ops entirely in demo mode.
+  Future<void> _logHistoryEvent(
+    HistoryProvider history,
+    HistoryEventType type, {
+    File? sourceFile,
+  }) {
+    if (widget.isDemo) return Future.value();
+    final info = _historyDocInfo;
+    return history.logEvent(
+      type: type,
+      docType: _historyDocType,
+      docId: _id,
+      docNumber: info.docNumber,
+      clientName: info.clientName,
+      amount: info.amount,
+      currency: info.currency,
+      sourceFile: sourceFile,
+    );
   }
 
   // Resolves to a real, existing logo File, or null if there is none / the
@@ -1088,11 +1197,19 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   // Dispatches on widget.type. Quote/receipt branches use
   // QuotePdfService/ReceiptPdfService, which mirror InvoicePdfService's
   // generateAndDownloadPDF signature exactly.
+  //
+  // HISTORY WIRING: on success, logs a 'downloaded' event with the
+  // generated file as sourceFile (so History's "send again" works on
+  // it). `history` is captured via context.read() before any await, so
+  // there's no BuildContext-across-an-async-gap issue with the read
+  // itself; the log call after the await only uses `history`, not
+  // `context`, until the final mounted-gated snackbar.
   Future<void> _handleDownloadPdf(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
+    final history = context.read<HistoryProvider>();
     try {
       final String path;
       switch (widget.type) {
@@ -1115,6 +1232,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           );
           break;
       }
+      unawaited(_logHistoryEvent(history, HistoryEventType.downloaded, sourceFile: File(path)));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -1131,29 +1249,47 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
+  // HISTORY WIRING: logs a 'shared' event on success. Unlike the download/
+  // export handlers, the underlying *PdfService.generateAndSharePDF calls
+  // don't return a file path, so this event is logged without a
+  // sourceFile — it shows up in History but won't offer a "send again"
+  // button (there's nothing cached to resend). If that matters later, the
+  // three PDF services would need to return their generated path the same
+  // way generateAndDownloadPDF already does.
   Future<void> _handleSharePdf(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
+    // HISTORY WIRING (revised): the three *PdfService.generateAndSharePDF
+    // methods now accept historyProvider directly and log the 'shared'
+    // event themselves, with the real shared file attached as
+    // sourceFile — they're the one place that actually has that file in
+    // hand, since Share.shareXFiles never hands a path back to this
+    // caller. Passing history straight through here instead of logging
+    // it again after the fact avoids a duplicate/incomplete second entry.
+    final history = context.read<HistoryProvider>();
     try {
       switch (widget.type) {
         case DocType.invoice:
           await InvoicePdfService().generateAndSharePDF(
             widget.invoice!,
             layoutTemplateId: widget.invoice!.data.layoutTemplateId,
+            historyProvider: history,
           );
           break;
         case DocType.quote:
           await QuotePdfService().generateAndSharePDF(
             widget.quote!,
             layoutTemplateId: widget.quote!.data.layoutTemplateId,
+            historyProvider: history,
           );
           break;
         case DocType.receipt:
           await ReceiptPdfService().generateAndSharePDF(
             widget.receipt!,
             layoutTemplateId: widget.receipt!.data.layoutTemplateId,
+            historyProvider: history,
           );
           break;
       }
@@ -1167,11 +1303,14 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
+  // HISTORY WIRING: logs a 'downloaded' event on success, with the
+  // generated .xlsx as sourceFile.
   Future<void> _handleExportXlsx(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
+    final history = context.read<HistoryProvider>();
     try {
       final String path;
       switch (widget.type) {
@@ -1185,6 +1324,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           path = await ReceiptExportService().exportSingleXlsxToDownloads(widget.receipt!);
           break;
       }
+      unawaited(_logHistoryEvent(history, HistoryEventType.downloaded, sourceFile: File(path)));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -1201,11 +1341,14 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
     }
   }
 
+  // HISTORY WIRING: logs a 'downloaded' event on success, with the
+  // generated .csv as sourceFile.
   Future<void> _handleExportCsv(BuildContext context) async {
     if (widget.isDemo) {
       _demoSnack(context, "This is a demo document — export isn't available.");
       return;
     }
+    final history = context.read<HistoryProvider>();
     try {
       final String path;
       switch (widget.type) {
@@ -1219,6 +1362,7 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           path = await ReceiptExportService().exportSingleCsvToDownloads(widget.receipt!);
           break;
       }
+      unawaited(_logHistoryEvent(history, HistoryEventType.downloaded, sourceFile: File(path)));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved to $path'),
@@ -1771,6 +1915,14 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
           ),
           ElevatedButton(
             onPressed: () {
+              // HISTORY WIRING NOTE: a 'deleted' event is intentionally
+              // NOT logged here — HistoryProvider.logDeleted() exists for
+              // this, but wiring it means deciding whether a deleted
+              // document's own prior history entries (created/shared/
+              // downloaded) should be pruned or kept as-is once the
+              // document itself is gone. Left for a follow-up pass so
+              // that decision isn't made silently as a side effect of
+              // this one.
               Navigator.pop(ctx);
 
               switch (widget.type) {

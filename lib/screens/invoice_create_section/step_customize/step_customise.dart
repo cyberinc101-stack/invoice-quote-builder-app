@@ -1,6 +1,18 @@
 // lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
-// SAVE-FROM-CUSTOMISE PASS (this update): matches Quote's Customise-step
+// HISTORY WIRING PASS (this update): _handleSave() now logs a 'created'
+// activity-feed event via HistoryProvider right after
+// InvoiceProvider.saveCurrentInvoice() succeeds — the same pattern
+// Quote's and Receipt's own save flows already got
+// (quote_editor_screen.dart / create_receipt_screen.dart's _save()).
+// Fire-and-forget (unawaited), logged from the just-saved SavedInvoice
+// so it reflects exactly what got persisted, not the provider's live
+// (possibly since-reset) invoiceData. This was the one remaining gap in
+// History's create-event coverage — Invoice was the only one of the
+// three document types where creating a document didn't show up in the
+// activity feed at all.
+//
+// SAVE-FROM-CUSTOMISE PASS (earlier update): matches Quote's Customise-step
 // flow (quote_step_customise.dart / quote_editor_screen.dart) — Invoice's
 // save no longer happens via a dialog on InvoiceFullPreviewScreen. This
 // step now:
@@ -108,11 +120,14 @@
 // zoom the logo in the preview until those layout files are updated to
 // use them.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../providers/invoice_provider.dart';
+import '../../../providers/history_provider.dart';
 import '../../../models/invoice_data.dart';
+import '../../../models/history_event.dart' show HistoryDocType;
 import '../../../models/invoice_color_ext.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import '../invoice_edit_widgets.dart' show InvoiceTotalsCard;
@@ -189,6 +204,14 @@ class _StepCustomiseState extends State<StepCustomise> {
   // quote_editor_screen.dart's _save() shape — validate the title,
   // save, reset the draft, navigate to the saved invoice's detail
   // screen, clearing the wizard stack beneath it.
+  //
+  // HISTORY WIRING PASS: logs a 'created' event right after the save
+  // succeeds, using the just-saved SavedInvoice (`saved`) rather than
+  // provider.invoiceData — provider.resetInvoiceData() runs immediately
+  // after, so reading from the provider at that point would be reading
+  // already-reset (or racing) state. Fire-and-forget (unawaited) so a
+  // logging failure can never block navigation to the saved invoice's
+  // detail screen.
   Future<void> _handleSave() async {
     if (_titleCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -198,11 +221,21 @@ class _StepCustomiseState extends State<StepCustomise> {
     }
     setState(() => _saving = true);
     final provider = context.read<InvoiceProvider>();
+    final history = context.read<HistoryProvider>();
     try {
       final saved = provider.saveCurrentInvoice(
         title: _titleCtrl.text.trim(),
         templateName: 'Executive',
       );
+      final d = saved.data;
+      unawaited(history.logCreated(
+        docType: HistoryDocType.invoice,
+        docId: saved.id,
+        docNumber: d.invoiceNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.grandTotal,
+        currency: d.currency,
+      ));
       provider.resetInvoiceData();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -1035,15 +1068,30 @@ class _FieldsSection extends StatelessWidget {
             : Colors.white,
       ),
       child: SwitchListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        // OVERFLOW FIX (mirrors the identical fix applied to
+        // receipt_step_customise.dart's own _fieldToggleRow): `dense:
+        // true` removed — it locks the tile to a fixed single-line
+        // height, which would clip a wrapped 2-3 line label instead of
+        // letting the tile grow to fit it. The label is now wrapped in
+        // Expanded with softWrap enabled instead of sitting bare in the
+        // Row, so long labels (and longer translated strings, which run
+        // this same risk regardless of how well the English text fits)
+        // wrap onto more lines instead of overflowing past the switch.
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         title: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             if (icon != null) ...[
               Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
               const SizedBox(width: 10),
             ],
-            Text(label, style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
+                softWrap: true,
+              ),
+            ),
           ],
         ),
         value: value,

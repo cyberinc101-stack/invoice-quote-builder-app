@@ -2,7 +2,18 @@
 //
 // Generates and exports invoice PDFs.
 //
-// TEMPLATE FIELD VISIBILITY FIX (this update): _buildExecutivePdf now
+// HISTORY LOGGING PASS (this update): generateAndSharePDF now accepts an
+// optional [historyProvider]. Share doesn't return a file path the way
+// download does, so this is the one call site where the PDF service
+// itself — not the caller — is what actually has the freshly-written
+// file in hand. When provided, logs a HistoryEventType.shared event
+// (via HistoryProvider.logShared) with the just-shared file as
+// sourceFile, so "send again" from the History screen has a real,
+// reshare-able copy instead of a metadata-only log entry. Omitted (null)
+// is a no-op — every existing call site that doesn't pass it behaves
+// exactly as before this pass.
+//
+// TEMPLATE FIELD VISIBILITY FIX (earlier update): _buildExecutivePdf now
 // gates the same fields as the live preview/edit canvas
 // (executive_invoice_stationary_layout.dart) behind
 // InvoiceData.enabledFields via the new _on() helper — business logo/
@@ -72,6 +83,7 @@
 // and needs the bytes in memory rather than a file per invoice already
 // written under its own name. generateAndDownloadPDF below is unchanged.
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -81,6 +93,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/invoice_data.dart';
+import '../models/history_event.dart' show HistoryDocType;
+import '../providers/history_provider.dart';
 import 'pdf_doc_adapter.dart';
 import 'pdf_templates.dart' as styled;
 
@@ -107,10 +121,15 @@ class InvoicePdfService {
   /// Alerts screen's "Follow Up" action to prefill a friendly nudge about
   /// this invoice) — omitted entirely for normal shares, unchanged from
   /// before this pass.
+  /// [historyProvider], when passed, logs a `shared` History event with
+  /// the shared file attached as sourceFile — this is the one place that
+  /// can do so, since Share.shareXFiles doesn't hand a path back to the
+  /// caller the way the download flow does.
   Future<void> generateAndSharePDF(
     SavedInvoice invoice, {
     int? layoutTemplateId,
     String? shareText,
+    HistoryProvider? historyProvider,
   }) async {
     final bytes = await _buildPdf(invoice, layoutTemplateId: layoutTemplateId);
     final dir   = await getTemporaryDirectory();
@@ -122,6 +141,18 @@ class InvoicePdfService {
       subject: 'Invoice ${invoice.data.invoiceNumber}',
       text: shareText,
     );
+    if (historyProvider != null) {
+      final d = invoice.data;
+      unawaited(historyProvider.logShared(
+        docType: HistoryDocType.invoice,
+        docId: invoice.id,
+        docNumber: d.invoiceNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.grandTotal,
+        currency: d.currency,
+        sourceFile: file,
+      ));
+    }
   }
 
   /// NEW: raw PDF bytes, no file written. Used by FolderDownloadService to
