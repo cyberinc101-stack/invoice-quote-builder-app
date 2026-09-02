@@ -1,18 +1,63 @@
 // lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
-// FIELDS SECTION PASS (this update): added the "Invoice Fields" /
+// SAVE-FROM-CUSTOMISE PASS (this update): matches Quote's Customise-step
+// flow (quote_step_customise.dart / quote_editor_screen.dart) — Invoice's
+// save no longer happens via a dialog on InvoiceFullPreviewScreen. This
+// step now:
+//   - Shows an "Invoice Title" section at the very top (before Live
+//     Preview), same position/shape as Quote Title on
+//     quote_step_customise.dart. Seeded with the same suggested-title
+//     logic the old dialog used (clientName — invoiceNumber).
+//   - The bottom bar's primary button is now "Save Invoice" (was
+//     "Preview & Download") — tapping it validates the title, calls
+//     InvoiceProvider.saveCurrentInvoice() directly, and navigates to
+//     the saved invoice's detail screen. Matches
+//     quote_editor_screen.dart's _save() exactly.
+//   - The Live Preview card is now tappable — tapping it still opens
+//     InvoiceFullPreviewScreen for PDF export/share (that screen's own
+//     Save dialog is removed in this same pass; see its header comment).
+//
+// SUMMARY LAYOUT PASS (earlier update): the Summary section no longer
+// wraps InvoiceTotalsCard in the bordered _SectionCard box every other
+// section on this step uses. Quote's step_customise.dart shows Summary
+// as a plain section header (accent bar + icon + label, via
+// quoteSectionHeader()) directly above QuoteTotalsCard, with no extra
+// box around the pair — InvoiceTotalsCard already carries its own
+// border/background, so a _SectionCard around it was doubling up the
+// framing and looked visually different from Quote's/Receipt's Summary.
+// Added _plainSectionHeader() (mirrors quoteSectionHeader/
+// receiptSectionHeader's look exactly: coloured bar + icon + label) and
+// _SummarySection now uses that instead of _SectionCard. The new Title
+// section above also uses _plainSectionHeader().
+//
+// SUMMARY PASS (earlier update): added a "Summary" section
+// (InvoiceTotalsCard, new in invoice_edit_widgets.dart) — Invoice's
+// Customise step was the only one of the three documents with no totals
+// summary at all; Quote's and Receipt's step_customise.dart both show
+// one right after their last styling control. Placed the same way here:
+// directly after Text Size, before "Back to Top". Reads InvoiceData's
+// existing subtotal/taxAmount/discountAmount/grandTotal getters and
+// taxRate/discountRate directly — no InvoiceProvider or InvoiceData
+// changes were needed, that math already existed and simply had no UI
+// showing it on this step.
+//
+// FIELDS SECTION REORDER PASS (earlier update): moved the "Invoice Fields" /
+// "Customer Fields" toggle section to sit directly under Live Preview --
+// i.e. BEFORE Business Logo -- to match where Quote and Receipt's own
+// field-toggle sections currently sit in their Customise steps. Previously
+// this section sat at the bottom (after Text Size, before "Back to Top");
+// that positioning is superseded by this pass. No logic changed -- still
+// reads/writes InvoiceData.enabledFields via
+// InvoiceProvider.updateEnabledFields().
+//
+// FIELDS SECTION PASS (earlier update): added the "Invoice Fields" /
 // "Customer Fields" toggle section that was missing from this step
 // entirely (this is why it never showed up on the Invoice screen -- it
 // simply hadn't been built here, unlike Quote/Receipt which already had
-// their own field-toggle sections). Positioned directly under Text Size
-// -- i.e. after every other per-invoice styling control (Logo, Logo
-// Size, Accent Colour, Font, Text Size) and before "Back to Top" -- to
-// match where Quote/Receipt's own field-toggle sections sit relative to
-// their last styling control (Accent Color). Reads/writes
-// InvoiceData.enabledFields directly via
-// InvoiceProvider.updateEnabledFields() (both already existed and were
-// already fully wired to the PDF/preview templates), so this is fully
-// functional immediately -- no further wiring needed for Invoice.
+// their own field-toggle sections). Reads/writes InvoiceData.enabledFields
+// directly via InvoiceProvider.updateEnabledFields() (both already existed
+// and were already fully wired to the PDF/preview templates), so this is
+// fully functional immediately -- no further wiring needed for Invoice.
 //
 // LOGO SIZE RANGE PASS (earlier update): the "Logo Size" slider previously
 // topped out at 60px, which was too small a ceiling for people who want
@@ -62,14 +107,6 @@
 // logo — this control saves the values, but they won't visually move/
 // zoom the logo in the preview until those layout files are updated to
 // use them.
-//
-// FIX (earlier pass): "Preview & Download" at the bottom of this step was a
-// TODO -- tapping it did nothing. It now pushes InvoiceFullPreviewScreen,
-// handing it the same InvoiceProvider instance via
-// ChangeNotifierProvider.value so the preview screen sees the exact invoice
-// data/customisation state built up across the previous steps. Download and
-// Share now live on that full preview screen (via
-// invoice_preview_bottom_bar.dart) rather than here or on step_create_invoice.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -78,6 +115,9 @@ import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
 import '../../../models/invoice_color_ext.dart';
 import '../../../widgets/shared_logo_picker.dart';
+import '../invoice_edit_widgets.dart' show InvoiceTotalsCard;
+import '../step_create_invoice/create_invoice_form_widgets.dart' show CreateInvoiceField;
+import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'invoice_full_preview_screen.dart';
 import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
 import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
@@ -100,9 +140,28 @@ class StepCustomise extends StatefulWidget {
 class _StepCustomiseState extends State<StepCustomise> {
   final ScrollController _scrollController = ScrollController();
 
+  // SAVE-FROM-CUSTOMISE PASS: title now lives here instead of being
+  // collected via a dialog on InvoiceFullPreviewScreen. Seeded with the
+  // same suggested-title logic that dialog used to build
+  // (clientName — invoiceNumber, falling back to just invoiceNumber, or
+  // blank).
+  late final TextEditingController _titleCtrl;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final data = context.read<InvoiceProvider>().invoiceData;
+    final suggested = data.clientName.isNotEmpty
+        ? '${data.clientName} — ${data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice'}'
+        : data.invoiceNumber;
+    _titleCtrl = TextEditingController(text: suggested);
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
+    _titleCtrl.dispose();
     super.dispose();
   }
 
@@ -123,6 +182,42 @@ class _StepCustomiseState extends State<StepCustomise> {
         ),
       ),
     );
+  }
+
+  // SAVE-FROM-CUSTOMISE PASS: replaces the old dialog-driven
+  // _handleSaveInvoice() on InvoiceFullPreviewScreen. Matches
+  // quote_editor_screen.dart's _save() shape — validate the title,
+  // save, reset the draft, navigate to the saved invoice's detail
+  // screen, clearing the wizard stack beneath it.
+  Future<void> _handleSave() async {
+    if (_titleCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Give this invoice a title before saving')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    final provider = context.read<InvoiceProvider>();
+    try {
+      final saved = provider.saveCurrentInvoice(
+        title: _titleCtrl.text.trim(),
+        templateName: 'Executive',
+      );
+      provider.resetInvoiceData();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => SavedDocumentDetailScreen.invoice(saved)),
+        (route) => route.isFirst,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Couldn't save invoice: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -159,9 +254,28 @@ class _StepCustomiseState extends State<StepCustomise> {
 
                 const SizedBox(height: 20),
 
-                // ---- Live invoice preview ----
-                const _InvoicePreviewCard(),
+                // ---- Invoice title ----
+                // SAVE-FROM-CUSTOMISE PASS: sits first, before Live
+                // Preview — same position as Quote Title on
+                // quote_step_customise.dart.
+                _TitleSection(titleCtrl: _titleCtrl),
                 const SizedBox(height: 24),
+
+                // ---- Live invoice preview ----
+                // SAVE-FROM-CUSTOMISE PASS: now tappable — opens
+                // InvoiceFullPreviewScreen for PDF export/share.
+                GestureDetector(
+                  onTap: _openFullPreview,
+                  child: const _InvoicePreviewCard(),
+                ),
+                const SizedBox(height: 24),
+
+                // ---- Invoice / Customer fields ----
+                // FIELDS SECTION REORDER PASS: sits directly under Live
+                // Preview -- BEFORE Business Logo -- matching where Quote
+                // and Receipt's own field-toggle sections sit.
+                const _FieldsSection(),
+                const SizedBox(height: 16),
 
                 // ---- Business logo sizer ----
                 const _LogoSection(),
@@ -181,14 +295,10 @@ class _StepCustomiseState extends State<StepCustomise> {
 
                 // ---- Text size ----
                 const _SizeSection(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-                // ---- Invoice / Customer fields ----
-                // FIELDS SECTION PASS: sits directly under Text Size --
-                // the last styling control -- matching where Quote and
-                // Receipt's own field-toggle sections sit relative to
-                // their last styling control (Accent Color).
-                const _FieldsSection(),
+                // ---- Summary ----
+                const _SummarySection(),
                 const SizedBox(height: 20),
 
                 // ---- Back to top ----
@@ -232,7 +342,43 @@ class _StepCustomiseState extends State<StepCustomise> {
           ),
         ),
 
-        _BottomBar(onBack: widget.onBack, onPreview: _openFullPreview),
+        // SAVE-FROM-CUSTOMISE PASS: primary action is now Save (was
+        // Preview & Download).
+        _BottomBar(onBack: widget.onBack, onSave: _handleSave, isSaving: _saving),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// Title section
+// =============================================================================
+//
+// SAVE-FROM-CUSTOMISE PASS: new. Same position/shape as Quote Title on
+// quote_step_customise.dart — a plain header (no bordered box) directly
+// above a single required text field.
+
+class _TitleSection extends StatelessWidget {
+  final TextEditingController titleCtrl;
+  const _TitleSection({required this.titleCtrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<InvoiceProvider>();
+    final accent = _colorForScheme(provider.invoiceData.colorScheme);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _plainSectionHeader(context, 'Invoice Title', accent, icon: Icons.title_rounded),
+        CreateInvoiceField(
+          ctrl: titleCtrl,
+          label: 'Title (for your records)',
+          hint: 'e.g. Acme Corp — Invoice',
+          icon: Icons.bookmark_outline_rounded,
+          max: 80,
+          accent: accent,
+        ),
       ],
     );
   }
@@ -332,7 +478,7 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
         ),
         const SizedBox(height: 8),
         Center(
-          child: Text('Live preview - changes appear instantly.',
+          child: Text('Tap to preview & download PDF',
               style: TextStyle(fontSize: 11,
                   color: colorScheme.onSurface.withValues(alpha: 0.35),
                   fontStyle: FontStyle.italic)),
@@ -513,9 +659,9 @@ class _LogoSizeSection extends StatelessWidget {
 
 // Maps each InvoiceColor to its display Color for accent tinting
 // elsewhere on this step (logo section, logo size slider, font tiles,
-// text size slider). Independent of the grid picker below, which reads
-// primaryColor/accentColor/displayName straight off the InvoiceColor
-// extension in invoice_color_ext.dart.
+// text size slider, summary card, title field). Independent of the grid
+// picker below, which reads primaryColor/accentColor/displayName
+// straight off the InvoiceColor extension in invoice_color_ext.dart.
 Color _colorForScheme(InvoiceColor scheme) {
   const map = {
     InvoiceColor.blue:   Color(0xFF1565C0),
@@ -528,6 +674,48 @@ Color _colorForScheme(InvoiceColor scheme) {
     InvoiceColor.indigo: Color(0xFF283593),
   };
   return map[scheme] ?? const Color(0xFF1565C0);
+}
+
+// SUMMARY LAYOUT PASS: plain section header — coloured accent bar + icon
+// + label — mirroring quoteSectionHeader (quote_edit_widgets.dart) and
+// receiptSectionHeader (receipt_edit_widgets.dart) exactly. Used by
+// _TitleSection and _SummarySection; every other section on this step
+// still uses the bordered _SectionCard look, which is Invoice's own
+// established design for its styling controls.
+Widget _plainSectionHeader(
+  BuildContext context,
+  String label,
+  Color accent, {
+  IconData? icon,
+}) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      children: [
+        Container(
+          width: 3,
+          height: 16,
+          decoration:
+              BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(width: 8),
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: accent),
+          const SizedBox(width: 6),
+        ],
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // Grid-tile picker — same design (gradient tile, checkmark overlay, label
@@ -762,16 +950,65 @@ class _SizeSection extends StatelessWidget {
 }
 
 // =============================================================================
+// Summary section — InvoiceTotalsCard
+// =============================================================================
+//
+// SUMMARY LAYOUT PASS: no longer wrapped in _SectionCard's bordered box.
+// Uses _plainSectionHeader() + InvoiceTotalsCard directly, matching
+// Quote's/Receipt's Summary sections exactly (a plain header sitting
+// right above the totals card, which already carries its own
+// background/border).
+
+class _SummarySection extends StatelessWidget {
+  const _SummarySection();
+
+  String _currencyPrefix(InvoiceData data) {
+    final symbol = data.currencySymbol.trim();
+    final code = data.currency.trim().toUpperCase();
+    if (symbol.isNotEmpty) return symbol;
+    if (code.isNotEmpty) return '$code ';
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<InvoiceProvider>();
+    final data     = provider.invoiceData;
+    final accent   = _colorForScheme(data.colorScheme);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _plainSectionHeader(context, 'Summary', accent, icon: Icons.summarize_rounded),
+        InvoiceTotalsCard(
+          subtotal: data.subtotal,
+          taxAmount: data.taxAmount,
+          discountAmount: data.discountAmount,
+          total: data.grandTotal,
+          taxRate: data.taxRate,
+          discountRate: data.discountRate,
+          currencySymbol: _currencyPrefix(data),
+          accent: accent,
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
 // Fields section — Invoice Fields / Customer Fields toggles
 // =============================================================================
 //
-// FIELDS SECTION PASS: this was the missing piece -- InvoiceData.
-// enabledFields and InvoiceProvider.updateEnabledFields() already
-// existed and were already read by the PDF/preview templates, but no
-// widget on this step ever displayed or wrote to them. Mirrors the
-// design language of every other section on this step (_SectionCard
-// wrapper) rather than Quote/Receipt's plainer sectionHeader+switch-row
-// style, since Invoice is this app's reference layout.
+// FIELDS SECTION PASS: InvoiceData.enabledFields and
+// InvoiceProvider.updateEnabledFields() already existed and were already
+// read by the PDF/preview templates, but no widget on this step ever
+// displayed or wrote to them. Mirrors the design language of every other
+// section on this step (_SectionCard wrapper) rather than Quote/Receipt's
+// plainer sectionHeader+switch-row style, since Invoice is this app's
+// reference layout.
+//
+// FIELDS SECTION REORDER PASS: now placed directly under Live Preview,
+// before Business Logo -- matching where Quote/Receipt's field toggles sit.
 
 class _FieldsSection extends StatelessWidget {
   const _FieldsSection();
@@ -955,7 +1192,7 @@ class _DoneCard extends StatelessWidget {
                         fontSize: 16,
                         fontWeight: FontWeight.w800)),
                 SizedBox(height: 2),
-                Text('Preview and download below.',
+                Text('Give it a title above, then tap Save Invoice below.',
                     style: TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
@@ -969,11 +1206,20 @@ class _DoneCard extends StatelessWidget {
 // =============================================================================
 // Bottom bar
 // =============================================================================
+//
+// SAVE-FROM-CUSTOMISE PASS: primary action renamed Save Invoice (was
+// Preview & Download) and now performs the real save via onSave —
+// matches quote_step_customise.dart's own "Preview & Download" button
+// being separate from the wizard's Save action, except here the two
+// affordances have swapped roles: the tappable Live Preview card now
+// covers what "Preview & Download" used to do, freeing this bar's
+// primary button for Save, same as Quote's bottom nav bar.
 
 class _BottomBar extends StatelessWidget {
   final VoidCallback onBack;
-  final VoidCallback onPreview;
-  const _BottomBar({required this.onBack, required this.onPreview});
+  final VoidCallback onSave;
+  final bool isSaving;
+  const _BottomBar({required this.onBack, required this.onSave, required this.isSaving});
 
   @override
   Widget build(BuildContext context) {
@@ -1013,10 +1259,10 @@ class _BottomBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
 
-          // Preview & Download
+          // Save Invoice
           Expanded(
             child: GestureDetector(
-              onTap: onPreview,
+              onTap: isSaving ? null : onSave,
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
@@ -1031,20 +1277,29 @@ class _BottomBar extends StatelessWidget {
                         offset: Offset(0, 4)),
                   ],
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.preview_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Preview & Download',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
+                child: isSaving
+                    ? const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2.2),
+                        ),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Save Invoice',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),

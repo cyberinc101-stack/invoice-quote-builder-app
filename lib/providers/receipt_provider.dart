@@ -1,7 +1,18 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
 //
-// ALERTPREFS PUSH WIRING (this pass): added applyDraftAlertsEnabled() —
+// CONVERT FORMAT PASS (this update): added updateSavedReceiptFormat() —
+// writes a new layoutTemplateId/paperFormat onto an already-SAVED
+// receipt's data, same pattern as updateSavedReceiptStatus/
+// updateReceiptFolder (find index, copyWith the data, persist,
+// notifyListeners). Backs the new "Convert Format (A4 ↔ Thermal)" option
+// in saved_document_detail_screen.dart's options sheet, which reuses
+// ReceiptTemplateChooserScreen (via its onTemplateChosen callback,
+// already used by the invoice→receipt conversion flow) as a plain
+// paper-format/design picker for an EXISTING receipt rather than a new
+// one.
+//
+// ALERTPREFS PUSH WIRING (earlier pass): added applyDraftAlertsEnabled() —
 // called from alert_type_toggles.dart's "Drafts" switch and
 // settings_screen.dart's master Alerts switch whenever the effective
 // enabled state (alertsEnabled && draftsEnabled) changes, so turning
@@ -215,6 +226,34 @@ class ReceiptProvider extends ChangeNotifier {
     if (index == -1) return;
     _savedReceipts[index] = _savedReceipts[index].copyWith(
       data: _savedReceipts[index].data.copyWith(status: status),
+      lastEditedAt: DateTime.now(),
+    );
+    await _persist();
+    notifyListeners();
+  }
+
+  // -- Format (paper size / design) --------------------------------------
+  // CONVERT FORMAT PASS: writes a new layoutTemplateId/paperFormat onto
+  // an already-SAVED receipt's data directly — same pattern as
+  // updateSavedReceiptStatus above. Powers the "Convert Format (A4 ↔
+  // Thermal)" option in saved_document_detail_screen.dart, which opens
+  // ReceiptTemplateChooserScreen as a plain picker (via its
+  // onTemplateChosen callback) and hands the chosen (templateId,
+  // paperFormat) straight here. Doesn't touch the active editor draft —
+  // this updates the SAVED entry only, matching updateSavedReceiptStatus/
+  // updateReceiptFolder/updateReceiptExcludeFromReports.
+  Future<void> updateSavedReceiptFormat(
+    String id, {
+    required int layoutTemplateId,
+    required String paperFormat,
+  }) async {
+    final index = _savedReceipts.indexWhere((r) => r.id == id);
+    if (index == -1) return;
+    _savedReceipts[index] = _savedReceipts[index].copyWith(
+      data: _savedReceipts[index].data.copyWith(
+        layoutTemplateId: layoutTemplateId,
+        paperFormat: paperFormat,
+      ),
       lastEditedAt: DateTime.now(),
     );
     await _persist();

@@ -1,7 +1,13 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (this update): updateBusinessInfo()
+// FONT SIZE PASS (this update): added updateFontSize(), mirroring
+// updateFontFamily()'s shape exactly — a thin pass-through to
+// QuoteData.copyWith's new fontSize field. Called from the new Text Size
+// slider on quote_step_customise.dart via quote_editor_screen.dart's
+// _syncToProvider().
+//
+// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (earlier): updateBusinessInfo()
 // and updateClientInfo() each gained a source*Id param plus a matching
 // clearSource*Id flag (same explicit-clear pattern clearBusinessLogo
 // already uses) — passes straight through to QuoteData.copyWith's new
@@ -463,6 +469,13 @@ class QuoteProvider extends ChangeNotifier {
 
   void updateFontFamily(String font) {
     _quoteData = _quoteData.copyWith(fontFamily: font);
+    notifyListeners();
+  }
+
+  // FONT SIZE PASS: mirrors updateFontFamily() exactly. Called from the
+  // new Text Size slider on quote_step_customise.dart.
+  void updateFontSize(double size) {
+    _quoteData = _quoteData.copyWith(fontSize: size);
     notifyListeners();
   }
 

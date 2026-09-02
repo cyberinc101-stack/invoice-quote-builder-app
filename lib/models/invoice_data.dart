@@ -1,7 +1,16 @@
 // invoice_data.dart
 // lib/models/invoice_data.dart
 //
-// TEMPLATE FIELD VISIBILITY PASS (this update): added enabledFields — a
+// LINE ITEM CONTAINERS PASS (this update): added SavedLineItemSet — a
+// named, reusable bundle of line items, saved from the Create Invoice
+// step's Line Items section and quick-added back onto any future
+// invoice with a tap. Mirrors Customer/InvoiceTemplate's shape (id/name
+// + toJson/fromJson/copyWith) so it persists the same way, via a single
+// JSON-encoded SharedPreferences list — see
+// create_invoice_saved_items_widgets.dart (CreateInvoiceSavedItemSets)
+// for the UI this backs.
+//
+// TEMPLATE FIELD VISIBILITY PASS (earlier): added enabledFields — a
 // Map<String, bool> keyed by the same field-id strings used in
 // step_templates.dart's toggle rows (see defaultInvoiceEnabledFields()
 // below, which mirrors that file's _defaultFields() exactly). Previously
@@ -535,5 +544,54 @@ class SavedInvoice {
         lastEditedAt:      lastEditedAt      ?? this.lastEditedAt,
         completionPercent: completionPercent ?? this.completionPercent,
         folderName: clearFolderName ? null : (folderName ?? this.folderName),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedLineItemSet — a named, reusable bundle of line items, saved from
+// the Create Invoice step's Line Items section and quick-added back onto
+// any future invoice with a tap. Mirrors Customer/InvoiceTemplate's shape
+// (id/name + toJson/fromJson/copyWith) so it persists the same way, via
+// a single JSON-encoded SharedPreferences list — see
+// create_invoice_saved_items_widgets.dart (CreateInvoiceSavedItemSets)
+// for the UI this backs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedLineItemSet {
+  String id;
+  String name;
+  List<LineItem> items;
+
+  SavedLineItemSet({
+    required this.id,
+    required this.name,
+    required this.items,
+  });
+
+  int get itemCount => items.length;
+  double get total => items.fold(0.0, (sum, i) => sum + i.total);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'items': items.map((i) => i.toJson()).toList(),
+      };
+
+  factory SavedLineItemSet.fromJson(Map<String, dynamic> j) => SavedLineItemSet(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        items: (j['items'] as List<dynamic>? ?? [])
+            .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  SavedLineItemSet copyWith({
+    String? name,
+    List<LineItem>? items,
+  }) =>
+      SavedLineItemSet(
+        id: id,
+        name: name ?? this.name,
+        items: items ?? this.items.map((i) => i.copyWith()).toList(),
       );
 }

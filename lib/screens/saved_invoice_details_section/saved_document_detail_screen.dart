@@ -1,6 +1,20 @@
 // lib/screens/saved_invoice_details_section/saved_document_detail_screen.dart
 //
-// CONFIRM-BEFORE-EXPORT PASS (this update): Download PDF, Share PDF,
+// CONVERT-FORMAT (RECEIPT) PASS (this update): added a "Convert Format
+// (A4 / Thermal)" option to the options sheet, receipt-only. Reuses
+// ReceiptTemplateChooserScreen exactly the way "Convert to Receipt"
+// already does — as a plain paper-format/design picker via its
+// onTemplateChosen callback — except this time on an EXISTING receipt
+// rather than building a brand-new one from a converted invoice.
+// existingReceiptId is also passed so the chooser opens pre-selected to
+// the receipt's current format/design (see
+// ReceiptTemplateChooserScreen._loadInitialSelection). The chosen
+// (templateId, paperFormat) is written straight onto the saved receipt
+// via the new ReceiptProvider.updateSavedReceiptFormat() — no name
+// prompt or loading dialog needed here, since this doesn't create a new
+// document the way the invoice→receipt conversion does.
+//
+// CONFIRM-BEFORE-EXPORT PASS (earlier update): Download PDF, Share PDF,
 // Export as Excel, and Export as CSV in the options sheet previously
 // fired their handler the instant the row was tapped — no confirmation,
 // so a mis-tap immediately kicked off a file write or share sheet.
@@ -130,6 +144,7 @@ import 'detail/document_detail_status_card.dart';
 import '../invoice_template_chooser_screen.dart';
 import '../quote_template_chooser_screen.dart';
 import '../../create_receipt/receipt_template_chooser_screen.dart';
+import '../../create_receipt/receipt_paper_format.dart';
 
 // -----------------------------------------------------------------------------
 // Small per-type status mapping (duplicated intentionally from
@@ -1287,12 +1302,6 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
   //   4. The chooser pops itself from inside the callback once the save
   //      completes, then the new saved receipt's detail screen is pushed
   //      on top of this one.
-  //
-  // NOTE: this assumes ReceiptData has a copyWith(layoutTemplateId:,
-  // paperFormat:) — confirm with:
-  //   Select-String -Path "lib\models\receipt_data.dart" -Pattern "copyWith|layoutTemplateId|paperFormat"
-  // before rebuilding. If the field names differ, adjust the copyWith call
-  // below to match.
   Future<void> _handleConvertInvoiceToReceipt(BuildContext context) async {
     if (widget.isDemo || widget.invoice == null) {
       _demoSnack(context, 'This is a demo document — conversion is disabled.');
@@ -1352,6 +1361,49 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
         ),
       ),
     );
+  }
+
+  // CONVERT-FORMAT (RECEIPT) PASS: unlike the two conversions above, this
+  // doesn't create a new document — it changes an EXISTING receipt's
+  // paper format in place. Rather than pushing the full
+  // ReceiptTemplateChooserScreen, this shows a small bottom sheet listing
+  // only the formats the receipt ISN'T currently in (e.g. currently A4 ->
+  // shows 58mm and 80mm; currently 58mm -> shows A4 and 80mm). Tapping one
+  // converts instantly (with an inline spinner on that row while it
+  // saves) via ReceiptProvider.updateSavedReceiptFormat() — no design
+  // picker, since a format switch keeps whatever layoutTemplateId the
+  // receipt already had (thermal ignores it entirely; A4 keeps its
+  // existing design if it already had one, or falls back to Executive).
+  Future<void> _handleConvertReceiptFormat(BuildContext context) async {
+    if (widget.isDemo || widget.receipt == null) {
+      _demoSnack(context, 'This is a demo document — conversion is disabled.');
+      return;
+    }
+    final receipt = widget.receipt!;
+    final receiptProvider = context.read<ReceiptProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final currentFormat = receiptPaperFormatFromString(receipt.data.paperFormat);
+    final otherFormats =
+        ReceiptPaperFormat.values.where((f) => f != currentFormat).toList();
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _ConvertFormatSheet(
+        currentFormat: currentFormat,
+        otherFormats: otherFormats,
+        onConvert: (format) => receiptProvider.updateSavedReceiptFormat(
+          receipt.id,
+          layoutTemplateId: receipt.data.layoutTemplateId,
+          paperFormat: format.storageName,
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+    setState(() {}); // refresh this screen's preview/template chip
   }
 
   // Shared "Converted from …" note prepended to whatever notes carried
@@ -1517,6 +1569,19 @@ class _SavedDocumentDetailScreenState extends State<SavedDocumentDetailScreen>
                   onTap: () {
                     Navigator.pop(ctx);
                     _handleConvertInvoiceToReceipt(context);
+                  },
+                ),
+              // CONVERT-FORMAT (RECEIPT) PASS: receipt-only — switches
+              // paper format (A4 <-> 58mm/80mm thermal) and, for A4, the
+              // design, on this already-saved receipt.
+              if (widget.type == DocType.receipt)
+                DetailSheetOption(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Convert Format (A4 / Thermal)',
+                  color: kReceiptAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handleConvertReceiptFormat(context);
                   },
                 ),
               // CONFIRM-BEFORE-EXPORT PASS: each of the four export/share
@@ -1773,6 +1838,131 @@ class _ConversionLoadingDialog extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// _ConvertFormatSheet — CONVERT-FORMAT (RECEIPT) PASS: bottom sheet
+// listing only the paper formats a receipt ISN'T currently in. Tapping a
+// row converts instantly, showing an inline spinner on that row while
+// ReceiptProvider.updateSavedReceiptFormat() saves, then closes itself.
+// -----------------------------------------------------------------------------
+class _ConvertFormatSheet extends StatefulWidget {
+  final ReceiptPaperFormat currentFormat;
+  final List<ReceiptPaperFormat> otherFormats;
+  final Future<void> Function(ReceiptPaperFormat) onConvert;
+
+  const _ConvertFormatSheet({
+    required this.currentFormat,
+    required this.otherFormats,
+    required this.onConvert,
+  });
+
+  @override
+  State<_ConvertFormatSheet> createState() => _ConvertFormatSheetState();
+}
+
+class _ConvertFormatSheetState extends State<_ConvertFormatSheet> {
+  ReceiptPaperFormat? _converting;
+
+  Future<void> _tap(ReceiptPaperFormat format) async {
+    if (_converting != null) return;
+    setState(() => _converting = format);
+    try {
+      await widget.onConvert(format);
+    } finally {
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const accent = Color(0xFF2E7D32);
+    final busy = _converting != null;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('Convert Format',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
+            const SizedBox(height: 4),
+            Text(
+              'Currently ${widget.currentFormat.label} — tap a format below to convert instantly.',
+              style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+            ),
+            const SizedBox(height: 16),
+            for (final format in widget.otherFormats)
+              GestureDetector(
+                onTap: busy ? null : () => _tap(format),
+                child: Opacity(
+                  opacity: busy && _converting != format ? 0.4 : 1.0,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                          : const Color(0xFFF9F9F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colorScheme.outline.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40, height: 40,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            format.isThermal ? Icons.receipt_rounded : Icons.description_rounded,
+                            color: accent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(format.label,
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: colorScheme.onSurface)),
+                              const SizedBox(height: 2),
+                              Text(format.description,
+                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.5))),
+                            ],
+                          ),
+                        ),
+                        if (_converting == format)
+                          SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.2, color: accent),
+                          )
+                        else
+                          Icon(Icons.chevron_right_rounded, color: colorScheme.onSurface.withValues(alpha: 0.3)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

@@ -1,7 +1,14 @@
 // receipt_data.dart
 // lib/models/receipt_data.dart
 //
-// LOGO FALLBACK MARK PASS (this update): added businessLogoShowInitial
+// FONT SIZE PASS (this update): added fontSize (double, default 12.0) —
+// same gap as QuoteData: Receipt had a fontFamily field but no numeric
+// size field, and no UI for either. Added so Receipt's Customise step
+// can show Font Family + Text Size controls matching Invoice's, via the
+// new receipt_step_customise.dart. Default (12.0) preserves existing
+// render behaviour for every persisted receipt, no migration needed.
+//
+// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
 // (bool, default true) and businessLogoInitialLetter (String, default
 // '') — mirrors InvoiceData/QuoteData's own new fields. See
 // invoice_data.dart's doc comment for the full rationale. Defaults
@@ -82,6 +89,12 @@ class ReceiptData {
   PaymentMethod paymentMethod;
   ReceiptStatus status;
   String        fontFamily;
+
+  // FONT SIZE PASS: numeric text size (points), mirrors
+  // InvoiceProvider.fontSize / QuoteData.fontSize. Drives the new Text
+  // Size slider on receipt_step_customise.dart.
+  double        fontSize;
+
   ReceiptColor  colorScheme;
 
   int layoutTemplateId;
@@ -152,6 +165,7 @@ class ReceiptData {
     this.paymentMethod    = PaymentMethod.cash,
     this.status           = ReceiptStatus.issued,
     this.fontFamily       = 'Roboto',
+    this.fontSize         = 12.0,
     this.colorScheme      = ReceiptColor.green,
     this.layoutTemplateId = 1,
     this.paperFormat      = 'a4',
@@ -219,6 +233,7 @@ class ReceiptData {
         'paymentMethod':    paymentMethod.name,
         'status':           status.name,
         'fontFamily':       fontFamily,
+        'fontSize':         fontSize,
         'colorScheme':      colorScheme.name,
         'layoutTemplateId': layoutTemplateId,
         'paperFormat':      paperFormat,
@@ -289,6 +304,7 @@ class ReceiptData {
           orElse: () => ReceiptStatus.issued,
         ),
         fontFamily:  j['fontFamily'] as String? ?? 'Roboto',
+        fontSize:    (j['fontSize'] as num?)?.toDouble() ?? 12.0,
         colorScheme: ReceiptColor.values.firstWhere(
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => ReceiptColor.green,
@@ -355,6 +371,7 @@ class ReceiptData {
     PaymentMethod?  paymentMethod,
     ReceiptStatus?  status,
     String?         fontFamily,
+    double?         fontSize,
     ReceiptColor?   colorScheme,
     int?            layoutTemplateId,
     String?         paperFormat,
@@ -416,6 +433,7 @@ class ReceiptData {
         paymentMethod:    paymentMethod    ?? this.paymentMethod,
         status:           status           ?? this.status,
         fontFamily:       fontFamily       ?? this.fontFamily,
+        fontSize:         fontSize         ?? this.fontSize,
         colorScheme:      colorScheme      ?? this.colorScheme,
         layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
         paperFormat:      paperFormat      ?? this.paperFormat,

@@ -1,7 +1,15 @@
 // quote_data.dart
 // lib/models/quote_data.dart
 //
-// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (this update): added
+// FONT SIZE PASS (this update): added fontSize (double, default 12.0) —
+// Quote had a fontFamily field but no numeric size field at all, unlike
+// InvoiceData's own font size support (see step_customise.dart's
+// _SizeSection / InvoiceProvider.fontSize). Added so Quote's Customise
+// step can finally show a Text Size slider matching Invoice's, via the
+// new quote_step_customise.dart. Default (12.0) preserves existing
+// render behaviour for every persisted quote, no migration needed.
+//
+// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (earlier): added
 // sourceTemplateId and sourceClientId — the id of whichever QuoteTemplate
 // (quote_template_library.dart) / QuoteClient (quote_client_library.dart)
 // was selected when this quote was last saved. Previously QuoteData only
@@ -137,6 +145,13 @@ class QuoteData {
   double      discountRate;
   QuoteStatus quoteStatus;
   String      fontFamily;
+
+  // FONT SIZE PASS: numeric text size (points), mirrors
+  // InvoiceProvider.fontSize / InvoiceData's equivalent. Drives the new
+  // Text Size slider on quote_step_customise.dart via
+  // QuoteProvider.updateFontSize().
+  double      fontSize;
+
   QuoteColor  colorScheme;
 
   // Which visual design (see the quote preview_registry.dart's
@@ -196,6 +211,7 @@ class QuoteData {
     this.discountRate     = 0.0,
     this.quoteStatus      = QuoteStatus.draft,
     this.fontFamily       = 'Roboto',
+    this.fontSize         = 12.0,
     this.colorScheme      = QuoteColor.purple,
     this.layoutTemplateId = 1,
     Map<String, bool>? enabledFields,
@@ -243,6 +259,7 @@ class QuoteData {
         'discountRate':     discountRate,
         'quoteStatus':      quoteStatus.name,
         'fontFamily':       fontFamily,
+        'fontSize':         fontSize,
         'colorScheme':      colorScheme.name,
         'layoutTemplateId': layoutTemplateId,
         'enabledFields':    enabledFields,
@@ -285,6 +302,7 @@ class QuoteData {
           orElse: () => QuoteStatus.draft,
         ),
         fontFamily:  j['fontFamily'] as String? ?? 'Roboto',
+        fontSize:    (j['fontSize'] as num?)?.toDouble() ?? 12.0,
         colorScheme: QuoteColor.values.firstWhere(
           (c) => c.name == (j['colorScheme'] as String? ?? ''),
           orElse: () => QuoteColor.purple,
@@ -343,6 +361,7 @@ class QuoteData {
     double?         discountRate,
     QuoteStatus?    quoteStatus,
     String?         fontFamily,
+    double?         fontSize,
     QuoteColor?     colorScheme,
     int?            layoutTemplateId,
     Map<String, bool>? enabledFields,
@@ -381,6 +400,7 @@ class QuoteData {
         discountRate:     discountRate     ?? this.discountRate,
         quoteStatus:      quoteStatus      ?? this.quoteStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
+        fontSize:         fontSize         ?? this.fontSize,
         colorScheme:      colorScheme      ?? this.colorScheme,
         layoutTemplateId: layoutTemplateId ?? this.layoutTemplateId,
         enabledFields: Map<String, bool>.from(enabledFields ?? this.enabledFields),

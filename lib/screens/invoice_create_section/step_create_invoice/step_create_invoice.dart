@@ -1,6 +1,26 @@
 // lib/screens/invoice_create_section/step_create_invoice/step_create_invoice.dart
 //
-// INVOICE NUMBER LENGTH FIX (this update): the auto-generated default
+// LINE ITEM CONTAINERS PASS (this update): added the "Saved Item Sets"
+// panel (CreateInvoiceSavedItemSets, new file
+// create_invoice_saved_items_widgets.dart) directly above the Line Items
+// section. It lets a bundle of line items be saved under a name and
+// quick-added back onto any future invoice's Line Items with a tap,
+// mirroring the "tap a card to select it" pattern from Saved Customers/
+// Saved Templates -- except tapping a saved set here APPENDS fresh
+// copies of its items rather than replacing a persistent selection (see
+// the new file's own header note for why). Backed by two new methods on
+// this state:
+//   - _getCurrentItemsSnapshot(): flushes controller text into _items
+//     (same defensive re-sync _continue() already did) and returns
+//     copies, so a saved set always reflects exactly what's on screen.
+//   - _quickAddItems(): mirrors _addItem() exactly, just seeded with the
+//     saved set's item data instead of starting blank. Also clears away
+//     the single still-untouched default blank item first (if that's
+//     all that's present) so quick-adding a set onto a fresh invoice
+//     doesn't leave a stray empty "Item 1" above the added items.
+// No other behavior on this step changed.
+//
+// INVOICE NUMBER LENGTH FIX (earlier update): the auto-generated default
 // invoice number was 'INV-$ts' where ts is
 // DateTime.now().millisecondsSinceEpoch -- a 13-digit timestamp, producing
 // numbers like "INV-1788218487235" (17 chars). That's what was causing the
@@ -34,6 +54,8 @@
 //   - create_invoice_form_widgets.dart           — CreateInvoiceField,
 //     CreateInvoiceDateField, CreateInvoiceContextBanner,
 //     CreateInvoiceCurrencyDisplayModeSelector, CreateInvoiceBottomBar.
+//   - create_invoice_saved_items_widgets.dart    — CreateInvoiceSavedItemSets
+//     (new, see LINE ITEM CONTAINERS PASS above).
 //
 // All widget classes previously private to the single file (_ItemCard,
 // _TotalsCard, _InvoiceField, _DateField, _ContextBanner,
@@ -59,6 +81,7 @@ import '../../../providers/invoice_provider.dart';
 import '../invoice_edit_widgets.dart';
 import 'create_invoice_item_widgets.dart';
 import 'create_invoice_form_widgets.dart';
+import 'create_invoice_saved_items_widgets.dart';
 
 // =============================================================================
 // StepCreateInvoice
@@ -296,6 +319,61 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       _descCtrl.removeAt(index);
       _qtyCtrl.removeAt(index);
       _priceCtrl.removeAt(index);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Saved item sets — quick add
+  //
+  // LINE ITEM CONTAINERS PASS: backs the new CreateInvoiceSavedItemSets
+  // panel above the Line Items section (see this file's top-of-file
+  // note and create_invoice_saved_items_widgets.dart).
+  //
+  // _getCurrentItemsSnapshot() flushes whatever's currently typed in
+  // each item's controllers into _items -- the same defensive re-sync
+  // _continue() already does before handing off to the provider -- and
+  // hands back fresh copies, so a saved set always reflects exactly
+  // what's on screen right now, not stale onChanged-mirrored data.
+  //
+  // _quickAddItems() mirrors _addItem() exactly, just seeded with the
+  // saved set's item data instead of starting blank. It also clears
+  // away the single still-untouched default blank item first (empty
+  // description, qty 1, price 0) if that's the only item present, so
+  // quick-adding a set onto a fresh invoice doesn't leave a stray empty
+  // "Item 1" sitting above the items that were just added.
+  // ---------------------------------------------------------------------------
+  List<InvoiceItem> _getCurrentItemsSnapshot() {
+    for (int i = 0; i < _items.length; i++) {
+      _items[i]
+        ..description = _descCtrl[i].text.trim()
+        ..quantity = double.tryParse(_qtyCtrl[i].text) ?? 1
+        ..unitPrice = double.tryParse(_priceCtrl[i].text) ?? 0;
+    }
+    return _items.map((i) => i.copyWith()).toList();
+  }
+
+  void _quickAddItems(List<InvoiceItem> items) {
+    setState(() {
+      if (_items.length == 1 &&
+          _items[0].description.trim().isEmpty &&
+          _items[0].quantity == 1.0 &&
+          _items[0].unitPrice == 0.0) {
+        _items.removeAt(0);
+        _descCtrl.removeAt(0).dispose();
+        _qtyCtrl.removeAt(0).dispose();
+        _priceCtrl.removeAt(0).dispose();
+      }
+      for (final item in items) {
+        final newItem = item.copyWith();
+        _items.add(newItem);
+        _descCtrl.add(TextEditingController(text: newItem.description));
+        _qtyCtrl.add(TextEditingController(
+          text: newItem.quantity == 1.0 ? '1' : '${newItem.quantity}',
+        ));
+        _priceCtrl.add(TextEditingController(
+          text: newItem.unitPrice == 0.0 ? '0' : '${newItem.unitPrice}',
+        ));
+      }
     });
   }
 
@@ -725,6 +803,15 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                         ),
                         const SizedBox(height: 20),
                       ],
+
+                      // ── Saved item sets (quick-add) ──────────────────────
+                      // LINE ITEM CONTAINERS PASS: see top-of-file note.
+                      CreateInvoiceSavedItemSets(
+                        getCurrentItems: _getCurrentItemsSnapshot,
+                        onQuickAdd: _quickAddItems,
+                        currencySymbol: _currencyPrefix,
+                      ),
+                      const SizedBox(height: 20),
 
                       // ── Line items ───────────────────────────────────────
                       Row(

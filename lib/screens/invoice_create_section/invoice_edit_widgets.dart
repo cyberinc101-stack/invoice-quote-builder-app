@@ -1,4 +1,13 @@
 // lib/screens/invoice_create_section/invoice_edit_widgets.dart
+//
+// SUMMARY PASS (this update): added InvoiceTotalsCard — Invoice had no
+// totals-card widget at all, unlike QuoteTotalsCard (quote_edit_widgets.dart)
+// and ReceiptTotalsCard (receipt_edit_widgets.dart), even though
+// InvoiceData already computes subtotal/taxAmount/discountAmount/
+// grandTotal (see invoice_data.dart). Mirrors those two widgets' design
+// exactly (same row layout, overflow-guarded amount text) so all three
+// documents' Summary sections look identical. Used by
+// step_customise.dart's new _SummarySection.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,6 +65,100 @@ class EmptyState extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InvoiceTotalsCard
+// SUMMARY PASS: mirrors QuoteTotalsCard (quote_edit_widgets.dart) and
+// ReceiptTotalsCard (receipt_edit_widgets.dart) exactly — same row
+// layout, same overflow guard (maxLines: 1 + ellipsis) on every amount,
+// including the final Total line.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class InvoiceTotalsCard extends StatelessWidget {
+  final double subtotal, taxAmount, discountAmount, total;
+  final double taxRate, discountRate;
+  final String currencySymbol;
+  final Color accent;
+
+  const InvoiceTotalsCard({
+    super.key,
+    required this.subtotal,
+    required this.taxAmount,
+    required this.discountAmount,
+    required this.total,
+    required this.taxRate,
+    required this.discountRate,
+    required this.currencySymbol,
+    required this.accent,
+  });
+
+  Widget _row(String label, String value, ColorScheme cs) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.7))),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0D1B2A) : const Color(0xFFE3F2FD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          _row('Subtotal', '$currencySymbol ${subtotal.toStringAsFixed(2)}', colorScheme),
+          const SizedBox(height: 8),
+          _row('Tax (${taxRate.toStringAsFixed(taxRate % 1 == 0 ? 0 : 1)}%)',
+              '$currencySymbol ${taxAmount.toStringAsFixed(2)}', colorScheme),
+          const SizedBox(height: 8),
+          _row('Discount (${discountRate.toStringAsFixed(discountRate % 1 == 0 ? 0 : 1)}%)',
+              '-$currencySymbol ${discountAmount.toStringAsFixed(2)}', colorScheme),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Divider(color: accent.withValues(alpha: 0.3), height: 1),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '$currencySymbol ${total.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent),
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,26 @@
 // lib/screens/quote_editor_screen.dart
 //
-// CUSTOMER STEP RENAME PASS (this update): the "Client" step is now
+// CUSTOMISE STEP EXTRACTION + FONT PASS (this update): the entire
+// _customiseStep() body (Title/Live Preview/Business Logo/Logo Size/
+// Accent Color/Fields/Summary), its two helper methods
+// (_fieldToggleRow/_quoteFieldsSection), and the private
+// _QuotePreviewCard class have all moved out into their own file,
+// create_quote_section/quote_step_customise.dart — matching Invoice's
+// convention of a dedicated step_customise.dart, and fixing the
+// file-naming gap that meant Quote's Customise step never got its own
+// file the way Invoice's did. _customiseStep() here is now just a thin
+// wrapper that builds a QuoteStepCustomise with the current local state
+// and callbacks that update that state + call _syncToProvider().
+//
+// Also added _fontFamily/_fontSize local state (previously untracked —
+// this screen had no font controls at all despite QuoteData already
+// having a fontFamily field), initialized from the loaded QuoteData and
+// synced to QuoteProvider on every _syncToProvider() call via the new
+// updateFontFamily()/updateFontSize() provider methods. See
+// quote_data.dart's FONT SIZE PASS and quote_provider.dart's matching
+// update.
+//
+// CUSTOMER STEP RENAME PASS (earlier): the "Client" step is now
 // "Customer" throughout — StepMeta label, the QuoteStepCustomerSection
 // widget (was QuoteClientLibrarySection, now living in
 // create_quote_section/quote_step_customer.dart instead of
@@ -12,10 +32,12 @@
 // of this pass.
 //
 // FIELD VISIBILITY POSITION PASS (earlier): "Quote Fields" / "Client
-// Fields" toggle section moved to sit directly under Live Preview (was
-// after Accent Color). This now matches the same relative position used
-// on the Receipt Customise step, and the Invoice Customise step once its
-// equivalent field-visibility section is added there.
+// Fields" toggle section previously moved to sit directly under Live
+// Preview. SUPERSEDED by this update's CUSTOMISE STEP EXTRACTION +
+// FONT PASS — the Fields section now sits after Font Family + Text Size
+// instead, matching Invoice's own Fields section position relative to
+// its last styling control. See quote_step_customise.dart's own doc
+// comment for the full reasoning.
 //
 // STEP REORDER PASS (earlier): step order now matches the invoice
 // flow's skeleton — Customer → Template → Create Quote → Customise —
@@ -49,16 +71,13 @@ import '../providers/quote_provider.dart';
 import '../models/quote_data.dart';
 import '../models/invoice_data.dart' show LineItem;
 import '../widgets/step_editor_header.dart';
-import '../widgets/shared_logo_picker.dart';
 import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'create_quote_section/quote_edit_widgets.dart';
 import 'create_quote_section/quote_full_preview_screen.dart';
 import 'create_quote_section/quote_step_customer.dart';
+import 'create_quote_section/quote_step_customise.dart';
 import 'create_quote_section/quote_step_template.dart';
-import 'create_quote_section/quote_template_chooser_01/preview_registry.dart' show buildQuotePreview;
-import '../document_layout_templates/01_executive/executive_quote_logic_data.dart';
-import '../document_layout_templates/01_executive/executive_quote_stationary_layout.dart' show kPageW;
-import '../document_layout_templates/pagination/scaled_page_stack.dart';
+import '../widgets/shared_logo_picker.dart';
 
 class QuoteEditorScreen extends StatefulWidget {
   final int layoutTemplateId;
@@ -130,6 +149,13 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   QuoteColor _colorScheme = QuoteColor.purple;
   late TextEditingController _titleCtrl;
 
+  // CUSTOMISE STEP EXTRACTION + FONT PASS: previously untracked — this
+  // screen had no font controls despite QuoteData already having a
+  // fontFamily field. Initialized from the loaded QuoteData in
+  // initState, synced to QuoteProvider in _syncToProvider().
+  late String _fontFamily;
+  late double _fontSize;
+
   String get _currencyPrefix {
     final symbol = _currencySymbolCtrl.text.trim();
     final code = _currencyCodeCtrl.text.trim().toUpperCase();
@@ -171,6 +197,8 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     _taxRate      = q.taxRate.clamp(0.0, 100.0);
     _discountRate = q.discountRate.clamp(0.0, 100.0);
     _colorScheme  = q.colorScheme;
+    _fontFamily   = q.fontFamily;
+    _fontSize     = q.fontSize;
 
     _taxCtrl      = TextEditingController(text: _taxRate == 0 ? '' : '$_taxRate');
     _discountCtrl = TextEditingController(text: _discountRate == 0 ? '' : '$_discountRate');
@@ -283,6 +311,8 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     provider.updateEnabledFields(_enabledFields);
     provider.updateQuoteData(provider.quoteData.copyWith(lineItems: _currentLineItems));
     provider.updateColorScheme(_colorScheme);
+    provider.updateFontFamily(_fontFamily);
+    provider.updateFontSize(_fontSize);
     provider.updateLayoutTemplateId(_layoutTemplateId);
   }
 
@@ -763,337 +793,65 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     );
   }
 
-  Widget _fieldToggleRow(String key, String label, {IconData? icon}) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final value = _enabledFields[key] ?? true;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(10),
-        color: isDark ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : Colors.white,
-      ),
-      child: SwitchListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-        title: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
-              const SizedBox(width: 10),
-            ],
-            Text(label, style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
-          ],
-        ),
-        value: value,
-        activeThumbColor: _accent,
-        onChanged: (v) {
-          setState(() => _enabledFields[key] = v);
-          _syncToProvider();
-        },
-      ),
-    );
-  }
-
-  Widget _quoteFieldsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        quoteSectionHeader(context, 'Quote Fields', _accent, icon: Icons.tune_rounded),
-        Text(
-          'Toggle which fields appear on the generated quote.',
-          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45)),
-        ),
-        const SizedBox(height: 10),
-        _fieldToggleRow('invoiceNumber', 'Quote Number', icon: Icons.tag_rounded),
-        _fieldToggleRow('date', 'Issue Date', icon: Icons.calendar_today_rounded),
-        _fieldToggleRow('dueDate', 'Valid Until', icon: Icons.event_rounded),
-        _fieldToggleRow('businessLogo', 'Business Logo', icon: Icons.image_rounded),
-        _fieldToggleRow('tax', 'Tax', icon: Icons.percent_rounded),
-        _fieldToggleRow('discount', 'Discount', icon: Icons.local_offer_rounded),
-        _fieldToggleRow('notes', 'Notes', icon: Icons.notes_rounded),
-        _fieldToggleRow('thankYouMessage', 'Thank You Message', icon: Icons.favorite_border_rounded),
-        const SizedBox(height: 12),
-        quoteSectionHeader(context, 'Client Fields', _accent, icon: Icons.person_rounded),
-        _fieldToggleRow('customerName', 'Client Name', icon: Icons.person_outline_rounded),
-        _fieldToggleRow('customerEmail', 'Client Email', icon: Icons.email_rounded),
-        _fieldToggleRow('customerPhone', 'Client Phone', icon: Icons.phone_rounded),
-        _fieldToggleRow('customerAddress', 'Client Address', icon: Icons.location_on_rounded),
-      ],
-    );
-  }
-
+  // CUSTOMISE STEP EXTRACTION + FONT PASS: this is now a thin wrapper
+  // around QuoteStepCustomise (quote_step_customise.dart) — all the
+  // section widgets/layout previously inline here have moved into that
+  // file. Every callback below updates local state then calls
+  // _syncToProvider(), exactly matching what the old inline handlers did.
   Widget _customiseStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        quoteSectionHeader(context, 'Quote Title', _accent, icon: Icons.title_rounded),
-        QuoteField(ctrl: _titleCtrl, label: 'Title (for your records)', accent: _accent, icon: Icons.bookmark_outline_rounded, required: true, max: 80),
-        const SizedBox(height: 24),
-
-        quoteSectionHeader(context, 'Live Preview', _accent, icon: Icons.visibility_rounded),
-        const _QuotePreviewCard(),
-        const SizedBox(height: 24),
-
-        // FIELD VISIBILITY POSITION PASS: Quote/Client Fields section
-        // now sits directly under Live Preview — same relative position
-        // as Receipt's Customise step, and matching where Invoice's own
-        // field-visibility section will sit once added.
-        _quoteFieldsSection(),
-        const SizedBox(height: 24),
-
-        quoteSectionHeader(context, 'Business Logo', _accent, icon: Icons.image_rounded),
-        Builder(builder: (context) {
-          final hasLogo = _logoPath != null && _logoPath!.isNotEmpty;
-          final previewSize = (90.0 + (_logoSize - 40.0) * 3.0).clamp(90.0, 220.0);
-          return Column(
-            children: [
-              Center(
-                child: Opacity(
-                  opacity: hasLogo ? 1.0 : 0.5,
-                  child: SharedLogoPicker(
-                    logoPath: _logoPath,
-                    logoOffset: _logoOffset,
-                    logoScale: _logoScale,
-                    logoShape: _logoShape,
-                    accent: _accent,
-                    compact: true,
-                    compactBoxSize: previewSize,
-                    onChanged: (path, offset, scale, shape) {
-                      setState(() {
-                        _logoPath = path;
-                        _logoOffset = offset;
-                        _logoScale = scale;
-                        _logoShape = shape;
-                      });
-                      _syncToProvider();
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                hasLogo ? 'Tap logo to change, reposition, or remove' : 'Tap to upload a logo',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
-              ),
-              const SizedBox(height: 14),
-              Opacity(
-                opacity: hasLogo ? 1.0 : 0.4,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: LogoShape.values.map((s) {
-                    final selected = s == _logoShape;
-                    return GestureDetector(
-                      onTap: hasLogo
-                          ? () {
-                              setState(() => _logoShape = s);
-                              _syncToProvider();
-                            }
-                          : null,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: selected ? _accent.withValues(alpha: 0.12) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: selected ? _accent : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(s.icon, size: 16, color: selected ? _accent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                            const SizedBox(width: 5),
-                            Text(s.label,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: selected ? _accent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          );
-        }),
-        const SizedBox(height: 16),
-
-        quoteSectionHeader(context, 'Logo Size', _accent, icon: Icons.photo_size_select_large_rounded),
-        Opacity(
-          opacity: (_logoPath != null && _logoPath!.isNotEmpty) ? 1.0 : 0.4,
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.image_outlined, size: 14, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: _accent,
-                        inactiveTrackColor: _accent.withValues(alpha: 0.2),
-                        thumbColor: _accent,
-                        overlayColor: _accent.withValues(alpha: 0.15),
-                        trackHeight: 4,
-                      ),
-                      child: Slider(
-                        value: _logoSize,
-                        min: 24,
-                        max: 60,
-                        divisions: 9,
-                        onChanged: (_logoPath != null && _logoPath!.isNotEmpty)
-                            ? (v) {
-                                setState(() => _logoSize = v);
-                                _syncToProvider();
-                              }
-                            : null,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.image_outlined, size: 24, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                ],
-              ),
-              Text(
-                (_logoPath != null && _logoPath!.isNotEmpty) ? '${_logoSize.toInt()}px' : 'Add a logo to enable',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _accent),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        quoteSectionHeader(context, 'Accent Color', _accent, icon: Icons.palette_outlined),
-        QuoteColorPicker(
-          selected: _colorScheme,
-          onChanged: (c) {
-            setState(() => _colorScheme = c);
-            _syncToProvider();
-          },
-        ),
-        const SizedBox(height: 24),
-
-        quoteSectionHeader(context, 'Summary', _accent, icon: Icons.summarize_rounded),
-        QuoteTotalsCard(
-          subtotal: _subtotal,
-          taxAmount: _taxAmount,
-          discountAmount: _discountAmount,
-          total: _total,
-          taxRate: _taxRate,
-          discountRate: _discountRate,
-          currencySymbol: _currencyPrefix,
-          accent: _accent,
-        ),
-        const SizedBox(height: 20),
-
-        GestureDetector(
-          onTap: _openFullPreview,
-          child: Container(
-            width: double.infinity,
-            height: 50,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)]),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: const [
-                BoxShadow(color: Color(0x504CAF50), blurRadius: 12, offset: Offset(0, 4)),
-              ],
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.preview_rounded, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Preview & Download',
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuotePreviewCard extends StatelessWidget {
-  const _QuotePreviewCard();
-
-  static Color _accentFromScheme(QuoteColor scheme) {
-    const map = {
-      QuoteColor.blue:   Color(0xFF1565C0),
-      QuoteColor.green:  Color(0xFF2E7D32),
-      QuoteColor.purple: Color(0xFF6A1B9A),
-      QuoteColor.orange: Color(0xFFE65100),
-      QuoteColor.red:    Color(0xFFC62828),
-      QuoteColor.teal:   Color(0xFF00695C),
-      QuoteColor.black:  Color(0xFF212121),
-      QuoteColor.indigo: Color(0xFF283593),
-    };
-    return map[scheme] ?? const Color(0xFF6A1B9A);
-  }
-
-  Widget _buildPreviewWidget(QuoteData data) {
-    return buildQuotePreview(data.layoutTemplateId, data) ??
-        ExecutiveQuotePreview(data: data);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data        = context.watch<QuoteProvider>().quoteData;
-    final accent      = _accentFromScheme(data.colorScheme);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
-          ),
-          child: Row(children: [
-            Container(width: 7, height: 7,
-                decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
-            const SizedBox(width: 7),
-            Text('Live Preview',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent)),
-          ]),
-        ),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 12, offset: const Offset(0, 4)),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: ScaledPageStack(
-                  targetWidth: constraints.maxWidth,
-                  nativePageWidth: kPageW,
-                  child: _buildPreviewWidget(data),
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Text('Live preview - changes appear instantly.',
-              style: TextStyle(fontSize: 11,
-                  color: colorScheme.onSurface.withValues(alpha: 0.35),
-                  fontStyle: FontStyle.italic)),
-        ),
-      ],
+    return QuoteStepCustomise(
+      accent: _accent,
+      titleCtrl: _titleCtrl,
+      enabledFields: _enabledFields,
+      onEnabledFieldsChanged: (updated) {
+        setState(() => _enabledFields = updated);
+        _syncToProvider();
+      },
+      logoPath: _logoPath,
+      logoOffset: _logoOffset,
+      logoScale: _logoScale,
+      logoShape: _logoShape,
+      logoSize: _logoSize,
+      onLogoChanged: (path, offset, scale, shape) {
+        setState(() {
+          _logoPath = path;
+          _logoOffset = offset;
+          _logoScale = scale;
+          _logoShape = shape;
+        });
+        _syncToProvider();
+      },
+      onLogoShapeChanged: (shape) {
+        setState(() => _logoShape = shape);
+        _syncToProvider();
+      },
+      onLogoSizeChanged: (v) {
+        setState(() => _logoSize = v);
+        _syncToProvider();
+      },
+      colorScheme: _colorScheme,
+      onColorSchemeChanged: (c) {
+        setState(() => _colorScheme = c);
+        _syncToProvider();
+      },
+      fontFamily: _fontFamily,
+      onFontFamilyChanged: (f) {
+        setState(() => _fontFamily = f);
+        _syncToProvider();
+      },
+      fontSize: _fontSize,
+      onFontSizeChanged: (v) {
+        setState(() => _fontSize = v);
+        _syncToProvider();
+      },
+      subtotal: _subtotal,
+      taxAmount: _taxAmount,
+      discountAmount: _discountAmount,
+      total: _total,
+      taxRate: _taxRate,
+      discountRate: _discountRate,
+      currencySymbol: _currencyPrefix,
+      onOpenFullPreview: _openFullPreview,
     );
   }
 }

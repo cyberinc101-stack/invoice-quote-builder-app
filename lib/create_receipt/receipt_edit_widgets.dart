@@ -1,11 +1,23 @@
 // lib/create_receipt/receipt_edit_widgets.dart
 //
+// ACCENT COLOR GRID PASS (this update): ReceiptColorPicker no longer uses
+// the small-circle-with-checkmark Wrap design. It's replaced with the same
+// grid-tile picker (gradient tile + checkmark overlay + label underneath,
+// 3-column GridView) that invoice's step_customise.dart _ColourSection
+// uses — the two were visibly inconsistent (Receipt's Customise screen
+// showed plain colour circles while Invoice's showed labelled gradient
+// tiles). kReceiptColorSwatches is kept as the single source of colour
+// values; added kReceiptColorNames alongside it for the tile labels.
+// receipt_step_customise.dart's call site (ReceiptColorPicker(selected:
+// ..., onChanged: ...)) is unchanged — only this widget's internals
+// changed, so no other file needed editing.
+//
 // Reusable pieces for the Receipt step flow — mirrors the naming and shape
 // of create_quote_section/quote_edit_widgets.dart (QuoteField, QuoteItemCard,
 // QuoteTotalsCard, QuoteStepNavBar, quoteSectionHeader) so Receipt, Quote,
 // and Invoice all read the same way.
 //
-// OPTIONAL LABEL PASS (this update): ReceiptField now appends "(Optional)"
+// OPTIONAL LABEL PASS (earlier update): ReceiptField now appends "(Optional)"
 // to a field's label automatically whenever `required` is false — matching
 // the identical pass just applied to QuoteField (quote_edit_widgets.dart)
 // and invoice's step_templates.dart _SheetField. Required fields (already
@@ -747,7 +759,11 @@ String receiptCurrencySymbol(String code) {
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accent color picker for ReceiptColor
-// Mirrors quote_edit_widgets.dart's QuoteColorPicker.
+// ACCENT COLOR GRID PASS: rebuilt as a labelled gradient-tile grid,
+// matching invoice's step_customise.dart _ColourSection exactly (same
+// tile shape, checkmark overlay, and label-underneath layout). Colour
+// values still come from kReceiptColorSwatches; kReceiptColorNames is new,
+// giving each swatch the display name shown under its tile.
 // ─────────────────────────────────────────────────────────────────────────
 
 const Map<ReceiptColor, Color> kReceiptColorSwatches = {
@@ -761,6 +777,17 @@ const Map<ReceiptColor, Color> kReceiptColorSwatches = {
   ReceiptColor.indigo: Color(0xFF283593),
 };
 
+const Map<ReceiptColor, String> kReceiptColorNames = {
+  ReceiptColor.blue:   'Blue',
+  ReceiptColor.green:  'Green',
+  ReceiptColor.purple: 'Purple',
+  ReceiptColor.orange: 'Orange',
+  ReceiptColor.red:    'Red',
+  ReceiptColor.teal:   'Teal',
+  ReceiptColor.black:  'Black',
+  ReceiptColor.indigo: 'Indigo',
+};
+
 class ReceiptColorPicker extends StatelessWidget {
   final ReceiptColor selected;
   final ValueChanged<ReceiptColor> onChanged;
@@ -769,33 +796,87 @@ class ReceiptColorPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: ReceiptColor.values.map((c) {
-        final color = kReceiptColorSwatches[c]!;
-        final isSelected = selected == c;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.25,
+      ),
+      itemCount: ReceiptColor.values.length,
+      itemBuilder: (_, i) {
+        final scheme = ReceiptColor.values[i];
+        final color = kReceiptColorSwatches[scheme]!;
+        final isSelected = scheme == selected;
         return GestureDetector(
-          onTap: () => onChanged(c),
+          onTap: () => onChanged(scheme),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            width: 40,
-            height: 40,
             decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isSelected ? Colors.white : Colors.transparent,
-                width: 2.5,
+                color: isSelected
+                    ? const Color(0xFF2196F3)
+                    : colorScheme.outline.withValues(alpha: 0.3),
+                width: isSelected ? 2 : 1,
               ),
-              boxShadow: isSelected
-                  ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 2))]
-                  : [],
             ),
-            child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 18) : null,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          color,
+                          color.withValues(alpha: 0.75),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(9),
+                        topRight: Radius.circular(9),
+                      ),
+                    ),
+                    child: isSelected
+                        ? const Center(
+                            child: Icon(Icons.check_circle_rounded,
+                                color: Colors.white, size: 22))
+                        : null,
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(9),
+                      bottomRight: Radius.circular(9),
+                    ),
+                  ),
+                  child: Text(
+                    kReceiptColorNames[scheme]!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
+                      color: isSelected
+                          ? const Color(0xFF2196F3)
+                          : colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
-      }).toList(),
+      },
     );
   }
 }

@@ -1,18 +1,17 @@
 // invoice_full_preview_screen.dart
 // lib/screens/invoice_create_section/step_customize/invoice_full_preview_screen.dart
 //
-// BUSINESS NAME ON SAVE (this update): the Save Invoice dialog
-// (_handleSaveInvoice) now also has an optional "Business Name" field
-// alongside the existing document title field. Invoices are the one
-// document type in the app that don't require selecting a saved business
-// profile before this point (unlike quotes/receipts, which block Next
-// until a profile is picked — see quote_editor_screen.dart /
-// create_receipt_screen.dart), so this is the first and only place an
-// invoice's business name can reliably get filled in. Left optional
-// (rather than required) so a quick draft invoice can still be saved
-// without one — it only writes through to InvoiceData.businessName via
-// provider.updateBusinessInfo() when non-empty, so leaving it blank never
-// clears an existing value already on the draft.
+// SAVE-FROM-CUSTOMISE PASS (this update): removed the "Save" AppBar
+// action, _handleSaveInvoice(), and the Save Invoice dialog
+// (_SaveInvoiceDialogResult) entirely. Saving an invoice now happens
+// directly from step_customise.dart's "Save Invoice" bottom-bar button
+// (see that file's own SAVE-FROM-CUSTOMISE PASS comment), matching how
+// QuoteFullPreviewScreen has no save affordance of its own either — the
+// wizard's Save action lives on the Customise step, this screen is pure
+// preview/export/share. The optional "Business Name" field that used to
+// live in that dialog is gone with it; business name is set via the
+// selected Template (step_templates.dart) same as before, and can still
+// be edited there.
 //
 // TEMPLATE PASS (earlier): the body no longer hardcodes
 // ExecutiveInvoicePreview — it now dispatches on
@@ -41,7 +40,6 @@ import 'package:provider/provider.dart';
 import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
 import '../../../services/invoice_pdf_service.dart';
-import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
 import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
     show kPageW;
@@ -59,13 +57,10 @@ class InvoiceFullPreviewScreen extends StatefulWidget {
 class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
   final _pdfService = InvoicePdfService();
   bool _isLoading = false;
-  bool _isSaving = false;
 
   // Wraps the live draft as a SavedInvoice so it can go through the same
-  // PDF path as a saved one, without actually persisting it. Used only for
-  // the Download/Share actions below — NOT for the real Save action, which
-  // goes through InvoiceProvider.saveCurrentInvoice() instead so it's
-  // actually inserted into savedInvoices.
+  // PDF path as a saved one, without actually persisting it. Used only
+  // for the Download/Share actions below.
   SavedInvoice _wrapAsSavedInvoice(InvoiceData data) {
     final now = DateTime.now();
     return SavedInvoice(
@@ -116,137 +111,6 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     }
   }
 
-  // Prompts for a title (required) and a business name (optional), then
-  // inserts the current draft into InvoiceProvider.savedInvoices via
-  // saveCurrentInvoice(). On success, resets the active draft and
-  // navigates to the saved invoice's detail screen, clearing the wizard
-  // stack beneath it.
-  Future<void> _handleSaveInvoice() async {
-    final provider = context.read<InvoiceProvider>();
-    final data = provider.invoiceData;
-
-    final suggestedTitle = data.clientName.isNotEmpty
-        ? '${data.clientName} — ${data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice'}'
-        : (data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice');
-
-    final titleController = TextEditingController(text: suggestedTitle);
-    final businessNameController = TextEditingController(text: data.businessName);
-    final formKey = GlobalKey<FormState>();
-
-    final result = await showDialog<_SaveInvoiceDialogResult>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Save Invoice',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: titleController,
-                autofocus: true,
-                maxLength: 60,
-                textCapitalization: TextCapitalization.words,
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
-                decoration: InputDecoration(
-                  labelText: 'Document Name',
-                  hintText: 'Enter a name for this invoice',
-                  filled: true,
-                  fillColor: const Color(0xFFF8F9FC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: businessNameController,
-                maxLength: 80,
-                textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  labelText: 'Business Name (optional)',
-                  hintText: 'e.g. your company name',
-                  filled: true,
-                  fillColor: const Color(0xFFF8F9FC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(
-                  ctx,
-                  _SaveInvoiceDialogResult(
-                    title: titleController.text.trim(),
-                    businessName: businessNameController.text.trim(),
-                  ),
-                );
-              }
-            },
-            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-
-    if (result == null) return; // cancelled
-
-    // Only writes through when the field was actually filled in — an
-    // empty business name here must never blank out one already set
-    // earlier (e.g. on the Customise step, if that's ever wired up to
-    // collect it directly).
-    if (result.businessName.isNotEmpty) {
-      provider.updateBusinessInfo(businessName: result.businessName);
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final saved = provider.saveCurrentInvoice(
-        title: result.title,
-        templateName: 'Executive',
-      );
-
-      provider.resetInvoiceData();
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Invoice "${saved.title}" saved'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => SavedDocumentDetailScreen.invoice(saved),
-        ),
-        (route) => route.isFirst,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Couldn\'t save invoice: $e'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
   static Color _accentFromScheme(InvoiceColor scheme) {
     const map = {
       InvoiceColor.blue:   Color(0xFF1565C0),
@@ -287,28 +151,6 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0.5,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: _isSaving
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    ),
-                  )
-                : TextButton.icon(
-                    onPressed: _handleSaveInvoice,
-                    icon: Icon(Icons.save_rounded, size: 18, color: accent),
-                    label: Text(
-                      'Save',
-                      style: TextStyle(color: accent, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -328,13 +170,4 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
       ),
     );
   }
-}
-
-// Small result carrier for the Save Invoice dialog — keeps the two typed
-// fields (title, business name) together as one Navigator.pop payload
-// instead of juggling two separate dialog round-trips.
-class _SaveInvoiceDialogResult {
-  final String title;
-  final String businessName;
-  const _SaveInvoiceDialogResult({required this.title, required this.businessName});
 }

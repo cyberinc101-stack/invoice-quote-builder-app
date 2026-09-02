@@ -1,7 +1,16 @@
 ﻿// home_screen.dart
 // lib/screens/home_screen.dart
 //
-// HERO CLUSTER FIT + RECEIPT TEXTURE FIX (this pass): two problems with
+// HISTORY BUTTON PASS (this update): the "Templates" CTA button (bottom
+// row of the hero banner) is now "History" and opens HistoryScreen
+// (history_screen.dart) instead of DocumentTemplatesScreen —
+// HistoryScreen already existed in the codebase but had no button
+// anywhere pointing to it. document_templates_screen.dart's own import
+// is removed since nothing here references it anymore; the file itself
+// is left on disk (delete manually if you're sure nothing else links to
+// it — this pass only touches this button).
+//
+// HERO CLUSTER FIT + RECEIPT TEXTURE FIX (earlier pass): two problems with
 // the new _MiniDocCluster illustration. (1) The RECEIPT label on the
 // green card used overflow: TextOverflow.visible with no clipping
 // container around it, so on narrower screens the tail of the word spilled
@@ -74,7 +83,7 @@ import '../alerts/custom_reminders/reminder_provider.dart';
 import '../widgets/create_receipt_button.dart';
 import '../widgets/saved_documents/saved_documents_section.dart';
 import 'alerts_screen.dart';
-import 'document_templates_screen.dart';
+import 'history_screen.dart';
 import 'invoice_template_chooser_screen.dart';
 import 'quote_template_chooser_screen.dart';
 import 'settings_screen.dart';
@@ -296,8 +305,13 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _CtaButton(
-                          label: 'Templates',
-                          icon: Icons.grid_view_rounded,
+                          // HISTORY BUTTON PASS: was 'Templates' ->
+                          // DocumentTemplatesScreen. Now opens
+                          // HistoryScreen (history_screen.dart), which
+                          // previously had no button anywhere pointing
+                          // to it.
+                          label: 'History',
+                          icon: Icons.history_rounded,
                           singleLine: true,
                           gradient: const LinearGradient(
                             colors: [Color(0xFF78909C), Color(0xFF546E7A)],
@@ -307,7 +321,7 @@ class HomeScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const DocumentTemplatesScreen(),
+                                builder: (_) => const HistoryScreen(),
                               ),
                             );
                           },
