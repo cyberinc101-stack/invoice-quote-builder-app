@@ -1,5 +1,16 @@
 // lib/screens/splash_screen.dart
 //
+// REAL ICON PASS (this update): the hero graphic used to be _DocumentStack,
+// a hand-drawn Flutter recreation of the QUOTE/INVOICE/RECEIPT card fan
+// (three separately-built _DocCard widgets). That's now replaced with the
+// app's actual icon image (assets/icon/app_icon.png -- the same artwork
+// used for the launcher icon) rendered via Image.asset inside a rounded,
+// drop-shadowed container, so the splash and the launcher icon are
+// guaranteed to look identical instead of being two hand-maintained copies
+// of the same design. _DocumentStack and _DocCard are removed since
+// nothing else in the file used them. Needs assets/icon/app_icon.png
+// declared under flutter/assets in pubspec.yaml.
+//
 // Loading splash for Invoice & Quote Builder. Single screen — no
 // multi-page animation timeline, just a themed loading state while
 // main() finishes its startup work, then a fade into
@@ -8,8 +19,8 @@
 // Replaces the old splash_screen.dart, which was a leftover from the
 // forked CV-builder app. Visual language here matches the home-screen
 // hero card and the app's ColorScheme.fromSeed(0xFF2196F3) in main.dart:
-// dark navy gradient background, a fanned stack of three document cards
-// (Quote / Receipt / Invoice) instead of CV-builder branding.
+// dark navy gradient background, the app's own icon artwork instead of
+// CV-builder branding.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -92,7 +103,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const _DocumentStack(),
+                      const _AppIcon(),
                       const SizedBox(height: 36),
                       const Text(
                         'Invoice & Quote Builder',
@@ -136,154 +147,35 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// ─── Document stack visual ──────────────────────────────────────────────
+// ─── App icon visual ─────────────────────────────────────────────────────
+// The real launcher icon artwork, presented with rounded corners and a
+// drop shadow. The shadow lives on the outer Container so it isn't
+// clipped by the inner ClipRRect that rounds the image itself.
 
-class _DocumentStack extends StatelessWidget {
-  const _DocumentStack();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 154,
-      width: 220,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned(
-            left: 4,
-            top: 18,
-            child: Transform.rotate(
-              angle: -0.18,
-              child: const _DocCard(
-                label: 'QUOTE',
-                icon: Icons.request_quote_rounded,
-                gradient: LinearGradient(
-                  colors: [Color(0xFFAD1457), Color(0xFFE91E63)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 4,
-            top: 14,
-            child: Transform.rotate(
-              angle: 0.18,
-              child: const _DocCard(
-                label: 'RECEIPT',
-                icon: Icons.receipt_long_rounded,
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1B5E20), Color(0xFF43A047)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-          ),
-          const _DocCard(
-            label: 'INVOICE',
-            icon: Icons.description_rounded,
-            gradient: LinearGradient(
-              colors: [Color(0xFF1565C0), Color(0xFF2196F3)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            elevated: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DocCard extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final LinearGradient gradient;
-  final bool elevated;
-
-  const _DocCard({
-    required this.label,
-    required this.icon,
-    required this.gradient,
-    this.elevated = false,
-  });
+class _AppIcon extends StatelessWidget {
+  const _AppIcon();
 
   @override
   Widget build(BuildContext context) {
-    final w = elevated ? 96.0 : 84.0;
-    final h = elevated ? 124.0 : 108.0;
-
     return Container(
-      width: w,
-      height: h,
-      padding: const EdgeInsets.all(12),
+      width: 136,
+      height: 136,
       decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(16),
-        border: elevated
-            ? Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.5)
-            : null,
+        borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: elevated ? 0.45 : 0.25),
-            blurRadius: elevated ? 26 : 14,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.9),
-              size: elevated ? 22 : 18),
-          SizedBox(height: elevated ? 8 : 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontSize: elevated ? 11 : 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const Spacer(),
-          ...List.generate(3, (i) {
-            const widths = [0.8, 0.55, 0.68];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Container(
-                height: 3,
-                width: widths[i] * w * 0.7,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            );
-          }),
-          if (elevated)
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'PAID',
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF2196F3),
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ),
-            ),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Image.asset(
+          'assets/icon/app_icon.png',
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }

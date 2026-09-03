@@ -46,6 +46,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/icon/app_icon.png
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Roboto/static/
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lato/
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Lora/static/
