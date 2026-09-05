@@ -2,7 +2,37 @@
 //
 // Generates and exports invoice PDFs.
 //
-// HISTORY LOGGING PASS (this update): generateAndSharePDF now accepts an
+// LINE ITEM TOTAL + GST/TAX BREAKDOWN PDF FIX (this update): this file
+// is a separate pw.Widget implementation from the Flutter preview
+// (executive_invoice_stationary_layout.dart) — Material widgets can't be
+// handed to the pdf/printing packages — so the earlier LINE NET TOTAL
+// FIX applied there never reached the actual exported PDF. Two changes:
+//   1. The line-item table's Total column now applies that row's own
+//      discount/tax the same way LineItem.lineNetTotal does (item.total
+//      minus its discount amount, plus/minus its signed tax amount),
+//      instead of the plain qty × price base figure.
+//   2. The totals block now also loops over InvoiceData's
+//      itemDiscountExtraByName / itemTaxExtraByName maps — same source
+//      the Flutter footer already reads — to render "Item Discounts
+//      (name)" / "Item Tax (name)" rows (GST, VAT, withholding, etc.)
+//      beneath the existing flat document-level Tax/Discount rows.
+//      Signed the same way: a withholding-style tax renders with a
+//      minus sign instead of always being added.
+// Nothing else in this file changed.
+//
+// PAYMENT INFO / TERMS & SIGNATURE PDF RENDER PASS (earlier): the
+// same fields executive_invoice_stationary_layout.dart's live preview
+// now renders are rendered here too, so the exported PDF actually
+// matches what the preview shows. PO / Reference Number is added to the
+// header meta column (below Due Date). Bank Name/Account Name/Account
+// Number/Other Payment Details/Payment Terms, Terms & Conditions, and
+// the Signature block (image/typed/blank) are built via three new calls
+// into invoice_pdf_extra_sections.dart (split out to its own file rather
+// than growing this one further) and inserted after the Notes section.
+// All gated by the same enabledFields toggles as everything else here,
+// so a PDF with none of this set exports exactly as before this pass.
+//
+// HISTORY LOGGING PASS (earlier): generateAndSharePDF now accepts an
 // optional [historyProvider]. Share doesn't return a file path the way
 // download does, so this is the one call site where the PDF service
 // itself — not the caller — is what actually has the freshly-written
@@ -16,7 +46,7 @@
 // TEMPLATE FIELD VISIBILITY FIX (earlier update): _buildExecutivePdf now
 // gates the same fields as the live preview/edit canvas
 // (executive_invoice_stationary_layout.dart) behind
-// InvoiceData.enabledFields via the new _on() helper — business logo/
+// InvoiceData.enabledFields via the _on() helper — business logo/
 // name/email/phone/address, invoice number, issue/due dates, Bill To
 // block (client name/email/phone/address), tax row, discount row, and
 // notes. Previously the exported PDF ignored enabledFields entirely (it
@@ -54,18 +84,6 @@
 // every other caller, so normal shares are unchanged from before this
 // pass.
 //
-// REWRITE: previously built against an `Invoice`/`BusinessInfo`/`ClientInfo`
-// shape (businessInfo.name, customer.email, enabledFields map, items cast
-// from dynamic) that does not match the app's real data model. Confirmed
-// against invoice_provider.dart + models/invoice_data.dart: the real model
-// is InvoiceData, with flat fields (businessName, businessEmail, clientName,
-// lineItems, etc.) set via InvoiceProvider.updateBusinessInfo/updateClientInfo/
-// updateInvoiceDetails, and saved as SavedInvoice.data. This version builds
-// directly from that real InvoiceData, nothing else.
-//
-// The existing pdf_service.dart (CV/resume PDFs) is untouched — this is the
-// invoice-only PDF path.
-//
 // REWRITE (earlier pass): threads the visual layout chosen in
 // InvoiceTemplateChooserScreen through to PDF generation. `layoutTemplateId`
 // is a plain optional parameter on the public methods — deliberately NOT a
@@ -97,6 +115,7 @@ import '../models/history_event.dart' show HistoryDocType;
 import '../providers/history_provider.dart';
 import 'pdf_doc_adapter.dart';
 import 'pdf_templates.dart' as styled;
+import 'invoice_pdf_extra_sections.dart';
 
 class InvoicePdfService {
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -218,6 +237,9 @@ class InvoicePdfService {
     final showInvoiceNumber = _on(d, 'invoiceNumber');
     final showDate = _on(d, 'date');
     final showDueDate = _on(d, 'dueDate');
+    // PAYMENT INFO / TERMS & SIGNATURE PDF RENDER PASS: PO / Reference
+    // Number, rendered in the header meta column below Due Date.
+    final showPoNumber = _on(d, 'poNumber');
     final showClientName = _on(d, 'customerName');
     final showClientEmail = _on(d, 'customerEmail');
     final showClientPhone = _on(d, 'customerPhone');
@@ -230,6 +252,13 @@ class InvoicePdfService {
         (showClientEmail && d.clientEmail.isNotEmpty) ||
         (showClientPhone && d.clientPhone.isNotEmpty) ||
         (showClientAddress && d.clientAddress.isNotEmpty);
+
+    // PAYMENT INFO / TERMS & SIGNATURE PDF RENDER PASS: built up front
+    // (signature needs an awaited disk read for 'image' mode) since a
+    // pw.Widget tree must be fully assembled before pdf.addPage() below.
+    final paymentInfoPanel = buildPdfPaymentInfoPanel(d);
+    final termsPanel = buildPdfTermsPanel(d);
+    final signatureBlock = await buildPdfSignatureBlock(d);
 
     pdf.addPage(
       pw.MultiPage(
@@ -297,6 +326,10 @@ class InvoicePdfService {
                       pw.Text('Due: ${d.dueDate}',
                           style: const pw.TextStyle(
                               fontSize: 10, color: PdfColors.white)),
+                    if (showPoNumber && d.poNumber.trim().isNotEmpty)
+                      pw.Text('PO: ${d.poNumber.trim()}',
+                          style: const pw.TextStyle(
+                              fontSize: 10, color: PdfColors.white)),
                   ],
                 ),
               ],
@@ -360,8 +393,25 @@ class InvoicePdfService {
                   _th('Total', align: pw.TextAlign.right),
                 ],
               ),
-              ...d.lineItems.map(
-                (item) => pw.TableRow(
+              // LINE ITEM TOTAL FIX (this update): each row's Total now
+              // subtracts its own discount amount and applies its own
+              // (signed) tax amount, the same formula as
+              // LineItem.lineNetTotal / the Flutter preview's
+              // buildLineItemRow — previously this was plain
+              // item.total (qty × price), so a row's own tax/discount
+              // never actually came off its printed Total.
+              ...d.lineItems.map((item) {
+                final itemDiscountAmt = item.discountEnabled
+                    ? item.total * item.itemDiscountRate / 100
+                    : 0.0;
+                final itemTaxAmt = item.taxEnabled
+                    ? item.total * item.itemTaxRate / 100
+                    : 0.0;
+                final signedTaxAmt = item.taxEnabled
+                    ? (item.itemTaxIsAddition ? itemTaxAmt : -itemTaxAmt)
+                    : 0.0;
+                final netTotal = item.total - itemDiscountAmt + signedTaxAmt;
+                return pw.TableRow(
                   children: [
                     _td(item.description),
                     _td(
@@ -371,10 +421,10 @@ class InvoicePdfService {
                       align: pw.TextAlign.center,
                     ),
                     _td(_fmtMoney(d, item.unitPrice), align: pw.TextAlign.right),
-                    _td(_fmtMoney(d, item.total), align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, netTotal), align: pw.TextAlign.right),
                   ],
-                ),
-              ),
+                );
+              }),
             ],
           ),
           pw.SizedBox(height: 16),
@@ -393,6 +443,32 @@ class InvoicePdfService {
                   if (showDiscount && d.discountRate > 0)
                     _totalRow('Discount (${_fmtPct(d.discountRate)}%)',
                         '-${_fmtMoney(d, discountAmount)}'),
+                  // GST/VAT BREAKDOWN PDF FIX (this update): named
+                  // per-item discount/tax totals — same
+                  // itemDiscountExtraByName / itemTaxExtraByName maps
+                  // the Flutter footer already reads. A shared name (or
+                  // no name) across every item renders as one row;
+                  // genuinely different names each get their own row.
+                  // Tax entries are signed (withholding-style items
+                  // render with a minus instead of always being added).
+                  if (showDiscount)
+                    for (final entry in d.itemDiscountExtraByName.entries)
+                      if (entry.value > 0)
+                        _totalRow(
+                          entry.key.isEmpty
+                              ? 'Item Discounts'
+                              : 'Item Discounts (${entry.key})',
+                          '-${_fmtMoney(d, entry.value)}',
+                        ),
+                  if (showTax)
+                    for (final entry in d.itemTaxExtraByName.entries)
+                      if (entry.value != 0)
+                        _totalRow(
+                          entry.key.isEmpty
+                              ? 'Item Tax'
+                              : 'Item Tax (${entry.key})',
+                          '${entry.value < 0 ? '-' : '+'}${_fmtMoney(d, entry.value.abs())}',
+                        ),
                   pw.Divider(color: PdfColors.grey400),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -423,6 +499,15 @@ class InvoicePdfService {
             pw.SizedBox(height: 4),
             pw.Text(d.notes, style: const pw.TextStyle(fontSize: 10)),
           ],
+
+          // ── Payment Info / Terms & Conditions / Signature ──────────────
+          // PAYMENT INFO / TERMS & SIGNATURE PDF RENDER PASS: each panel
+          // is null (Payment Info/Terms) or an empty pw.SizedBox()
+          // (Signature) when its toggle is off or nothing's filled in,
+          // so a PDF with none of this set exports exactly as before.
+          if (paymentInfoPanel != null) paymentInfoPanel,
+          if (termsPanel != null) termsPanel,
+          signatureBlock,
         ],
       ),
     );
