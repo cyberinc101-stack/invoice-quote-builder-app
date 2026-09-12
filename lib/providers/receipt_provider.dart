@@ -1,53 +1,18 @@
 // receipt_provider.dart
 // lib/providers/receipt_provider.dart
 //
-// HISTORY LOGGING PASS (this update): saveCurrentReceipt(),
-// addConvertedReceipt(), and deleteSavedReceipt() each gained an optional
-// [historyProvider] param, mirroring InvoiceProvider/QuoteProvider's
-// identical pass — see invoice_provider.dart's header comment for the
-// full rationale. saveCurrentReceipt/addConvertedReceipt log `created`;
-// deleteSavedReceipt logs `deleted` using the receipt's data captured
-// BEFORE removal. Omitted (null) is a no-op on all three, so every
-// existing call site behaves exactly as before this pass. Note
-// saveCurrentReceipt has two branches (update an existing draft vs. save
-// a brand-new one) — only the "brand-new" branch logs `created`, since
-// the update branch isn't a new document.
+// SIGNATURE PASS (this update): added updateSignatureMode(),
+// updateSignatureName(), updateSignatureImagePath(),
+// updateSignatureFontSize(), updateSignatureFontFamily(), and
+// updateShowSignature() — thin pass-throughs to
+// ReceiptData.copyWith's new signature fields, mirroring
+// InvoiceProvider's/QuoteProvider's identical shapes. Backs the new
+// Signature section on receipt_step_customise.dart's Receipt Fields
+// section.
 //
-// CONVERT FORMAT PASS (earlier update): added updateSavedReceiptFormat() —
-// writes a new layoutTemplateId/paperFormat onto an already-SAVED
-// receipt's data, same pattern as updateSavedReceiptStatus/
-// updateReceiptFolder (find index, copyWith the data, persist,
-// notifyListeners). Backs the new "Convert Format (A4 ↔ Thermal)" option
-// in saved_document_detail_screen.dart's options sheet, which reuses
-// ReceiptTemplateChooserScreen (via its onTemplateChosen callback,
-// already used by the invoice→receipt conversion flow) as a plain
-// paper-format/design picker for an EXISTING receipt rather than a new
-// one.
-//
-// ALERTPREFS PUSH WIRING (earlier pass): added applyDraftAlertsEnabled() —
-// called from alert_type_toggles.dart's "Drafts" switch and
-// settings_screen.dart's master Alerts switch whenever the effective
-// enabled state (alertsEnabled && draftsEnabled) changes, so turning
-// drafts off actually cancels every saved receipt's pending draft-nudge
-// push instead of only hiding it from the in-app Alerts screen/bell
-// badge. Mirrors InvoiceProvider.applyDraftAlertsEnabled /
-// QuoteProvider.applyDraftAlertsEnabled — see invoice_provider.dart's
-// header comment for the full rationale.
-//
-// PUSH ALERTS (earlier pass): receipts now get real push notifications
-// for stale drafts, the same way InvoiceProvider/QuoteProvider already
-// do. Receipts have no overdue/expiring concept (they're already-settled
-// records — see filter_logic.dart's comment on
-// applyQuickFilterToReceipts), so drafts are the only category that
-// applies here. Uses filter_logic.dart's receiptIsDraft() predicate
-// directly, same single-source-of-truth pattern as the other two
-// providers.
-//
-// ADDED (earlier pass): currentReceiptId getter, exposing the private
-// _currentReceiptId so CreateReceiptScreen can look up the SavedReceipt
-// it just created/updated after calling saveCurrentReceipt() (which
-// returns Future<void>, not the saved object itself — unlike
-// QuoteProvider.saveCurrentQuote()).
+// HISTORY LOGGING PASS, CONVERT FORMAT PASS, ALERTPREFS PUSH WIRING,
+// PUSH ALERTS (all earlier) — see prior header comments; unaffected by
+// this update.
 
 import 'dart:async';
 import 'dart:convert';
@@ -70,9 +35,6 @@ class ReceiptProvider extends ChangeNotifier {
   ReceiptData get currentReceiptData => _currentReceiptData;
   List<SavedReceipt> get savedReceipts => List.unmodifiable(_savedReceipts);
 
-  // Exposes the id of whatever's currently loaded in the editor (or the id
-  // just assigned by the most recent saveCurrentReceipt() call). Null if
-  // nothing's been saved yet this session.
   String? get currentReceiptId => _currentReceiptId;
 
   // -- Reset / update current draft ------------------------------------------
@@ -85,6 +47,43 @@ class ReceiptProvider extends ChangeNotifier {
 
   void updateReceiptData(ReceiptData data) {
     _currentReceiptData = data;
+    notifyListeners();
+  }
+
+  // SIGNATURE PASS: mirrors InvoiceProvider's/QuoteProvider's identical
+  // shapes, writing onto the active editor draft (_currentReceiptData)
+  // via copyWith — same layer every other updateXxx() method here
+  // already writes to.
+  void updateShowSignature(bool show) {
+    _currentReceiptData = _currentReceiptData.copyWith(showSignature: show);
+    notifyListeners();
+  }
+
+  void updateSignatureMode(String mode) {
+    _currentReceiptData = _currentReceiptData.copyWith(signatureMode: mode);
+    notifyListeners();
+  }
+
+  void updateSignatureName(String name) {
+    _currentReceiptData = _currentReceiptData.copyWith(signatureName: name);
+    notifyListeners();
+  }
+
+  void updateSignatureImagePath(String? path) {
+    _currentReceiptData = _currentReceiptData.copyWith(
+      signatureImagePath: path,
+      clearSignatureImage: path == null,
+    );
+    notifyListeners();
+  }
+
+  void updateSignatureFontSize(double size) {
+    _currentReceiptData = _currentReceiptData.copyWith(signatureFontSize: size);
+    notifyListeners();
+  }
+
+  void updateSignatureFontFamily(String family) {
+    _currentReceiptData = _currentReceiptData.copyWith(signatureFontFamily: family);
     notifyListeners();
   }
 
@@ -111,8 +110,6 @@ class ReceiptProvider extends ChangeNotifier {
     );
   }
 
-  // HISTORY LOGGING PASS: shared helper so saveCurrentReceipt and
-  // addConvertedReceipt don't duplicate the same logCreated(...) call.
   void _logCreated(HistoryProvider? historyProvider, SavedReceipt receipt) {
     if (historyProvider == null) return;
     unawaited(historyProvider.logCreated(
@@ -126,10 +123,6 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // ── AlertPrefs push wiring ─────────────────────────────────────────────────
-  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
-  // EFFECTIVE enabled state for drafts (alertsEnabled && draftsEnabled)
-  // changes. Mirrors InvoiceProvider.applyDraftAlertsEnabled /
-  // QuoteProvider.applyDraftAlertsEnabled.
 
   Future<void> applyDraftAlertsEnabled(bool enabled) async {
     for (final r in _savedReceipts) {
@@ -139,18 +132,12 @@ class ReceiptProvider extends ChangeNotifier {
         } else {
           await DocumentAlertScheduler.instance.cancelReceiptDraftNudge(r.id);
         }
-      } catch (_) {
-        // Best-effort — one bad receipt shouldn't stop the rest applying.
-      }
+      } catch (_) {}
     }
   }
 
   // -- Save current draft as a SavedReceipt ----------------------------------
 
-  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
-  // call site keeps working unchanged. Only the "brand-new receipt"
-  // branch below logs `created` — the "update an existing draft" branch
-  // isn't a new document, so it stays silent.
   Future<void> saveCurrentReceipt({
     required String title,
     required String templateName,
@@ -196,15 +183,6 @@ class ReceiptProvider extends ChangeNotifier {
     _logCreated(historyProvider, saved);
   }
 
-  // Saves a converted ReceiptData (e.g. built from an invoice via
-  // convertInvoiceDataToReceiptData) directly as a new saved receipt,
-  // WITHOUT touching the active editor draft — unlike saveCurrentReceipt(),
-  // which always saves/updates based on _currentReceiptData /
-  // _currentReceiptId. Used by the "Convert to Receipt" action in
-  // saved_document_detail_screen.dart.
-  //
-  // HISTORY LOGGING PASS: [historyProvider] is optional, same as
-  // saveCurrentReceipt above — logs a `created` event when passed.
   Future<SavedReceipt> addConvertedReceipt({
     required ReceiptData data,
     required String title,
@@ -252,13 +230,10 @@ class ReceiptProvider extends ChangeNotifier {
     _savedReceipts[index] = _savedReceipts[index].copyWith(title: trimmed);
     await _persist();
     notifyListeners();
-    // Title changed -> re-sync so a pending draft nudge's body text (which
-    // embeds the title) doesn't go stale.
     unawaited(_syncDraftNudge(_savedReceipts[index]));
   }
 
   // -- Status ------------------------------------------------------------
-  // Powers the tappable status chip in saved_document_detail_screen.dart.
 
   Future<void> updateSavedReceiptStatus(String id, ReceiptStatus status) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
@@ -272,15 +247,7 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // -- Format (paper size / design) --------------------------------------
-  // CONVERT FORMAT PASS: writes a new layoutTemplateId/paperFormat onto
-  // an already-SAVED receipt's data directly — same pattern as
-  // updateSavedReceiptStatus above. Powers the "Convert Format (A4 ↔
-  // Thermal)" option in saved_document_detail_screen.dart, which opens
-  // ReceiptTemplateChooserScreen as a plain picker (via its
-  // onTemplateChosen callback) and hands the chosen (templateId,
-  // paperFormat) straight here. Doesn't touch the active editor draft —
-  // this updates the SAVED entry only, matching updateSavedReceiptStatus/
-  // updateReceiptFolder/updateReceiptExcludeFromReports.
+
   Future<void> updateSavedReceiptFormat(
     String id, {
     required int layoutTemplateId,
@@ -300,9 +267,6 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // -- Folder --------------------------------------------------------------
-  // Assigns or clears the organizational folder for a saved receipt.
-  // Pass null to remove it from whatever folder it's currently in. Updates
-  // the SAVED entry directly, same pattern as updateSavedReceiptStatus.
 
   Future<void> updateReceiptFolder(String id, String? folderName) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
@@ -317,7 +281,6 @@ class ReceiptProvider extends ChangeNotifier {
   }
 
   // -- Reports exclusion ----------------------------------------------------
-  // Same pattern as InvoiceProvider.updateInvoiceExcludeFromReports.
 
   Future<void> updateReceiptExcludeFromReports(String id, bool exclude) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
@@ -332,10 +295,6 @@ class ReceiptProvider extends ChangeNotifier {
 
   // -- Delete -------------------------------------------------------------
 
-  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
-  // `deleted` event using the receipt's data captured BEFORE removal.
-  // Omitted (null) is a no-op, so every existing call site behaves
-  // exactly as before.
   Future<void> deleteSavedReceipt(String id, {HistoryProvider? historyProvider}) async {
     SavedReceipt? deleted;
     try {
@@ -352,7 +311,7 @@ class ReceiptProvider extends ChangeNotifier {
     unawaited(DocumentAlertScheduler.instance.syncReceiptDraftNudge(
       receiptId: id,
       title: '',
-      isDraft: false, // deleted -> always cancel, regardless of last-known draft state
+      isDraft: false,
     ));
     if (historyProvider != null && deleted != null) {
       unawaited(historyProvider.logDeleted(
@@ -381,9 +340,6 @@ class ReceiptProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('ReceiptProvider: failed to load persisted receipts: $e');
     } finally {
-      // Re-arms every saved receipt's draft-nudge push against the OS
-      // scheduler on every launch — same safety net InvoiceProvider/
-      // QuoteProvider/ReminderProvider use.
       unawaited(_resyncDocumentAlerts());
     }
   }
@@ -392,9 +348,7 @@ class ReceiptProvider extends ChangeNotifier {
     for (final r in _savedReceipts) {
       try {
         await _syncDraftNudge(r);
-      } catch (_) {
-        // Best-effort — one bad receipt shouldn't stop the rest resyncing.
-      }
+      } catch (_) {}
     }
   }
 

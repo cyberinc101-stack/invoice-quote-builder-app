@@ -1,49 +1,27 @@
 // receipt_data.dart
 // lib/models/receipt_data.dart
 //
-// RECEIPT DRAFT LIBRARY PASS (this update): added SavedReceiptDraft — a
-// named, editable receipt-in-progress, saved from the Create Receipt
-// step's new library screen (create_receipt/step_create_receipt.dart)
-// and reopened via CreateReceiptBottomSheet
-// (create_receipt/create_receipt_bottom_sheet.dart) to keep editing it.
-// Mirrors SavedInvoiceDraft/SavedQuoteDraft exactly — see
-// invoice_data.dart's INVOICE DRAFT LIBRARY PASS note for the full
-// rationale. Also added SavedReceiptLineItemSet — a Receipt-only mirror
-// of SavedLineItemSet, kept as a separate class/library (own
-// SharedPreferences key) so Receipt's saved item-set bundles never mix
-// with Invoice's or Quote's, backing the new
-// create_receipt/receipt_saved_items_widgets.dart panel.
+// SIGNATURE PASS (this update): ReceiptData gains a three-mode
+// Signature block, mirroring InvoiceData's/QuoteData's own signature
+// fields exactly:
+//   - signatureMode ('typed' | 'image' | 'blank' | '' deselected)
+//   - signatureName / signatureImagePath / signatureFontSize (22.0) /
+//     signatureFontFamily ('' — default italic look, or one of the six
+//     google_fonts script families)
+//   - showSignature (bool, default true) — Receipt uses individual
+//     show* booleans rather than an enabledFields map, so the show/hide
+//     toggle for Signature follows that same pattern.
+// All new fields default to '' / 'blank' / null / 22.0 / '' / true so
+// every persisted receipt loads exactly as before this pass. Rendered
+// by executive_receipt_stationary_layout.dart's buildFooterSection via
+// a new buildSignatureBlock() call and exported by
+// receipt_pdf_service.dart's Executive PDF builder.
 //
-// FONT SIZE PASS (earlier): added fontSize (double, default 12.0) —
-// same gap as QuoteData: Receipt had a fontFamily field but no numeric
-// size field, and no UI for either. Added so Receipt's Customise step
-// can show Font Family + Text Size controls matching Invoice's, via the
-// new receipt_step_customise.dart. Default (12.0) preserves existing
-// render behaviour for every persisted receipt, no migration needed.
-//
-// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
-// (bool, default true) and businessLogoInitialLetter (String, default
-// '') — mirrors InvoiceData/QuoteData's own new fields. See
-// invoice_data.dart's doc comment for the full rationale. Defaults
-// preserve existing render behaviour for every persisted receipt, no
-// migration needed.
-//
-// WEBSITE + SOCIAL PASS (earlier): added businessWebsite/showWebsite
-// and per-platform Facebook/Instagram/Twitter handle + toggle pairs
-// (facebookHandle/showFacebook, etc). Each platform is independently
-// shown/hidden and holds a plain @handle string — not a raw platform ID,
-// per the recommendation that follows: a numeric/internal ID reads as
-// broken on a receipt, an @handle next to an icon reads as normal. All
-// default to off/empty so existing persisted receipts are unaffected.
-//
-// PAPER FORMAT PASS (earlier). THERMAL FIELDS PASS (earlier):
-// cashierName/posId/taxId/paymentReference/authCode/cardLast4/show*/
-// qrData/footerMessage/compactThermalLayout.
-//
-// CURRENCY DISPLAY PASS (earlier): added currencySymbol and
-// currencyDisplayMode, mirroring InvoiceData/QuoteData's own fields —
-// free text, no hardcoded currency list, defaults preserve existing
-// render behaviour for persisted receipts.
+// All earlier passes (PER-ITEM TAX/DISCOUNT, TAX/DISCOUNT TOGGLE + NAME,
+// CREATE-RECEIPT PARITY, CASHIER NAME TOGGLE, THANK YOU MESSAGE TOGGLE,
+// RECEIPT DRAFT LIBRARY, FONT SIZE, LOGO FALLBACK MARK, WEBSITE +
+// SOCIAL, PAPER FORMAT, THERMAL FIELDS, CURRENCY DISPLAY) — see prior
+// header comments; unaffected by this update.
 
 import 'invoice_data.dart' show LineItem;
 
@@ -74,9 +52,6 @@ class ReceiptData {
   String businessLogoShape;
   double businessLogoDisplaySize;
 
-  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above / the same
-  // fields on InvoiceData. Only meaningful when businessLogoPath is NOT
-  // set.
   bool businessLogoShowInitial;
   String businessLogoInitialLetter;
 
@@ -90,22 +65,23 @@ class ReceiptData {
   String notes;
   String currency;
 
-  // Free-text currency symbol + display mode — see InvoiceData for the
-  // full rationale. Not gated by any hardcoded currency list.
   String currencySymbol;
-  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
+  String currencyDisplayMode;
 
   List<LineItem> lineItems;
 
   double        taxRate;
   double        discountRate;
+
+  bool          taxEnabled;
+  bool          discountEnabled;
+  String        taxName;
+  String        discountName;
+
   PaymentMethod paymentMethod;
   ReceiptStatus status;
   String        fontFamily;
 
-  // FONT SIZE PASS: numeric text size (points), mirrors
-  // InvoiceProvider.fontSize / QuoteData.fontSize. Drives the new Text
-  // Size slider on receipt_step_customise.dart.
   double        fontSize;
 
   ReceiptColor  colorScheme;
@@ -113,7 +89,6 @@ class ReceiptData {
   int layoutTemplateId;
   String paperFormat;
 
-  // ── Thermal / POS receipt fields ─────────────────────────────────────────
   String cashierName;
   String posId;
   String taxId;
@@ -129,6 +104,12 @@ class ReceiptData {
   bool showTaxLine;
   bool showDiscountLine;
   bool showPaymentMethod;
+
+  bool showCashierName;
+
+  bool showThankYouMessage;
+  String thankYouMessage;
+
   bool showBarcode;
   bool showQrCode;
 
@@ -136,7 +117,6 @@ class ReceiptData {
   String footerMessage;
   bool compactThermalLayout;
 
-  // ── Website + social — thermal footer only ───────────────────────────────
   bool showWebsite;
   String businessWebsite;
 
@@ -148,6 +128,18 @@ class ReceiptData {
   String twitterHandle;
 
   bool excludeFromReports;
+
+  // SIGNATURE PASS: three mutually exclusive modes, mirrors
+  // InvoiceData's/QuoteData's identical fields exactly. showSignature
+  // is Receipt's own show* boolean toggle (this model has no
+  // enabledFields map), mirroring showThankYouMessage's identical
+  // pattern.
+  bool showSignature;
+  String signatureMode; // 'typed' | 'image' | 'blank' | ''
+  String signatureName;
+  String? signatureImagePath;
+  double signatureFontSize;
+  String signatureFontFamily;
 
   ReceiptData({
     this.businessName     = '',
@@ -175,6 +167,10 @@ class ReceiptData {
     List<LineItem>? lineItems,
     this.taxRate          = 0.0,
     this.discountRate     = 0.0,
+    this.taxEnabled        = true,
+    this.discountEnabled   = true,
+    this.taxName           = '',
+    this.discountName      = '',
     this.paymentMethod    = PaymentMethod.cash,
     this.status           = ReceiptStatus.issued,
     this.fontFamily       = 'Roboto',
@@ -196,6 +192,9 @@ class ReceiptData {
     this.showTaxLine          = true,
     this.showDiscountLine     = true,
     this.showPaymentMethod    = true,
+    this.showCashierName      = true,
+    this.showThankYouMessage  = true,
+    this.thankYouMessage      = 'Thank you for your purchase!',
     this.showBarcode          = false,
     this.showQrCode           = false,
     this.qrData                = '',
@@ -210,12 +209,53 @@ class ReceiptData {
     this.showTwitter          = false,
     this.twitterHandle        = '',
     this.excludeFromReports = false,
+    this.showSignature       = true,
+    this.signatureMode       = 'blank',
+    this.signatureName       = '',
+    this.signatureImagePath,
+    this.signatureFontSize   = 22.0,
+    this.signatureFontFamily = '',
   }) : lineItems = lineItems ?? [];
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
-  double get discountAmount => subtotal * (discountRate / 100);
-  double get taxAmount      => (subtotal - discountAmount) * (taxRate / 100);
-  double get amountPaid     => subtotal - discountAmount + taxAmount;
+  double get discountAmount => discountEnabled ? subtotal * (discountRate / 100) : 0.0;
+  double get taxAmount      => taxEnabled ? (subtotal - discountAmount) * (taxRate / 100) : 0.0;
+
+  double get itemTaxExtra => lineItems.fold(
+      0.0,
+      (sum, i) => sum +
+          (i.taxEnabled
+              ? (i.itemTaxIsAddition ? 1 : -1) * i.total * i.itemTaxRate / 100
+              : 0.0));
+
+  double get itemDiscountExtra => lineItems.fold(
+      0.0,
+      (sum, i) => sum + (i.discountEnabled ? i.total * i.itemDiscountRate / 100 : 0.0));
+
+  Map<String, double> get itemTaxExtraByName {
+    final map = <String, double>{};
+    for (final i in lineItems) {
+      if (!i.taxEnabled) continue;
+      final key = i.itemTaxName.trim();
+      final amt = (i.itemTaxIsAddition ? 1 : -1) * i.total * i.itemTaxRate / 100;
+      map[key] = (map[key] ?? 0.0) + amt;
+    }
+    return map;
+  }
+
+  Map<String, double> get itemDiscountExtraByName {
+    final map = <String, double>{};
+    for (final i in lineItems) {
+      if (!i.discountEnabled) continue;
+      final key = i.itemDiscountName.trim();
+      final amt = i.total * i.itemDiscountRate / 100;
+      map[key] = (map[key] ?? 0.0) + amt;
+    }
+    return map;
+  }
+
+  double get amountPaid =>
+      subtotal - discountAmount + taxAmount + itemTaxExtra - itemDiscountExtra;
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
@@ -243,6 +283,10 @@ class ReceiptData {
         'lineItems':        lineItems.map((i) => i.toJson()).toList(),
         'taxRate':          taxRate,
         'discountRate':     discountRate,
+        'taxEnabled':       taxEnabled,
+        'discountEnabled':  discountEnabled,
+        'taxName':          taxName,
+        'discountName':     discountName,
         'paymentMethod':    paymentMethod.name,
         'status':           status.name,
         'fontFamily':       fontFamily,
@@ -264,6 +308,9 @@ class ReceiptData {
         'showTaxLine':          showTaxLine,
         'showDiscountLine':     showDiscountLine,
         'showPaymentMethod':    showPaymentMethod,
+        'showCashierName':      showCashierName,
+        'showThankYouMessage':  showThankYouMessage,
+        'thankYouMessage':      thankYouMessage,
         'showBarcode':          showBarcode,
         'showQrCode':           showQrCode,
         'qrData':               qrData,
@@ -278,6 +325,12 @@ class ReceiptData {
         'showTwitter':          showTwitter,
         'twitterHandle':        twitterHandle,
         'excludeFromReports': excludeFromReports,
+        'showSignature':        showSignature,
+        'signatureMode':        signatureMode,
+        'signatureName':        signatureName,
+        'signatureImagePath':   signatureImagePath,
+        'signatureFontSize':    signatureFontSize,
+        'signatureFontFamily':  signatureFontFamily,
       };
 
   factory ReceiptData.fromJson(Map<String, dynamic> j) => ReceiptData(
@@ -308,6 +361,10 @@ class ReceiptData {
             .toList(),
         taxRate:      (j['taxRate']      as num?)?.toDouble() ?? 0.0,
         discountRate: (j['discountRate'] as num?)?.toDouble() ?? 0.0,
+        taxEnabled:      j['taxEnabled']      as bool?   ?? true,
+        discountEnabled: j['discountEnabled'] as bool?   ?? true,
+        taxName:         j['taxName']         as String? ?? '',
+        discountName:    j['discountName']    as String? ?? '',
         paymentMethod: PaymentMethod.values.firstWhere(
           (p) => p.name == (j['paymentMethod'] as String? ?? ''),
           orElse: () => PaymentMethod.cash,
@@ -338,6 +395,9 @@ class ReceiptData {
         showTaxLine:          j['showTaxLine']          as bool? ?? true,
         showDiscountLine:     j['showDiscountLine']     as bool? ?? true,
         showPaymentMethod:    j['showPaymentMethod']    as bool? ?? true,
+        showCashierName:      j['showCashierName']      as bool? ?? true,
+        showThankYouMessage:  j['showThankYouMessage']  as bool? ?? true,
+        thankYouMessage: j['thankYouMessage'] as String? ?? 'Thank you for your purchase!',
         showBarcode:          j['showBarcode']          as bool? ?? false,
         showQrCode:           j['showQrCode']           as bool? ?? false,
         qrData:               j['qrData']               as String? ?? '',
@@ -352,6 +412,12 @@ class ReceiptData {
         showTwitter:     j['showTwitter']     as bool?   ?? false,
         twitterHandle:   j['twitterHandle']   as String? ?? '',
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
+        showSignature:       j['showSignature']       as bool?   ?? true,
+        signatureMode:       j['signatureMode']        as String? ?? 'blank',
+        signatureName:       j['signatureName']        as String? ?? '',
+        signatureImagePath:  j['signatureImagePath']   as String?,
+        signatureFontSize:   (j['signatureFontSize']   as num?)?.toDouble() ?? 22.0,
+        signatureFontFamily: j['signatureFontFamily']  as String? ?? '',
       );
 
   ReceiptData copyWith({
@@ -381,6 +447,10 @@ class ReceiptData {
     List<LineItem>? lineItems,
     double?         taxRate,
     double?         discountRate,
+    bool?           taxEnabled,
+    bool?           discountEnabled,
+    String?         taxName,
+    String?         discountName,
     PaymentMethod?  paymentMethod,
     ReceiptStatus?  status,
     String?         fontFamily,
@@ -402,6 +472,9 @@ class ReceiptData {
     bool?           showTaxLine,
     bool?           showDiscountLine,
     bool?           showPaymentMethod,
+    bool?           showCashierName,
+    bool?           showThankYouMessage,
+    String?         thankYouMessage,
     bool?           showBarcode,
     bool?           showQrCode,
     String?         qrData,
@@ -416,6 +489,13 @@ class ReceiptData {
     bool?           showTwitter,
     String?         twitterHandle,
     bool?           excludeFromReports,
+    bool?           showSignature,
+    String?         signatureMode,
+    String?         signatureName,
+    String?         signatureImagePath,
+    bool            clearSignatureImage = false,
+    double?         signatureFontSize,
+    String?         signatureFontFamily,
   }) =>
       ReceiptData(
         businessName:     businessName     ?? this.businessName,
@@ -443,6 +523,10 @@ class ReceiptData {
         lineItems:        lineItems        ?? List<LineItem>.from(this.lineItems),
         taxRate:          taxRate          ?? this.taxRate,
         discountRate:     discountRate     ?? this.discountRate,
+        taxEnabled:       taxEnabled       ?? this.taxEnabled,
+        discountEnabled:  discountEnabled  ?? this.discountEnabled,
+        taxName:          taxName          ?? this.taxName,
+        discountName:     discountName     ?? this.discountName,
         paymentMethod:    paymentMethod    ?? this.paymentMethod,
         status:           status           ?? this.status,
         fontFamily:       fontFamily       ?? this.fontFamily,
@@ -464,6 +548,9 @@ class ReceiptData {
         showTaxLine:          showTaxLine          ?? this.showTaxLine,
         showDiscountLine:     showDiscountLine     ?? this.showDiscountLine,
         showPaymentMethod:    showPaymentMethod    ?? this.showPaymentMethod,
+        showCashierName:      showCashierName      ?? this.showCashierName,
+        showThankYouMessage:  showThankYouMessage  ?? this.showThankYouMessage,
+        thankYouMessage:      thankYouMessage      ?? this.thankYouMessage,
         showBarcode:          showBarcode          ?? this.showBarcode,
         showQrCode:           showQrCode           ?? this.showQrCode,
         qrData:               qrData               ?? this.qrData,
@@ -478,6 +565,12 @@ class ReceiptData {
         showTwitter:      showTwitter      ?? this.showTwitter,
         twitterHandle:    twitterHandle    ?? this.twitterHandle,
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
+        showSignature:       showSignature       ?? this.showSignature,
+        signatureMode:       signatureMode       ?? this.signatureMode,
+        signatureName:       signatureName       ?? this.signatureName,
+        signatureImagePath: clearSignatureImage ? null : (signatureImagePath ?? this.signatureImagePath),
+        signatureFontSize:   signatureFontSize   ?? this.signatureFontSize,
+        signatureFontFamily: signatureFontFamily ?? this.signatureFontFamily,
       );
 
   ReceiptData deepCopy() => copyWith(
@@ -571,16 +664,7 @@ class SavedReceipt {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SavedReceiptDraft — a named, editable receipt-in-progress. Mirrors
-// SavedInvoiceDraft/SavedQuoteDraft exactly — see invoice_data.dart's
-// INVOICE DRAFT LIBRARY PASS note for the full rationale. Stores a
-// complete ReceiptData snapshot; only the fields actually editable on
-// the Create Receipt step (customer override, receipt number, payment
-// date, currency, payment method, line items, tax/discount, notes) are
-// ever set into it — every other field (business info, logo, thermal
-// settings, social handles, font, colour) is preserved unchanged via
-// copyWith when CreateReceiptBottomSheet builds the data, since those
-// stay owned by create_receipt_screen.dart's own Customise-step state.
+// SavedReceiptDraft
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SavedReceiptDraft {
@@ -590,17 +674,29 @@ class SavedReceiptDraft {
   DateTime createdAt;
   DateTime lastEditedAt;
 
+  String? logoPath;
+  double logoOffsetDx;
+  double logoOffsetDy;
+  double logoScale;
+  String logoShape;
+  bool logoShowInitial;
+  String logoInitialLetter;
+
   SavedReceiptDraft({
     required this.id,
     required this.name,
     required this.data,
     required this.createdAt,
     required this.lastEditedAt,
+    this.logoPath,
+    this.logoOffsetDx = 0.0,
+    this.logoOffsetDy = 0.0,
+    this.logoScale = 1.0,
+    this.logoShape = 'roundedSquare',
+    this.logoShowInitial = true,
+    this.logoInitialLetter = '',
   });
 
-  /// What the library card shows as its title — the explicit label if one
-  /// was typed, else the client name, else the receipt number, else a
-  /// generic fallback. Never blank.
   String get displayName {
     if (name.trim().isNotEmpty) return name.trim();
     if (data.clientName.trim().isNotEmpty) return data.clientName.trim();
@@ -627,6 +723,13 @@ class SavedReceiptDraft {
         'data': data.toJson(),
         'createdAt': createdAt.toIso8601String(),
         'lastEditedAt': lastEditedAt.toIso8601String(),
+        'logoPath': logoPath,
+        'logoOffsetDx': logoOffsetDx,
+        'logoOffsetDy': logoOffsetDy,
+        'logoScale': logoScale,
+        'logoShape': logoShape,
+        'logoShowInitial': logoShowInitial,
+        'logoInitialLetter': logoInitialLetter,
       };
 
   factory SavedReceiptDraft.fromJson(Map<String, dynamic> j) => SavedReceiptDraft(
@@ -635,12 +738,27 @@ class SavedReceiptDraft {
         data: ReceiptData.fromJson(j['data'] as Map<String, dynamic>? ?? {}),
         createdAt: DateTime.parse(j['createdAt'] as String),
         lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+        logoPath: j['logoPath'] as String?,
+        logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        logoScale: (j['logoScale'] as num?)?.toDouble() ?? 1.0,
+        logoShape: j['logoShape'] as String? ?? 'roundedSquare',
+        logoShowInitial: j['logoShowInitial'] as bool? ?? true,
+        logoInitialLetter: j['logoInitialLetter'] as String? ?? '',
       );
 
   SavedReceiptDraft copyWith({
     String? name,
     ReceiptData? data,
     DateTime? lastEditedAt,
+    String? logoPath,
+    bool clearLogo = false,
+    double? logoOffsetDx,
+    double? logoOffsetDy,
+    double? logoScale,
+    String? logoShape,
+    bool? logoShowInitial,
+    String? logoInitialLetter,
   }) =>
       SavedReceiptDraft(
         id: id,
@@ -648,16 +766,74 @@ class SavedReceiptDraft {
         data: data ?? this.data.deepCopy(),
         createdAt: createdAt,
         lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+        logoPath: clearLogo ? null : (logoPath ?? this.logoPath),
+        logoOffsetDx: logoOffsetDx ?? this.logoOffsetDx,
+        logoOffsetDy: logoOffsetDy ?? this.logoOffsetDy,
+        logoScale: logoScale ?? this.logoScale,
+        logoShape: logoShape ?? this.logoShape,
+        logoShowInitial: logoShowInitial ?? this.logoShowInitial,
+        logoInitialLetter: logoInitialLetter ?? this.logoInitialLetter,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SavedReceiptLineItemSet — a named, reusable bundle of line items for
-// the Receipt flow. Mirrors SavedLineItemSet/SavedQuoteLineItemSet
-// exactly, but kept as a SEPARATE library (own SharedPreferences key,
-// own class) so Receipt's saved item sets never mix with Invoice's or
-// Quote's — see receipt_saved_items_widgets.dart
-// (ReceiptSavedItemSets) for the UI this backs.
+// SavedReceiptLineItem
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedReceiptLineItem {
+  String id;
+  String? name;
+  LineItem item;
+  DateTime createdAt;
+  DateTime lastEditedAt;
+
+  SavedReceiptLineItem({
+    required this.id,
+    this.name,
+    required this.item,
+    required this.createdAt,
+    required this.lastEditedAt,
+  });
+
+  String get displayName {
+    if (name != null && name!.trim().isNotEmpty) return name!.trim();
+    if (item.description.trim().isNotEmpty) return item.description.trim();
+    return 'Saved Item';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'item': item.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+        'lastEditedAt': lastEditedAt.toIso8601String(),
+      };
+
+  factory SavedReceiptLineItem.fromJson(Map<String, dynamic> j) => SavedReceiptLineItem(
+        id: j['id'] as String,
+        name: j['name'] as String?,
+        item: LineItem.fromJson(j['item'] as Map<String, dynamic>? ?? {}),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+      );
+
+  SavedReceiptLineItem copyWith({
+    String? name,
+    bool clearName = false,
+    LineItem? item,
+    DateTime? lastEditedAt,
+  }) =>
+      SavedReceiptLineItem(
+        id: id,
+        name: clearName ? null : (name ?? this.name),
+        item: item ?? this.item.copyWith(),
+        createdAt: createdAt,
+        lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedReceiptLineItemSet
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SavedReceiptLineItemSet {
