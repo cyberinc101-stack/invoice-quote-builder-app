@@ -558,19 +558,20 @@ class ReceiptPdfService {
     return pw.Font.ttf(data);
   }
 
-  // SIGNATURE LINE WIDTH PDF PARITY PASS: measures a string against the
-  // actual pw.Font about to draw it, via the pdf package's own
-  // PdfFont.stringMetrics() — the same primitive pw.Text uses internally
-  // to lay text out. Multiplying by fontSize (via PdfFontMetrics' own
-  // `*` operator) converts the font's normalized glyph widths into
-  // actual point widths at the size being rendered. Falls back to the
-  // built-in Helvetica-BoldOblique font when no bundled signature font
-  // resolved (font == null) — the closest built-in match to the
-  // fallback bold-italic pw.TextStyle used in that case.
-  static double _measureSignatureWidth(String text, pw.Font? font, double fontSize) {
-    final measuringFont = font ?? pw.Font.helveticaBoldOblique();
-    final metrics = measuringFont.stringMetrics(text) * fontSize;
-    return metrics.width;
+  // SIGNATURE LINE WIDTH PDF PARITY PASS (BUILD FIX): the original
+  // version of this measured against pw.Font.stringMetrics() — but that
+  // method lives on the low-level PdfFont object, not on pw.Font (the
+  // widgets-layer wrapper), and pw.Font has no way to reach it without a
+  // build Context. That doesn't compile, so this now uses a simple
+  // per-character width estimate instead: 0.55em per character is a
+  // reasonable average advance width for both the bundled script fonts
+  // and the bold-italic Helvetica fallback, for the mixed-case names
+  // typed into a signature field. It's an approximation, not exact
+  // glyph metrics, but it's only used to size a cosmetic clamp
+  // ([70, 220]), so exactness isn't required.
+  static double _measureSignatureWidth(String text, double fontSize) {
+    const avgCharWidthFactor = 0.55;
+    return text.length * fontSize * avgCharWidthFactor;
   }
 
   // SIGNATURE PASS: mirrors invoice_pdf_extra_sections.dart's
@@ -633,7 +634,7 @@ class ReceiptPdfService {
         // [70, 220] range the Flutter preview uses.
         final lineWidth = name.isEmpty
             ? 70.0
-            : _measureSignatureWidth(name, pdfFont, effectiveFontSize).clamp(70.0, 220.0);
+            : _measureSignatureWidth(name, effectiveFontSize).clamp(70.0, 220.0);
         content = pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
