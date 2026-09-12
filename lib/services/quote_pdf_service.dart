@@ -1,43 +1,96 @@
 // lib/services/quote_pdf_service.dart
 //
-// Generates and exports quote PDFs.
+// OFFLINE SIGNATURE FONT PARITY PASS (this update): mirrors the fix
+// already applied to invoice_pdf_extra_sections.dart's
+// _pdfSignatureFont() — this file's own _pdfSignatureFont() still
+// called PdfGoogleFonts.xRegular() for the six script fonts, which
+// always hits the network regardless of GoogleFonts.config and fails
+// silently (falls back to the plain bold-italic style) with no
+// connection. The six fonts are already bundled locally in
+// assets/signature_fonts/ and registered in pubspec.yaml (that's what
+// let Invoice's own fix work), so this now loads each one via
+// rootBundle + pw.Font.ttf() instead, exactly like Invoice. No behavior
+// change when signatureFontFamily is '' or unrecognized — still falls
+// back to the original bold-italic pw.TextStyle look.
 //
-// HISTORY LOGGING PASS (this update): generateAndSharePDF now accepts an
-// optional [historyProvider], mirroring invoice_pdf_service.dart's own
-// HISTORY LOGGING PASS exactly — when provided, logs a
-// HistoryEventType.shared event with the just-shared file attached as
-// sourceFile, since Share.shareXFiles doesn't hand a path back to the
-// caller the way the download flow does. Omitted (null) is a no-op.
+// SIGNATURE LINE WIDTH PDF PARITY PASS (earlier): mirrors the
+// identical fix applied to invoice_pdf_extra_sections.dart's
+// buildPdfSignatureBlock — the live preview's signing line under a
+// typed signature (executive_quote_payment_terms_signature.dart's
+// buildSignatureBlock) was fixed in an earlier pass to measure the
+// actual rendered name width and size the line to match it, clamped to
+// [70, 220], but that fix never reached this file's exported PDF, which
+// still drew a fixed 160pt line regardless of name length.
 //
-// LOGO PARITY PASS (earlier): mirrors invoice_pdf_service.dart's own
-// LOGO PARITY PASS exactly — the Executive builder's logo was hardcoded
-// to pw.ClipOval on a solid white background regardless of what LogoShape
-// the user actually picked via the Logo Sizer. Now clips to the real
-// shape (circle/square/roundedSquare, mirroring LogoShape.radiusFor() on
-// the Flutter side) and sits on a very light neutral background with
-// BoxFit.contain, matching pdf_templates.dart's _logoWidget (used by
-// styles 2-10 for quotes too, via buildStyledDocument) and the
-// Flutter-side DocLogoAvatar's own contain-fit treatment.
+// Fixed by adding _measureSignatureWidth(), which uses the pdf
+// package's own PdfFont.stringMetrics() (the same call pw.Text itself
+// uses internally to lay out a string) instead of Flutter's
+// TextPainter, since this file has no Flutter widget tree to measure
+// against. This measures the ACTUAL font about to be drawn — the
+// bundled signature font, or the built-in Helvetica-BoldOblique
+// fallback when no signature font resolves — which guarantees the line
+// matches what's actually on the page. _buildQuoteSignatureBlock's
+// local line() now takes an optional width parameter (default 160,
+// unchanged for 'image'/'blank' — only 'typed' passes a measured
+// width), mirroring the Flutter side's line({double width = 160})
+// exactly.
 //
-// CURRENCY DISPLAY PASS (earlier): _fmtMoney(d, v) uses QuoteData's own
-// currency/currencySymbol/currencyDisplayMode fields directly — mirrors
-// DocTemplateAdapter.fmtMoney() (Flutter preview side) and
-// PdfDocData.fmtMoney() (styled-template path), so exported PDFs respect
-// whatever the user actually typed for currency symbol/format.
+// NOTE: same as Invoice's PDF fallback — the no-font-resolved branch
+// hardcodes fontSize: 20, not d.signatureFontSize the way the Flutter
+// fallback does. Pre-existing, out of scope here; the measurement below
+// always uses whichever size is actually applied so the line stays
+// matched to its own text either way.
 //
-// REWRITE: built directly against the real QuoteData model (flat fields:
-// businessName, businessEmail, clientName, lineItems, etc.), same as
-// invoice_pdf_service.dart's own rewrite — see that file's header comment
-// for the full rationale, which applies identically here.
+// TERMS & SIGNATURE GATING FIX (earlier): two real bugs fixed
+// together, found while tracking down why Terms & Conditions and the
+// Signature block weren't showing up anywhere for Quote:
 //
-// Layout dispatcher: layoutTemplateId selects the visual style (1 =
-// Executive, built directly below; 2-10 route through
-// pdf_templates.dart's buildStyledDocument, shared with invoice/receipt).
+//   1. Terms & Conditions text was NEVER rendered in the exported PDF at
+//      all. The only text block after the totals table was a "Notes /
+//      Terms" heading that printed d.notes — QuoteData.termsAndConditions
+//      was never referenced anywhere in this file. Someone typing real
+//      terms into the template sheet had it correctly reach QuoteData
+//      (this part always worked), but the PDF builder simply never read
+//      that field. Fixed by adding a real Terms & Conditions panel,
+//      gated the same way the on-screen render is gated in
+//      executive_quote_stationary_layout.dart's buildTermsPanel — the
+//      'termsAndConditions' enabledFields toggle AND non-empty text —
+//      rendered as its own block, separate from Notes.
+//
+//   2. _buildQuoteSignatureBlock() only checked
+//      `d.signatureMode.trim().isEmpty` — it never checked
+//      `d.enabledFields['signature']`. So turning the Signature toggle
+//      off on Customise had no effect on the exported PDF; the signature
+//      would still print as long as a mode had ever been set. Fixed to
+//      match the on-screen buildSignatureBlock() gate exactly: skip
+//      entirely when the 'signature' field is toggled off, in addition
+//      to the existing empty-mode check.
+//
+// SIGNATURE PASS (earlier): _buildExecutivePdf renders a signature block
+// after Notes, gated by QuoteData.signatureMode being non-empty (mirrors
+// executive_quote_stationary_layout.dart's buildSignatureBlock gating —
+// now ALSO the enabledFields check, see fix #2 above).
+// New _buildQuoteSignatureBlock() helper mirrors
+// invoice_pdf_extra_sections.dart's buildPdfSignatureBlock: 'image'
+// reads the file off disk, 'typed' loads a bundled signature font when
+// QuoteData.signatureFontFamily names one of the six offered families
+// (falls back to the original bold-italic pw.TextStyle when it's ''),
+// 'blank' reserves a signing line, '' (deselected) renders nothing.
+// _buildExecutivePdf is already async, so no new async plumbing was
+// needed at the call site.
+//
+// PARITY FIX (earlier): _buildExecutivePdf brought up to the same
+// data-correctness level invoice_pdf_service.dart's and
+// receipt_pdf_service.dart's own Executive builders already have.
+//
+// HISTORY LOGGING PASS, LOGO PARITY PASS, CURRENCY DISPLAY PASS (all
+// earlier) — see prior header comments; unaffected by this update.
 
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -64,10 +117,6 @@ class QuotePdfService {
     return file.path;
   }
 
-  /// [historyProvider], when passed, logs a `shared` History event with
-  /// the shared file attached as sourceFile — mirrors
-  /// invoice_pdf_service.dart's identical treatment. Omitted (null) is a
-  /// no-op, so every existing call site behaves exactly as before.
   Future<void> generateAndSharePDF(
     SavedQuote quote, {
     int? layoutTemplateId,
@@ -118,6 +167,190 @@ class QuotePdfService {
     return Uint8List.fromList(bytes);
   }
 
+  // TERMS & SIGNATURE GATING FIX: small helper mirroring
+  // executive_quote_stationary_layout.dart's private _on() — reads a
+  // QuoteData.enabledFields flag, defaulting to true when the key is
+  // absent (matches every other enabledFields read site in this app).
+  static bool _on(QuoteData d, String key) => d.enabledFields[key] ?? true;
+
+  // TERMS & SIGNATURE GATING FIX: new — mirrors
+  // executive_quote_stationary_layout.dart's buildTermsPanel() gating
+  // exactly (the 'termsAndConditions' toggle AND non-empty text), but as
+  // a pw.Widget for the exported PDF. Previously this text was never
+  // read anywhere in this file at all.
+  static pw.Widget _buildQuoteTermsPanel(QuoteData d) {
+    if (!_on(d, 'termsAndConditions')) return pw.SizedBox();
+    final text = d.termsAndConditions.trim();
+    if (text.isEmpty) return pw.SizedBox();
+
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 20),
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey100,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text('TERMS & CONDITIONS',
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey600,
+                letterSpacing: 1,
+              )),
+          pw.SizedBox(height: 5),
+          pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  // OFFLINE SIGNATURE FONT PARITY PASS: maps one of
+  // executive_invoice_payment_terms_signature.dart's kSignatureFonts to
+  // its locally-bundled .ttf asset (see pubspec.yaml's
+  // assets/signature_fonts/ entries), loaded via rootBundle +
+  // pw.Font.ttf — exactly like invoice_pdf_extra_sections.dart's
+  // _pdfSignatureFont(). Returns null for '' (no family chosen) or an
+  // unrecognized name, so the caller falls back to the original
+  // bold-italic pw.TextStyle look. No network involved at all, unlike
+  // the old PdfGoogleFonts.xRegular() calls this replaces.
+  static Future<pw.Font?> _pdfSignatureFont(String family) async {
+    const assetMap = {
+      'Dancing Script': 'assets/signature_fonts/DancingScript-Regular.ttf',
+      'Great Vibes': 'assets/signature_fonts/GreatVibes-Regular.ttf',
+      'Sacramento': 'assets/signature_fonts/Sacramento-Regular.ttf',
+      'Pacifico': 'assets/signature_fonts/Pacifico-Regular.ttf',
+      'Alex Brush': 'assets/signature_fonts/AlexBrush-Regular.ttf',
+      'Caveat': 'assets/signature_fonts/Caveat-Regular.ttf',
+    };
+    final path = assetMap[family.trim()];
+    if (path == null) return null;
+    final data = await rootBundle.load(path);
+    return pw.Font.ttf(data);
+  }
+
+  // SIGNATURE LINE WIDTH PDF PARITY PASS: measures a string against the
+  // actual pw.Font about to draw it, via the pdf package's own
+  // PdfFont.stringMetrics() — the same primitive pw.Text uses internally
+  // to lay text out. Multiplying by fontSize (via PdfFontMetrics' own
+  // `*` operator) converts the font's normalized glyph widths into
+  // actual point widths at the size being rendered. Falls back to the
+  // built-in Helvetica-BoldOblique font when no bundled signature font
+  // resolved (font == null) — the closest built-in match to the
+  // fallback bold-italic pw.TextStyle used in that case.
+  static double _measureSignatureWidth(String text, pw.Font? font, double fontSize) {
+    final measuringFont = font ?? pw.Font.helveticaBoldOblique();
+    final metrics = measuringFont.stringMetrics(text) * fontSize;
+    return metrics.width;
+  }
+
+  // SIGNATURE PASS: mirrors invoice_pdf_extra_sections.dart's
+  // buildPdfSignatureBlock exactly (three modes + deselected ''), built
+  // directly against QuoteData since Quote has no separate payment/
+  // terms/signature PDF file the way Invoice does.
+  //
+  // TERMS & SIGNATURE GATING FIX: now ALSO checks the 'signature'
+  // enabledFields toggle first — previously only signatureMode being
+  // non-empty was checked, so toggling Signature off on Customise had no
+  // effect on the exported PDF. Matches
+  // executive_quote_stationary_layout.dart's buildSignatureBlock() gate
+  // exactly: `!_on(data, 'signature')` short-circuits before the mode
+  // check.
+  static Future<pw.Widget> _buildQuoteSignatureBlock(QuoteData d) async {
+    if (!_on(d, 'signature')) return pw.SizedBox();
+    if (d.signatureMode.trim().isEmpty) return pw.SizedBox();
+
+    // SIGNATURE LINE WIDTH PDF PARITY PASS: line() now takes an optional
+    // width, defaulting to the original fixed 160pt — 'image' and
+    // 'blank' modes below still call line() with no argument, only
+    // 'typed' passes a measured width. Mirrors the Flutter side's
+    // line({double width = 160}) exactly.
+    pw.Widget line({double width = 160}) =>
+        pw.Container(width: width, height: 0.75, color: PdfColors.grey500);
+
+    pw.Widget content;
+    switch (d.signatureMode) {
+      case 'image':
+        pw.MemoryImage? img;
+        final path = d.signatureImagePath;
+        if (path != null && path.isNotEmpty) {
+          final f = File(path);
+          if (await f.exists()) img = pw.MemoryImage(await f.readAsBytes());
+        }
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              height: 40,
+              child: img != null
+                  ? pw.Image(img, fit: pw.BoxFit.contain, alignment: pw.Alignment.bottomLeft)
+                  : pw.SizedBox(),
+            ),
+            pw.SizedBox(height: 4),
+            line(),
+          ],
+        );
+        break;
+      case 'typed':
+        final name = d.signatureName.trim();
+        final pdfFont = await _pdfSignatureFont(d.signatureFontFamily);
+        // NOTE: fallback fontSize is hardcoded 20 here (pre-existing,
+        // unrelated to this fix) — not d.signatureFontSize the way the
+        // Flutter fallback uses. Measurement below uses whichever size
+        // is actually applied so the line still matches.
+        final effectiveFontSize = pdfFont != null ? d.signatureFontSize : 20.0;
+        final style = pdfFont != null
+            ? pw.TextStyle(font: pdfFont, fontSize: d.signatureFontSize)
+            : pw.TextStyle(
+                fontSize: 20,
+                fontStyle: pw.FontStyle.italic,
+                fontWeight: pw.FontWeight.bold,
+              );
+        // SIGNATURE LINE WIDTH PDF PARITY PASS: measured against the
+        // actual font/size about to be drawn, clamped to the same
+        // [70, 220] range the Flutter preview uses.
+        final lineWidth = name.isEmpty
+            ? 70.0
+            : _measureSignatureWidth(name, pdfFont, effectiveFontSize).clamp(70.0, 220.0);
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              height: 40,
+              child: pw.Align(
+                alignment: pw.Alignment.bottomLeft,
+                child: pw.Text(name.isEmpty ? ' ' : name, style: style),
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            line(width: lineWidth),
+          ],
+        );
+        break;
+      case 'blank':
+      default:
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [pw.SizedBox(height: 40), line()],
+        );
+    }
+
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 24),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          content,
+          pw.SizedBox(height: 4),
+          pw.Text('Authorized Signature',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+        ],
+      ),
+    );
+  }
+
   // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
 
   Future<Uint8List> _buildExecutivePdf(SavedQuote quote) async {
@@ -143,6 +376,16 @@ class QuotePdfService {
         d.clientEmail.isNotEmpty ||
         d.clientPhone.isNotEmpty ||
         d.clientAddress.isNotEmpty;
+
+    // TERMS & SIGNATURE GATING FIX: built up front alongside the
+    // signature block — pure/synchronous, but kept next to it since both
+    // feed the same tail of the page.
+    final termsPanel = _buildQuoteTermsPanel(d);
+
+    // SIGNATURE PASS: built up front (needs an awaited disk read for
+    // 'image' mode / a font load for 'typed') since a pw.Widget tree
+    // must be fully assembled before pdf.addPage() below.
+    final signatureBlock = await _buildQuoteSignatureBlock(d);
 
     pdf.addPage(
       pw.MultiPage(
@@ -284,7 +527,7 @@ class QuotePdfService {
                       align: pw.TextAlign.center,
                     ),
                     _td(_fmtMoney(d, item.unitPrice), align: pw.TextAlign.right),
-                    _td(_fmtMoney(d, item.total), align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.lineNetTotal), align: pw.TextAlign.right),
                   ],
                 ),
               ),
@@ -300,12 +543,24 @@ class QuotePdfService {
               child: pw.Column(
                 children: [
                   _totalRow('Subtotal', _fmtMoney(d, subtotal)),
-                  if (d.taxRate > 0)
-                    _totalRow('Tax (${_fmtPct(d.taxRate)}%)',
+                  if (d.taxEnabled && d.taxRate > 0)
+                    _totalRow(
+                        '${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${_fmtPct(d.taxRate)}%)',
                         '+${_fmtMoney(d, taxAmount)}'),
-                  if (d.discountRate > 0)
-                    _totalRow('Discount (${_fmtPct(d.discountRate)}%)',
+                  if (d.discountEnabled && d.discountRate > 0)
+                    _totalRow(
+                        '${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${_fmtPct(d.discountRate)}%)',
                         '-${_fmtMoney(d, discountAmount)}'),
+                  for (final entry in d.itemTaxExtraByName.entries)
+                    if (entry.value != 0)
+                      _totalRow(
+                          entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})',
+                          '${entry.value >= 0 ? '+' : '-'}${_fmtMoney(d, entry.value.abs())}'),
+                  for (final entry in d.itemDiscountExtraByName.entries)
+                    if (entry.value > 0)
+                      _totalRow(
+                          entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})',
+                          '-${_fmtMoney(d, entry.value)}'),
                   pw.Divider(color: PdfColors.grey400),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -328,7 +583,7 @@ class QuotePdfService {
           // ── Notes ──────────────────────────────────────────────────────
           if (d.notes.isNotEmpty) ...[
             pw.SizedBox(height: 20),
-            pw.Text('Notes / Terms',
+            pw.Text('Notes',
                 style: pw.TextStyle(
                     fontWeight: pw.FontWeight.bold,
                     fontSize: 11,
@@ -336,6 +591,18 @@ class QuotePdfService {
             pw.SizedBox(height: 4),
             pw.Text(d.notes, style: const pw.TextStyle(fontSize: 10)),
           ],
+
+          // TERMS & SIGNATURE GATING FIX: Terms & Conditions now
+          // actually renders — previously this text was never read
+          // anywhere in this file (only d.notes was, mislabeled "Notes /
+          // Terms" above). Kept as its own labeled block, separate from
+          // Notes, matching the on-screen layout.
+          termsPanel,
+
+          // SIGNATURE PASS: rendered last, after Notes/Terms. Now
+          // correctly gated by the 'signature' enabledFields toggle too
+          // (see TERMS & SIGNATURE GATING FIX above).
+          signatureBlock,
         ],
       ),
     );
@@ -358,14 +625,11 @@ class QuotePdfService {
     }
   }
 
-  /// Renders the Executive header logo respecting the document's real
-  /// LogoShape instead of a hardcoded ClipOval — mirrors
-  /// invoice_pdf_service.dart's identical helper exactly.
   static pw.Widget _executiveLogoWidget(pw.MemoryImage logoImage, String logoShape, {double size = 64}) {
     final radius = switch (logoShape) {
       'circle' => size / 2,
       'square' => 0.0,
-      _ => size * 0.22, // roundedSquare + fallback
+      _ => size * 0.22,
     };
     return pw.ClipRRect(
       horizontalRadius: radius,
@@ -381,9 +645,6 @@ class QuotePdfService {
     );
   }
 
-  /// Formats money using QuoteData's own currency/currencySymbol/
-  /// currencyDisplayMode fields — mirrors invoice_pdf_service.dart's
-  /// identical helper exactly.
   static String _fmtMoney(QuoteData d, double v) {
     final amount = _fmt(v);
     final hasSymbol = d.currencySymbol.trim().isNotEmpty;

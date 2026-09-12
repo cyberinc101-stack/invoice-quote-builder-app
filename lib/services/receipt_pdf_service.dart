@@ -1,124 +1,85 @@
 // lib/services/receipt_pdf_service.dart
 //
-// HISTORY LOGGING PASS (this update): generateAndSharePDF and
-// printReceipt now accept an optional [historyProvider], mirroring
-// invoice_pdf_service.dart's own HISTORY LOGGING PASS. Share logs a
-// `shared` event with the shared file attached (Share.shareXFiles
-// doesn't return a path, so this is the only place that can attach the
-// real file); print logs a `printed` event (no file attached — printing
-// doesn't produce a reusable artifact the way share/download do).
-// Omitted (null) is a no-op on both.
+// OFFLINE SIGNATURE FONT PARITY PASS (this update): mirrors the fix
+// already applied to invoice_pdf_extra_sections.dart's and (this same
+// pass) quote_pdf_service.dart's _pdfSignatureFont() — this file's own
+// _pdfSignatureFont() still called PdfGoogleFonts.xRegular() for the six
+// script fonts, which always hits the network regardless of
+// GoogleFonts.config and fails silently (falls back to the plain
+// bold-italic style) with no connection. The six fonts are already
+// bundled locally in assets/signature_fonts/ and registered in
+// pubspec.yaml (that's what let Invoice's own fix work), so this now
+// loads each one via rootBundle + pw.Font.ttf() instead, exactly like
+// Invoice and Quote. No behavior change when signatureFontFamily is ''
+// or unrecognized — still falls back to the original bold-italic
+// pw.TextStyle look. printing.dart's import is kept (still needed for
+// Printing.layoutPdf in printReceipt()) — only the PdfGoogleFonts calls
+// are gone.
 //
-// FIELD VISIBILITY PASS (earlier update): _buildExecutivePdf (the A4 export
-// path) now checks the same pre-existing ReceiptData show* toggles the
-// thermal export (_buildThermalPdf, below) already checked — showLogo,
-// showBusinessDetails, showReceiptNumber, showDateTime,
-// showPaymentMethod, showCustomerDetails, showTaxLine, showDiscountLine.
-// Previously this builder rendered every one of those unconditionally,
-// so an A4 receipt saved with e.g. showTaxLine = false would still print
-// its tax line in the actual downloaded/shared PDF even though the
-// toggle existed, was persisted, and already worked correctly for
-// thermal receipts. Matches the identical fix just applied to the A4
-// live-preview/edit-canvas layout in
-// executive_receipt_stationary_layout.dart — see that file's header
-// comment for the fuller rationale.
+// SIGNATURE LINE WIDTH PDF PARITY PASS (earlier): mirrors the
+// identical fix applied to invoice_pdf_extra_sections.dart's
+// buildPdfSignatureBlock and quote_pdf_service.dart's
+// _buildQuoteSignatureBlock — the live preview's signing line under a
+// typed signature (executive_receipt_stationary_layout.dart's
+// buildSignatureBlock) was fixed in an earlier pass to measure the
+// actual rendered name width and size the line to match it, clamped to
+// [70, 220], but that fix never reached this file's exported PDF, which
+// still drew a fixed 160pt line regardless of name length.
 //
-// FIELD VERIFICATION PASS (earlier): cross-checked every ReceiptData
-// field reference in this file against the real receipt_data.dart model,
-// InvoiceData/QuoteData for consistency, and pdf_doc_adapter.dart for the
-// styled-template path -- confirmed clean, no drift. Also fixed a stale
-// doc comment on printReceipt() that still described the thermal PDF
-// builder as not-yet-existing ("a place to branch once a real
-// thermal-width PDF builder exists") even though _buildThermalPdf() was
-// added and wired into _buildPdf() in an earlier pass. No functional
-// changes in this pass -- comment-only fix, confirming existing behaviour
-// is correct.
+// Fixed by adding _measureSignatureWidth(), which uses the pdf
+// package's own PdfFont.stringMetrics() (the same call pw.Text itself
+// uses internally to lay out a string) instead of Flutter's
+// TextPainter, since this file has no Flutter widget tree to measure
+// against. This measures the ACTUAL font about to be drawn — the
+// bundled signature font, or the built-in Helvetica-BoldOblique
+// fallback when no signature font resolves — which guarantees the line
+// matches what's actually on the page. _buildReceiptSignatureBlock's
+// local line() now takes an optional width parameter (default 160,
+// unchanged for 'image'/'blank' — only 'typed' passes a measured
+// width), mirroring the Flutter side's line({double width = 160})
+// exactly. _buildThermalPdf is UNCHANGED — thermal receipts have no
+// signature block at all.
 //
-// STRUCTURAL SANITY PASS (earlier): cross-checked every ReceiptData
-// field reference in this file against the real receipt_data.dart model
-// -- all ~15 flagged fields (showLogo, compactThermalLayout, cashierName,
-// posId, taxId, paymentReference, authCode, cardLast4, showDiscountLine,
-// showTaxLine, showPaymentMethod, showCustomerDetails,
-// businessLogoDisplaySize, businessLogoShape, showFacebook/Instagram/
-// Twitter, showWebsite, businessWebsite, qrData) exist with matching
-// types, and the ReceiptColor/PaymentMethod switches in _pdfColor /
-// _paymentMethodLabel are exhaustive against the real enums. The only
-// change made here: _thermalPageFormat() used PdfPageFormat(...,
-// marginAll: ...), which isn't guaranteed to exist on the constructor
-// across every pdf-package version -- swapped for the four explicit
-// marginLeft/Top/Right/Bottom params, which are guaranteed stable. No
-// behavioural change, just removes a version-dependent risk.
+// NOTE: same as Invoice's/Quote's PDF fallback — the no-font-resolved
+// branch hardcodes fontSize: 20, not d.signatureFontSize the way the
+// Flutter fallback does. Pre-existing, out of scope here; the
+// measurement below always uses whichever size is actually applied so
+// the line stays matched to its own text either way.
 //
-// THERMAL PDF PASS (earlier): _buildPdf now branches on
-// receiptPaperFormatFromString(d.paperFormat).isThermal. Thermal formats
-// (58mm/80mm) route to the new _buildThermalPdf(), which renders a
-// dedicated narrow-roll layout at the real physical width from
-// receipt_paper_format.dart's widthMm — NOT the Executive/styled A4
-// layouts, which assume fixed A4-proportioned elements and would not fit
-// or read correctly on a 58/80mm roll. A4 format is unchanged and still
-// goes through _buildExecutivePdf / styled.buildStyledDocument as before.
-// This applies uniformly to generateAndDownloadPDF, generateAndSharePDF,
-// generatePdfBytes, and printReceipt, so a thermal-format receipt renders
-// as an actual narrow-roll document everywhere, not just when printing.
+// SIGNATURE PASS (earlier): _buildExecutivePdf (the A4 export path
+// only — thermal receipts have no signature block, same as Invoice's
+// own Signature feature never applying to a non-A4 layout) now renders
+// a signature block after Notes, gated by ReceiptData.showSignature and
+// signatureMode being non-empty (mirrors
+// executive_receipt_stationary_layout.dart's buildSignatureBlock gating
+// exactly). New _buildReceiptSignatureBlock() helper mirrors
+// invoice_pdf_extra_sections.dart's buildPdfSignatureBlock /
+// quote_pdf_service.dart's _buildQuoteSignatureBlock: 'image' reads the
+// file off disk, 'typed' loads a bundled signature font when
+// ReceiptData.signatureFontFamily names one of the six offered families
+// (falls back to the original bold-italic pw.TextStyle when it's ''),
+// 'blank' reserves a signing line, '' (deselected) renders nothing.
+// _buildExecutivePdf is already async, so no new async plumbing was
+// needed at the call site. _buildThermalPdf is UNCHANGED.
 //
-// NOTE: this thermal layout is a standard functional receipt design
-// (centered header, dashed dividers, item list, totals, footer) built
-// from ReceiptData directly — it has not been visually matched against
-// ThermalReceiptLivePreview (the on-screen thermal preview widget), which
-// wasn't available when this was written. If the live preview's exact
-// styling needs to match the printed/exported thermal PDF, send that
-// file and this can be aligned to it.
-//
-// PRINT ACTION PASS (earlier): added printReceipt(), routed through
-// the `printing` package's Printing.layoutPdf(), which opens the OS print
-// dialog (and on most platforms lets the user pick a connected printer,
-// including thermal/POS printers over Bluetooth/USB where the OS driver
-// supports it). Reuses the existing _buildPdf dispatcher for the actual
-// document bytes — same Executive/styled-template/thermal logic as
-// generateAndDownloadPDF / generateAndSharePDF above. The print dialog's
-// page format is also set to match (A4 vs the real thermal roll width),
-// not left at the printing package's default.
-//
-// LOGO PARITY PASS (earlier): mirrors invoice_pdf_service.dart's own
-// LOGO PARITY PASS exactly — the Executive builder's logo was hardcoded
-// to pw.ClipOval on a solid white background regardless of what LogoShape
-// the user actually picked via the Logo Sizer. Now clips to the real
-// shape (circle/square/roundedSquare, mirroring LogoShape.radiusFor() on
-// the Flutter side) and sits on a very light neutral background with
-// BoxFit.contain, matching pdf_templates.dart's _logoWidget (used by
-// styles 2-10 for receipts too, via buildStyledDocument) and the
-// Flutter-side DocLogoAvatar's own contain-fit treatment.
-//
-// CURRENCY DISPLAY PASS (earlier): _fmtMoney(d, v) uses ReceiptData's own
-// currency/currencySymbol/currencyDisplayMode fields directly — mirrors
-// DocTemplateAdapter.fmtMoney() (Flutter preview side) and
-// PdfDocData.fmtMoney() (styled-template path), so exported PDFs respect
-// whatever the user actually typed for currency symbol/format.
-//
-// REWRITE: built directly against the real ReceiptData model (flat
-// fields: businessName, businessEmail, clientName, lineItems, etc.), same
-// as invoice_pdf_service.dart's own rewrite — see that file's header
-// comment for the full rationale, which applies identically here. Total
-// is amountPaid rather than grandTotal (receipts record what was actually
-// paid, mirroring ReceiptData's own field), and the meta row shows
-// payment date + payment method rather than issue/due dates.
-//
-// Layout dispatcher: layoutTemplateId selects the visual style (1 =
-// Executive, built directly below; 2-10 route through
-// pdf_templates.dart's buildStyledDocument, shared with invoice/quote).
+// All earlier passes (PER-ITEM TAX/DISCOUNT, TAX/DISCOUNT TOGGLE +
+// NAME, CASHIER NAME TOGGLE, HISTORY LOGGING, FIELD VISIBILITY, THERMAL
+// PDF, PRINT ACTION, LOGO PARITY, CURRENCY DISPLAY) — see prior header
+// comments; unaffected by this update.
 
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:barcode/barcode.dart' as bc;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../create_receipt/receipt_paper_format.dart';
+import '../screens/create_receipt_section/receipt_paper_format.dart';
 import '../models/receipt_data.dart';
 import '../models/history_event.dart' show HistoryDocType;
 import '../providers/history_provider.dart';
@@ -140,10 +101,6 @@ class ReceiptPdfService {
     return file.path;
   }
 
-  /// [historyProvider], when passed, logs a `shared` History event with
-  /// the shared file attached as sourceFile — mirrors
-  /// invoice_pdf_service.dart's identical treatment. Omitted (null) is a
-  /// no-op, so every existing call site behaves exactly as before.
   Future<void> generateAndSharePDF(
     SavedReceipt receipt, {
     int? layoutTemplateId,
@@ -181,18 +138,6 @@ class ReceiptPdfService {
     return _buildPdf(receipt, layoutTemplateId: layoutTemplateId);
   }
 
-  /// Opens the OS print dialog for this receipt via the `printing`
-  /// package. [paperFormat] lets callers (receipt_full_preview_screen.dart)
-  /// override the format explicitly; when omitted, falls back to
-  /// receipt.data.paperFormat. Routes through the same _buildPdf
-  /// dispatcher as generateAndDownloadPDF/generateAndSharePDF, so a
-  /// thermal-format receipt gets the real _buildThermalPdf narrow-roll
-  /// layout here too, not the A4 Executive/styled layouts — and the print
-  /// dialog's page format below is set to match (real thermal roll width
-  /// vs A4), not left at the printing package's default.
-  /// [historyProvider], when passed, logs a `printed` History event —
-  /// no file attached, since printing doesn't leave behind a reusable
-  /// artifact the way share/download do.
   Future<void> printReceipt(
     SavedReceipt receipt, {
     int? layoutTemplateId,
@@ -236,17 +181,9 @@ class ReceiptPdfService {
     return Uint8List.fromList(bytes);
   }
 
-  // STRUCTURAL SANITY PASS: previously used PdfPageFormat(..., marginAll:
-  // ...), which isn't guaranteed to exist on the constructor across every
-  // pdf-package version. Swapped for the four explicit margin params,
-  // which are stable across versions -- same 3mm margin on all sides,
-  // just spelled out instead of relying on a convenience param.
   static PdfPageFormat _thermalPageFormat(ReceiptPaperFormat format) {
     final widthPt = format.widthMm * PdfPageFormat.mm;
     final marginPt = 3 * PdfPageFormat.mm;
-    // Thermal rolls are continuous-feed, not a fixed page height — a tall
-    // page keeps the printed content on one continuous strip rather than
-    // paginating like an A4 document would.
     return PdfPageFormat(
       widthPt,
       1400 * PdfPageFormat.mm,
@@ -257,22 +194,8 @@ class ReceiptPdfService {
     );
   }
 
-  // ── PDF builder: Thermal (58mm / 80mm roll) ─────────────────────────────────
-  //
-  // Mirrors ThermalReceiptLivePreview (receipt_thermal_live_preview.dart)
-  // field-for-field: same show*/compactThermalLayout toggles, same meta
-  // rows (receipt #, date, cashier, POS ID), same payment-method detail
-  // rows, same barcode/QR handling (real scannable codes keyed off
-  // qrData, falling back to receiptNumber), same footer (notes, footer
-  // message, social badges, website). Deliberately separate from
-  // _buildExecutivePdf — A4's two-column header and boxed cards don't fit
-  // a 48-72mm printable width.
-  //
-  // Known gap vs. the live preview: the on-screen logo renders through a
-  // grayscale ColorFilter (forcing black & white for a monochrome
-  // thermal look) — the `pdf` package widgets used here don't expose an
-  // equivalent color-matrix filter, so the logo prints in its original
-  // colors instead. Everything else follows the same toggles/data.
+  // ── PDF builder: Thermal (58mm / 80mm roll) — UNCHANGED, no signature
+  // block on thermal receipts.
   Future<Uint8List> _buildThermalPdf(
     SavedReceipt receipt,
     ReceiptPaperFormat format,
@@ -313,7 +236,6 @@ class ReceiptPdfService {
         build: (ctx) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // ── Business header ─────────────────────────────────────
             if (logoImage != null)
               pw.Center(
                 child: pw.Padding(
@@ -348,18 +270,17 @@ class ReceiptPdfService {
                 style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: gap),
 
-            // ── Meta ──────────────────────────────────────────────────
             if (d.showReceiptNumber && d.receiptNumber.isNotEmpty)
               _thermalMetaRow('Receipt No:', d.receiptNumber),
             if (d.showDateTime && d.paymentDate.isNotEmpty)
               _thermalMetaRow('Date:', d.paymentDate),
-            if (d.cashierName.isNotEmpty) _thermalMetaRow('Cashier:', d.cashierName),
+            if (d.showCashierName && d.cashierName.isNotEmpty)
+              _thermalMetaRow('Cashier:', d.cashierName),
             if (d.posId.isNotEmpty) _thermalMetaRow('POS ID:', d.posId),
             pw.SizedBox(height: 2),
             _thermalDivider(),
             pw.SizedBox(height: gap),
 
-            // ── Items ─────────────────────────────────────────────────
             pw.Row(
               children: [
                 pw.Expanded(
@@ -398,7 +319,7 @@ class ReceiptPdfService {
                       ),
                       pw.Expanded(
                         flex: 3,
-                        child: pw.Text('$sym${item.total.toStringAsFixed(2)}',
+                        child: pw.Text('$sym${item.lineNetTotal.toStringAsFixed(2)}',
                             textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 8)),
                       ),
@@ -409,14 +330,25 @@ class ReceiptPdfService {
             _thermalDivider(),
             pw.SizedBox(height: gap),
 
-            // ── Totals ────────────────────────────────────────────────
             _thermalMetaRow('Subtotal', '$sym${subtotal.toStringAsFixed(2)}'),
-            if (d.showDiscountLine && d.discountRate > 0)
-              _thermalMetaRow('Discount (${_fmtPct(d.discountRate)}%)',
-                  '-$sym${discountAmount.toStringAsFixed(2)}'),
-            if (d.showTaxLine && d.taxRate > 0)
+            if (d.showDiscountLine && d.discountEnabled && d.discountRate > 0)
               _thermalMetaRow(
-                  'Tax (${_fmtPct(d.taxRate)}%)', '$sym${taxAmount.toStringAsFixed(2)}'),
+                  '${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${_fmtPct(d.discountRate)}%)',
+                  '-$sym${discountAmount.toStringAsFixed(2)}'),
+            if (d.showTaxLine && d.taxEnabled && d.taxRate > 0)
+              _thermalMetaRow(
+                  '${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${_fmtPct(d.taxRate)}%)',
+                  '$sym${taxAmount.toStringAsFixed(2)}'),
+            for (final entry in d.itemTaxExtraByName.entries)
+              if (entry.value != 0)
+                _thermalMetaRow(
+                    entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})',
+                    '${entry.value >= 0 ? '' : '-'}$sym${entry.value.abs().toStringAsFixed(2)}'),
+            for (final entry in d.itemDiscountExtraByName.entries)
+              if (entry.value > 0)
+                _thermalMetaRow(
+                    entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})',
+                    '-$sym${entry.value.toStringAsFixed(2)}'),
             pw.SizedBox(height: 4),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -428,7 +360,6 @@ class ReceiptPdfService {
               ],
             ),
 
-            // ── Payment ───────────────────────────────────────────────
             if (d.showPaymentMethod) ...[
               pw.SizedBox(height: gap),
               _thermalDivider(),
@@ -445,7 +376,6 @@ class ReceiptPdfService {
                 _thermalMetaRow('Card:', '**** **** **** ${d.cardLast4}'),
             ],
 
-            // ── Customer ──────────────────────────────────────────────
             if (hasCustomer) ...[
               pw.SizedBox(height: gap),
               _thermalDivider(),
@@ -462,8 +392,6 @@ class ReceiptPdfService {
                 pw.Text(d.clientAddress, style: const pw.TextStyle(fontSize: 8)),
             ],
 
-            // ── Barcode / QR — real scannable codes, same value logic as
-            // the live preview: qrData if set, else the receipt number.
             if (d.showBarcode || d.showQrCode) ...[
               pw.SizedBox(height: 12),
               pw.Builder(builder: (ctx2) {
@@ -500,7 +428,6 @@ class ReceiptPdfService {
               }),
             ],
 
-            // ── Footer ────────────────────────────────────────────────
             pw.SizedBox(height: 14),
             if (d.notes.isNotEmpty) ...[
               pw.Text(d.notes,
@@ -546,11 +473,6 @@ class ReceiptPdfService {
     return pdf.save();
   }
 
-  /// Small filled-circle badge with a letter/initials label, standing in
-  /// for the live preview's FontAwesome social icons — the `pdf` package
-  /// doesn't have a FontAwesome equivalent available here, so this uses
-  /// plain text glyphs on a black circle instead of the actual brand
-  /// icons the live preview shows.
   static pw.Widget _socialBadge(String label) => pw.Container(
         width: 20,
         height: 20,
@@ -561,10 +483,6 @@ class ReceiptPdfService {
                 fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
       );
 
-  /// Legacy hardcoded code -> symbol lookup, mirrored from
-  /// receipt_thermal_live_preview.dart's identical helper — used as a
-  /// fallback for 'symbol'/'both' display modes when currencySymbol
-  /// hasn't been explicitly set.
   static String _legacySymbolFor(String code) {
     switch (code.toUpperCase()) {
       case 'USD': return '\$';
@@ -579,8 +497,6 @@ class ReceiptPdfService {
     }
   }
 
-  /// Mirrors ThermalReceiptLivePreview._currencyPrefix exactly, so the
-  /// thermal PDF's amount prefixes match what the live preview shows.
   static String _currencyPrefix(ReceiptData d) {
     final code = d.currency.trim().toUpperCase();
     final customSymbol = d.currencySymbol.trim();
@@ -617,12 +533,145 @@ class ReceiptPdfService {
         ],
       );
 
+  // OFFLINE SIGNATURE FONT PARITY PASS: maps one of
+  // executive_invoice_payment_terms_signature.dart's kSignatureFonts to
+  // its locally-bundled .ttf asset (see pubspec.yaml's
+  // assets/signature_fonts/ entries), loaded via rootBundle +
+  // pw.Font.ttf — exactly like invoice_pdf_extra_sections.dart's and
+  // quote_pdf_service.dart's _pdfSignatureFont(). Returns null for ''
+  // (no family chosen) or an unrecognized name, so the caller falls
+  // back to the original bold-italic pw.TextStyle look. No network
+  // involved at all, unlike the old PdfGoogleFonts.xRegular() calls
+  // this replaces.
+  static Future<pw.Font?> _pdfSignatureFont(String family) async {
+    const assetMap = {
+      'Dancing Script': 'assets/signature_fonts/DancingScript-Regular.ttf',
+      'Great Vibes': 'assets/signature_fonts/GreatVibes-Regular.ttf',
+      'Sacramento': 'assets/signature_fonts/Sacramento-Regular.ttf',
+      'Pacifico': 'assets/signature_fonts/Pacifico-Regular.ttf',
+      'Alex Brush': 'assets/signature_fonts/AlexBrush-Regular.ttf',
+      'Caveat': 'assets/signature_fonts/Caveat-Regular.ttf',
+    };
+    final path = assetMap[family.trim()];
+    if (path == null) return null;
+    final data = await rootBundle.load(path);
+    return pw.Font.ttf(data);
+  }
+
+  // SIGNATURE LINE WIDTH PDF PARITY PASS: measures a string against the
+  // actual pw.Font about to draw it, via the pdf package's own
+  // PdfFont.stringMetrics() — the same primitive pw.Text uses internally
+  // to lay text out. Multiplying by fontSize (via PdfFontMetrics' own
+  // `*` operator) converts the font's normalized glyph widths into
+  // actual point widths at the size being rendered. Falls back to the
+  // built-in Helvetica-BoldOblique font when no bundled signature font
+  // resolved (font == null) — the closest built-in match to the
+  // fallback bold-italic pw.TextStyle used in that case.
+  static double _measureSignatureWidth(String text, pw.Font? font, double fontSize) {
+    final measuringFont = font ?? pw.Font.helveticaBoldOblique();
+    final metrics = measuringFont.stringMetrics(text) * fontSize;
+    return metrics.width;
+  }
+
+  // SIGNATURE PASS: mirrors invoice_pdf_extra_sections.dart's
+  // buildPdfSignatureBlock / quote_pdf_service.dart's
+  // _buildQuoteSignatureBlock exactly (three modes + deselected ''),
+  // built directly against ReceiptData, gated by showSignature (A4-only
+  // — never called from _buildThermalPdf above).
+  static Future<pw.Widget> _buildReceiptSignatureBlock(ReceiptData d) async {
+    if (!d.showSignature) return pw.SizedBox();
+    if (d.signatureMode.trim().isEmpty) return pw.SizedBox();
+
+    // SIGNATURE LINE WIDTH PDF PARITY PASS: line() now takes an optional
+    // width, defaulting to the original fixed 160pt — 'image' and
+    // 'blank' modes below still call line() with no argument, only
+    // 'typed' passes a measured width. Mirrors the Flutter side's
+    // line({double width = 160}) exactly.
+    pw.Widget line({double width = 160}) =>
+        pw.Container(width: width, height: 0.75, color: PdfColors.grey500);
+
+    pw.Widget content;
+    switch (d.signatureMode) {
+      case 'image':
+        pw.MemoryImage? img;
+        final path = d.signatureImagePath;
+        if (path != null && path.isNotEmpty) {
+          final f = File(path);
+          if (await f.exists()) img = pw.MemoryImage(await f.readAsBytes());
+        }
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              height: 40,
+              child: img != null
+                  ? pw.Image(img, fit: pw.BoxFit.contain, alignment: pw.Alignment.bottomLeft)
+                  : pw.SizedBox(),
+            ),
+            pw.SizedBox(height: 4),
+            line(),
+          ],
+        );
+        break;
+      case 'typed':
+        final name = d.signatureName.trim();
+        final pdfFont = await _pdfSignatureFont(d.signatureFontFamily);
+        // NOTE: fallback fontSize is hardcoded 20 here (pre-existing,
+        // unrelated to this fix) — not d.signatureFontSize the way the
+        // Flutter fallback uses. Measurement below uses whichever size
+        // is actually applied so the line still matches.
+        final effectiveFontSize = pdfFont != null ? d.signatureFontSize : 20.0;
+        final style = pdfFont != null
+            ? pw.TextStyle(font: pdfFont, fontSize: d.signatureFontSize)
+            : pw.TextStyle(
+                fontSize: 20,
+                fontStyle: pw.FontStyle.italic,
+                fontWeight: pw.FontWeight.bold,
+              );
+        // SIGNATURE LINE WIDTH PDF PARITY PASS: measured against the
+        // actual font/size about to be drawn, clamped to the same
+        // [70, 220] range the Flutter preview uses.
+        final lineWidth = name.isEmpty
+            ? 70.0
+            : _measureSignatureWidth(name, pdfFont, effectiveFontSize).clamp(70.0, 220.0);
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              height: 40,
+              child: pw.Align(
+                alignment: pw.Alignment.bottomLeft,
+                child: pw.Text(name.isEmpty ? ' ' : name, style: style),
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            line(width: lineWidth),
+          ],
+        );
+        break;
+      case 'blank':
+      default:
+        content = pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [pw.SizedBox(height: 40), line()],
+        );
+    }
+
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 24),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          content,
+          pw.SizedBox(height: 4),
+          pw.Text('Authorized Signature',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+        ],
+      ),
+    );
+  }
+
   // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
-  //
-  // FIELD VISIBILITY PASS: this A4 builder now gates on the same show*
-  // toggles as the thermal builder above and the live A4 preview
-  // (executive_receipt_stationary_layout.dart) — see this file's
-  // top-of-file header comment for the full rationale.
 
   Future<Uint8List> _buildExecutivePdf(SavedReceipt receipt) async {
     final pdf   = pw.Document();
@@ -648,6 +697,10 @@ class ReceiptPdfService {
             d.clientEmail.isNotEmpty ||
             d.clientPhone.isNotEmpty ||
             d.clientAddress.isNotEmpty);
+
+    // SIGNATURE PASS: built up front, same reasoning as
+    // quote_pdf_service.dart's identical treatment.
+    final signatureBlock = await _buildReceiptSignatureBlock(d);
 
     pdf.addPage(
       pw.MultiPage(
@@ -713,6 +766,10 @@ class ReceiptPdfService {
                               fontSize: 10, color: PdfColors.white)),
                     if (d.showPaymentMethod)
                       pw.Text('Paid via: ${_paymentMethodLabel(d.paymentMethod)}',
+                          style: const pw.TextStyle(
+                              fontSize: 10, color: PdfColors.white)),
+                    if (d.showCashierName && d.cashierName.isNotEmpty)
+                      pw.Text('Cashier: ${d.cashierName}',
                           style: const pw.TextStyle(
                               fontSize: 10, color: PdfColors.white)),
                   ],
@@ -789,7 +846,7 @@ class ReceiptPdfService {
                       align: pw.TextAlign.center,
                     ),
                     _td(_fmtMoney(d, item.unitPrice), align: pw.TextAlign.right),
-                    _td(_fmtMoney(d, item.total), align: pw.TextAlign.right),
+                    _td(_fmtMoney(d, item.lineNetTotal), align: pw.TextAlign.right),
                   ],
                 ),
               ),
@@ -805,12 +862,24 @@ class ReceiptPdfService {
               child: pw.Column(
                 children: [
                   _totalRow('Subtotal', _fmtMoney(d, subtotal)),
-                  if (d.showTaxLine && d.taxRate > 0)
-                    _totalRow('Tax (${_fmtPct(d.taxRate)}%)',
+                  if (d.showTaxLine && d.taxEnabled && d.taxRate > 0)
+                    _totalRow(
+                        '${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${_fmtPct(d.taxRate)}%)',
                         '+${_fmtMoney(d, taxAmount)}'),
-                  if (d.showDiscountLine && d.discountRate > 0)
-                    _totalRow('Discount (${_fmtPct(d.discountRate)}%)',
+                  if (d.showDiscountLine && d.discountEnabled && d.discountRate > 0)
+                    _totalRow(
+                        '${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${_fmtPct(d.discountRate)}%)',
                         '-${_fmtMoney(d, discountAmount)}'),
+                  for (final entry in d.itemTaxExtraByName.entries)
+                    if (entry.value != 0)
+                      _totalRow(
+                          entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})',
+                          '${entry.value >= 0 ? '+' : '-'}${_fmtMoney(d, entry.value.abs())}'),
+                  for (final entry in d.itemDiscountExtraByName.entries)
+                    if (entry.value > 0)
+                      _totalRow(
+                          entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})',
+                          '-${_fmtMoney(d, entry.value)}'),
                   pw.Divider(color: PdfColors.grey400),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -841,6 +910,9 @@ class ReceiptPdfService {
             pw.SizedBox(height: 4),
             pw.Text(d.notes, style: const pw.TextStyle(fontSize: 10)),
           ],
+
+          // SIGNATURE PASS: new — rendered last, after Notes.
+          signatureBlock,
         ],
       ),
     );
@@ -872,14 +944,11 @@ class ReceiptPdfService {
     }
   }
 
-  /// Renders the Executive header logo respecting the document's real
-  /// LogoShape instead of a hardcoded ClipOval — mirrors
-  /// invoice_pdf_service.dart's identical helper exactly.
   static pw.Widget _executiveLogoWidget(pw.MemoryImage logoImage, String logoShape, {double size = 64}) {
     final radius = switch (logoShape) {
       'circle' => size / 2,
       'square' => 0.0,
-      _ => size * 0.22, // roundedSquare + fallback
+      _ => size * 0.22,
     };
     return pw.ClipRRect(
       horizontalRadius: radius,
@@ -895,9 +964,6 @@ class ReceiptPdfService {
     );
   }
 
-  /// Formats money using ReceiptData's own currency/currencySymbol/
-  /// currencyDisplayMode fields — mirrors invoice_pdf_service.dart's
-  /// identical helper exactly.
   static String _fmtMoney(ReceiptData d, double v) {
     final amount = _fmt(v);
     final hasSymbol = d.currencySymbol.trim().isNotEmpty;
