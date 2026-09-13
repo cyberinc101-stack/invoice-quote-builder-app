@@ -1,132 +1,93 @@
 // nordic_template.dart
 // lib/document_layout_templates/02_nordic/nordic_template.dart
 //
-// TEN-TEMPLATE UNIQUENESS PASS (earlier): Nordic previously shared the
-// same "quiet identity block + thin rule" structure as Classic/Emerald/
-// Editorial/Pastel Soft — differing mostly by font weight and rule style
-// rather than anything structurally distinct, which made it hard to tell
-// apart from those at a glance. Reworked here as a true minimalist ledger:
-// NO decorative rule of any kind (no single line, no double line), the
-// business identity sits alone on the left with generous whitespace, and
-// the doc type/number/status are laid out as a plain right-aligned
-// numeric block — closer to a plain accounting ledger (QuickBooks-style)
-// than a designed letterhead. This is now the most restrained of the 10
-// by a clear margin, distinct from Classic's still-has-a-rule structure
-// and Emerald's hairline-rule refinement.
+// ITEMS-HEADER-ROW PASS (this update): _nordicFullHeader and
+// _nordicContinuationHeader no longer call buildSharedLineItemsHeaderRow()
+// themselves — supplied instead via the new buildLineItemsHeaderRow
+// param on every Preview class below. See a4_paginator.dart's header
+// comment for the bug this fixes (a floating column-header row on a
+// totals-only overflow page).
 //
-// SIDE-BY-SIDE HEADER PASS (this update): business block and client/meta
-// block previously sat in a single Column, stacked with a fixed 38px gap
-// between them — since the business block's own content (name/doc-type
-// row/address/contact) varies in height, that gap often left the client
-// block sitting well below the business block's title line, with a slab
-// of unused whitespace in between and the two blocks visually
-// disconnected. Restructured as a Row instead: business block on the
-// left (Expanded, so it still wraps long names/addresses the same way),
-// client/meta block on the right, both anchored to
-// crossAxisAlignment.start so the client block's top line ("BILLED TO")
-// now lines up with the business name's top line instead of trailing far
-// below it. This closes up the dead space in the middle and reads as one
-// tidy header band rather than two staggered blocks.
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_totals.dart removed — Nordic
+// never calls anything from it.
 //
-// Everything below the header (line items, totals, notes, footer) still
-// comes from shared_doc_widgets.dart unchanged. Class names and
-// signatures (NordicInvoicePreview/NordicQuotePreview/NordicReceiptPreview)
-// are unchanged, so preview_registry.dart files need no changes.
+// TEN-TEMPLATE UNIQUENESS PASS / SIDE-BY-SIDE HEADER PASS (earlier):
+// see prior header comments for the full history of this design's
+// left-aligned wordmark + right-aligned client/meta band layout.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/doc_line_items.dart';
+import '../document_template_layout_data/template_document.dart';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Header design — LEFT-ALIGNED WORDMARK, no logo mark in the header at
-// all. Executive's identity is built around its diamond logo sitting on
-// the LEFT; every other template in the set also puts a logo mark
-// somewhere in the top-left/top-center. Nordic drops the logo from the
-// header entirely (large spaced-out capital lettering carries the
-// identity instead) and keeps the business block at the LEFT edge of the
-// page. Client/meta info sits on the opposite (right) side, top-aligned
-// with it, so the header reads as one tidy two-column band — business on
-// the left, client details on the right — rather than two staggered
-// blocks with a gap of empty space between them.
+// all. Client/meta info sits on the opposite (right) side, top-aligned
+// with it.
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// buildSharedLineItemsHeaderRow(adapter: a) — see this file's Preview
+// classes for where it's supplied instead.
 // ─────────────────────────────────────────────────────────────────────────
 
 Widget _nordicFullHeader(DocTemplateAdapter a) {
-  return Column(
+  return Row(
     crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              (a.businessName.isEmpty ? 'YOUR BUSINESS' : a.businessName).toUpperCase(),
+              textAlign: TextAlign.left,
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w300,
+                  color: kInk, letterSpacing: 4.0, fontFamily: a.fontFamily),
+            ),
+            const SizedBox(height: 10),
+            Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  (a.businessName.isEmpty ? 'YOUR BUSINESS' : a.businessName).toUpperCase(),
-                  textAlign: TextAlign.left,
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w300,
-                      color: kInk, letterSpacing: 4.0, fontFamily: a.fontFamily),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(a.docTypeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                        color: kGrey, letterSpacing: 2.0, fontFamily: a.fontFamily)),
-                    Text('  ·  ', style: TextStyle(fontSize: 10, color: kGreyLight, fontFamily: a.fontFamily)),
-                    Text(a.docNumber.isEmpty ? '—' : a.docNumber,
-                        style: TextStyle(fontSize: 10, color: kGrey, fontWeight: FontWeight.w600, fontFamily: a.fontFamily)),
-                    const SizedBox(width: 10),
-                    Text(a.statusLabel, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
-                        color: a.statusColor, letterSpacing: 0.4, fontFamily: a.fontFamily)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                if (a.businessAddress.isNotEmpty)
-                  Text(a.businessAddress, textAlign: TextAlign.left,
-                      style: TextStyle(fontSize: 9, color: kGreyLight, height: 1.5, fontFamily: a.fontFamily)),
-                if (a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty)
-                  Text([a.businessEmail, a.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
-                      textAlign: TextAlign.left,
-                      style: TextStyle(fontSize: 9, color: kGreyLight, fontFamily: a.fontFamily)),
+                Text(a.docTypeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                    color: kGrey, letterSpacing: 2.0, fontFamily: a.fontFamily)),
+                Text('  ·  ', style: TextStyle(fontSize: 10, color: kGreyLight, fontFamily: a.fontFamily)),
+                Text(a.docNumber.isEmpty ? '—' : a.docNumber,
+                    style: TextStyle(fontSize: 10, color: kGrey, fontWeight: FontWeight.w600, fontFamily: a.fontFamily)),
+                const SizedBox(width: 10),
+                Text(a.statusLabel, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
+                    color: a.statusColor, letterSpacing: 0.4, fontFamily: a.fontFamily)),
               ],
             ),
-          ),
-          const SizedBox(width: 24),
-          // Client/meta block — top-aligned with the business block via
-          // the parent Row's crossAxisAlignment.start, so "BILLED TO"
-          // lines up with the business name instead of sitting far below
-          // it.
-          _NordicMetaStack(a: a),
-        ],
+            const SizedBox(height: 6),
+            if (a.businessAddress.isNotEmpty)
+              Text(a.businessAddress, textAlign: TextAlign.left,
+                  style: TextStyle(fontSize: 9, color: kGreyLight, height: 1.5, fontFamily: a.fontFamily)),
+            if (a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty)
+              Text([a.businessEmail, a.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
+                  textAlign: TextAlign.left,
+                  style: TextStyle(fontSize: 9, color: kGreyLight, fontFamily: a.fontFamily)),
+          ],
+        ),
       ),
-      const SizedBox(height: 28),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
+      const SizedBox(width: 24),
+      _NordicMetaStack(a: a),
     ],
   );
 }
 
 Widget _nordicContinuationHeader(DocTemplateAdapter a) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: kGrey, fontFamily: a.fontFamily)),
-          Text('${a.docTypeLabel} ${a.docNumber.isEmpty ? '—' : a.docNumber} ${a.continuationSuffix}',
-              style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: a.fontFamily)),
-        ],
-      ),
-      const SizedBox(height: 20),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
+      Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: kGrey, fontFamily: a.fontFamily)),
+      Text('${a.docTypeLabel} ${a.docNumber.isEmpty ? '—' : a.docNumber} ${a.continuationSuffix}',
+          style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: a.fontFamily)),
     ],
   );
 }
@@ -184,8 +145,7 @@ class _NordicMetaStack extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Preview wrappers — unchanged signatures, so preview_registry.dart files
-// (invoice / quote / receipt) need no changes for this rework.
+// Preview wrappers.
 // ─────────────────────────────────────────────────────────────────────────
 
 class NordicInvoicePreview extends StatelessWidget {
@@ -198,6 +158,7 @@ class NordicInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _nordicFullHeader,
         buildContinuationHeader: _nordicContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -212,6 +173,7 @@ class NordicQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _nordicFullHeader,
         buildContinuationHeader: _nordicContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -226,6 +188,7 @@ class NordicReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _nordicFullHeader,
         buildContinuationHeader: _nordicContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }

@@ -9,7 +9,38 @@
 // be written ONCE against PdfDocData and used for invoice, quote, and
 // receipt PDFs alike, mirroring the Flutter-side pattern exactly.
 //
-// LOGO PARITY PASS (this update): added logoShape — previously PdfDocData
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE (this update): added
+// itemTaxExtraByName and itemDiscountExtraByName — the same grouped-by-
+// name breakdown Executive's own PDF export (invoice_pdf_service.dart's
+// _buildExecutivePdf) already uses, and the identical fields added to
+// DocTemplateAdapter on the Flutter preview side (see
+// document_layout_templates/document_template_layout_data/doc_template_adapter.dart). Previously
+// PdfDocData only carried the flat itemTaxExtra/itemDiscountExtra sums,
+// which is all pdf_templates.dart's _sharedTotalsAndNotes used — so an
+// exported PDF for any of the 9 non-Executive styles showed one lumped
+// "Item Discounts"/"Item Tax" row instead of Executive's real per-name
+// breakdown (e.g. separate rows for "GST" and "Withholding Tax"). Both
+// new fields default to const {}, and are now populated by ALL THREE
+// toXPdfData() functions below from InvoiceData/QuoteData/ReceiptData's
+// own itemDiscountExtraByName/itemTaxExtraByName getters — those getters
+// already exist on all three data classes (their Flutter-side Executive
+// stationary layouts already read them directly), so this is a straight
+// pass-through. The flat itemTaxExtra/itemDiscountExtra fields
+// previously only populated for invoiceToPdfData() are now ALSO
+// populated for quoteToPdfData()/receiptToPdfData() — same reasoning,
+// since QuoteData/ReceiptData carry those getters too.
+//
+// PER-ITEM TAX/DISCOUNT TOTALS PASS (earlier): added itemTaxExtra and
+// itemDiscountExtra — mirrors the identical addition to DocTemplateAdapter
+// in document_layout_templates/document_template_layout_data/doc_template_adapter.dart. `total`
+// below already folds these in (invoiceToPdfData sets it to d.grandTotal,
+// which already accounts for per-item tax/discount), but the previous
+// Subtotal/Discount/Tax breakdown in pdf_templates.dart's
+// _sharedTotalsAndNotes didn't show them, so an exported PDF for an
+// invoice using per-item tax/discount could show a totals block that
+// didn't visibly sum to the printed total.
+//
+// LOGO PARITY PASS (earlier): added logoShape — previously PdfDocData
 // only carried logoImage, so every PDF template rendered the logo as a
 // hardcoded circle (ClipOval) regardless of what shape the user actually
 // picked via the Logo Sizer (SharedLogoPicker) on the Flutter side. This
@@ -81,6 +112,29 @@ class PdfDocData {
   final double discountAmount;
   final double taxRate;
   final double taxAmount;
+  // Flat sum of every line item's OWN tax/discount contribution (only
+  // items with taxEnabled/discountEnabled true) — mirrors InvoiceData/
+  // QuoteData/ReceiptData's itemTaxExtra/itemDiscountExtra getters.
+  // `total` below already includes these amounts; prefer
+  // itemTaxExtraByName/itemDiscountExtraByName below for any NEW totals
+  // rendering — those give the same per-name breakdown Executive's real
+  // PDF export shows.
+  final double itemTaxExtra;
+  final double itemDiscountExtra;
+  // SHARED/EXECUTIVE PARITY PASS — PDF SIDE: grouped-by-name breakdown of
+  // the same data itemTaxExtra/itemDiscountExtra sum — one entry per
+  // distinct itemTaxName/itemDiscountName in use (an empty-string key
+  // covers items with no name set), mirroring InvoiceData/QuoteData/
+  // ReceiptData's own itemTaxExtraByName/itemDiscountExtraByName getters
+  // and the identical fields on DocTemplateAdapter (Flutter preview
+  // side). This is what lets pdf_templates.dart's _sharedTotalsAndNotes
+  // render one "Item Tax (Withholding Tax)" row and a separate "Item Tax
+  // (GST)" row instead of lumping every named rate into a single "Item
+  // Tax" figure. Tax values may be signed (a withholding-style rate
+  // subtracts) — consumers should render entry.value.abs() with a
+  // negative flag when entry.value < 0. Defaults to const {}.
+  final Map<String, double> itemTaxExtraByName;
+  final Map<String, double> itemDiscountExtraByName;
   final double total;
   final String totalLabel;
 
@@ -117,6 +171,10 @@ class PdfDocData {
     required this.discountAmount,
     required this.taxRate,
     required this.taxAmount,
+    this.itemTaxExtra = 0.0,
+    this.itemDiscountExtra = 0.0,
+    this.itemTaxExtraByName = const {},
+    this.itemDiscountExtraByName = const {},
     required this.total,
     required this.totalLabel,
     required this.notes,
@@ -279,6 +337,12 @@ Future<PdfDocData> invoiceToPdfData(InvoiceData d) async => PdfDocData(
       discountAmount: d.discountAmount,
       taxRate: d.taxRate,
       taxAmount: d.taxAmount,
+      itemTaxExtra: d.itemTaxExtra,
+      itemDiscountExtra: d.itemDiscountExtra,
+      // SHARED/EXECUTIVE PARITY PASS — PDF SIDE: grouped-by-name
+      // breakdown, straight pass-through from InvoiceData's own getter.
+      itemTaxExtraByName: d.itemTaxExtraByName,
+      itemDiscountExtraByName: d.itemDiscountExtraByName,
       total: d.grandTotal,
       totalLabel: 'Grand Total',
       notes: d.notes,
@@ -317,6 +381,16 @@ Future<PdfDocData> quoteToPdfData(QuoteData d) async => PdfDocData(
       discountAmount: d.discountAmount,
       taxRate: d.taxRate,
       taxAmount: d.taxAmount,
+      // SHARED/EXECUTIVE PARITY PASS — PDF SIDE: QuoteData carries the
+      // same itemTaxExtra/itemDiscountExtra flat getters AND the same
+      // grouped-by-name itemTaxExtraByName/itemDiscountExtraByName
+      // getters Invoice does — previously none of these four were
+      // passed here, so a quote PDF using per-item tax/discount showed
+      // no breakdown for it at all.
+      itemTaxExtra: d.itemTaxExtra,
+      itemDiscountExtra: d.itemDiscountExtra,
+      itemTaxExtraByName: d.itemTaxExtraByName,
+      itemDiscountExtraByName: d.itemDiscountExtraByName,
       total: d.grandTotal,
       totalLabel: 'Total',
       notes: d.notes,
@@ -355,6 +429,13 @@ Future<PdfDocData> receiptToPdfData(ReceiptData d) async => PdfDocData(
       discountAmount: d.discountAmount,
       taxRate: d.taxRate,
       taxAmount: d.taxAmount,
+      // SHARED/EXECUTIVE PARITY PASS — PDF SIDE: ReceiptData carries the
+      // same four getters Invoice/Quote do — previously none of these
+      // four were passed here.
+      itemTaxExtra: d.itemTaxExtra,
+      itemDiscountExtra: d.itemDiscountExtra,
+      itemTaxExtraByName: d.itemTaxExtraByName,
+      itemDiscountExtraByName: d.itemDiscountExtraByName,
       total: d.amountPaid,
       totalLabel: 'Amount Paid',
       notes: d.notes,

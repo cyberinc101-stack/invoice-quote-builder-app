@@ -1,7 +1,40 @@
 // document_filter_bar.dart
 // lib/widgets/document_filter_bar.dart
 //
-// AUTO-CENTER PILL PASS (this update): tapping a type pill (All/Invoices/
+// INVOICE/RECEIPT DRAFT FILTER PASS (this update): the Invoice Status and
+// Receipt Status dropdowns in the Filters sheet only ever looped over their
+// real status enums (PaymentStatus: unpaid/partial/paid/overdue;
+// ReceiptStatus: issued/refunded) -- neither enum has a "draft" value at
+// all. "Draft" for invoices/receipts has always meant something different
+// from a payment/issuance status: it's completionPercent < 100 (see
+// invoiceIsDraft()/receiptIsDraft() in filter_logic.dart), which is exactly
+// what the existing "Drafts" quick-filter chip already uses. That concept
+// just wasn't reachable from the Invoice Status / Receipt Status dropdowns
+// themselves.
+//
+// Fixed by adding a 6th/4th item, "Draft", to each of those two dropdowns
+// (Quote Status is untouched -- QuoteStatus already has a real `draft`
+// enum value, so its dropdown already includes it via
+// QuoteStatus.values). Two small private superset enums,
+// _InvoiceStatusFilterOption and _ReceiptStatusFilterOption, are used
+// ONLY as the dropdown's value type -- they add an "any" pseudo-state
+// (maps to null, same as before) and a "draft" pseudo-state (maps to no
+// real status at all) on top of the real enum values. Two new
+// independent widget fields per type -- invoiceDraftSelected/
+// onInvoiceDraftChanged, receiptDraftSelected/onReceiptDraftChanged --
+// carry "is Draft selected instead of a real status", mirroring exactly
+// how a real status selection and "Draft" can never both be active at
+// once (selecting either one always clears the other, same guarantee as
+// the existing "Any status" / real-status exclusivity).
+//
+// _hasActiveAdvancedFilters and "Clear all" both now also account for
+// invoiceDraftSelected/receiptDraftSelected, so the Filters button's
+// active-dot and Clear all behave correctly when Draft is the active
+// selection. No dropdown's item COUNT or LAYOUT changed beyond the one
+// added row each -- same _SheetDropdown widget, same _SheetSection
+// wrapper, same position in the sheet.
+//
+// AUTO-CENTER PILL PASS (earlier): tapping a type pill (All/Invoices/
 // Quotes/Receipts/Expenses) selects it but previously left the horizontal
 // scroll position untouched — on a narrow screen, selecting a pill near
 // the right edge (e.g. "Receipts") could leave it partially under the
@@ -57,16 +90,94 @@ import '../filters/filter_types.dart';
 
 enum DocTypeFilter { all, invoices, quotes, receipts, expenses }
 
+// INVOICE/RECEIPT DRAFT FILTER PASS: value type for the Invoice Status
+// dropdown only. Superset of PaymentStatus plus "any" (no filter) and
+// "draft" (completionPercent < 100, not a PaymentStatus value at all).
+// Never persisted, never leaves this file.
+enum _InvoiceStatusFilterOption { any, unpaid, partial, paid, overdue, draft }
+
+_InvoiceStatusFilterOption _invoiceStatusFilterFromPaymentStatus(PaymentStatus? s) {
+  if (s == null) return _InvoiceStatusFilterOption.any;
+  switch (s) {
+    case PaymentStatus.unpaid:
+      return _InvoiceStatusFilterOption.unpaid;
+    case PaymentStatus.partial:
+      return _InvoiceStatusFilterOption.partial;
+    case PaymentStatus.paid:
+      return _InvoiceStatusFilterOption.paid;
+    case PaymentStatus.overdue:
+      return _InvoiceStatusFilterOption.overdue;
+  }
+}
+
+PaymentStatus? _paymentStatusFromInvoiceStatusFilter(_InvoiceStatusFilterOption o) {
+  switch (o) {
+    case _InvoiceStatusFilterOption.unpaid:
+      return PaymentStatus.unpaid;
+    case _InvoiceStatusFilterOption.partial:
+      return PaymentStatus.partial;
+    case _InvoiceStatusFilterOption.paid:
+      return PaymentStatus.paid;
+    case _InvoiceStatusFilterOption.overdue:
+      return PaymentStatus.overdue;
+    case _InvoiceStatusFilterOption.any:
+    case _InvoiceStatusFilterOption.draft:
+      return null;
+  }
+}
+
+// INVOICE/RECEIPT DRAFT FILTER PASS: same idea as
+// _InvoiceStatusFilterOption above, for the Receipt Status dropdown.
+enum _ReceiptStatusFilterOption { any, issued, refunded, draft }
+
+_ReceiptStatusFilterOption _receiptStatusFilterFromReceiptStatus(ReceiptStatus? s) {
+  if (s == null) return _ReceiptStatusFilterOption.any;
+  switch (s) {
+    case ReceiptStatus.issued:
+      return _ReceiptStatusFilterOption.issued;
+    case ReceiptStatus.refunded:
+      return _ReceiptStatusFilterOption.refunded;
+  }
+}
+
+ReceiptStatus? _receiptStatusFromReceiptStatusFilter(_ReceiptStatusFilterOption o) {
+  switch (o) {
+    case _ReceiptStatusFilterOption.issued:
+      return ReceiptStatus.issued;
+    case _ReceiptStatusFilterOption.refunded:
+      return ReceiptStatus.refunded;
+    case _ReceiptStatusFilterOption.any:
+    case _ReceiptStatusFilterOption.draft:
+      return null;
+  }
+}
+
 class DocumentFilterBar extends StatefulWidget {
   final DocTypeFilter selectedType;
   final ValueChanged<DocTypeFilter> onTypeChanged;
 
   final PaymentStatus? selectedPaymentStatus;
   final ValueChanged<PaymentStatus?> onPaymentStatusChanged;
+
+  // INVOICE/RECEIPT DRAFT FILTER PASS: independent of
+  // selectedPaymentStatus/onPaymentStatusChanged above -- true means
+  // "filter to invoices where completionPercent < 100" (same rule the
+  // existing Drafts quick-filter chip uses). selectedPaymentStatus is
+  // always null whenever this is true, and vice versa -- see the
+  // dropdown's onChanged below for exactly how both are kept in sync.
+  final bool invoiceDraftSelected;
+  final ValueChanged<bool> onInvoiceDraftChanged;
+
   final QuoteStatus? selectedQuoteStatus;
   final ValueChanged<QuoteStatus?> onQuoteStatusChanged;
+
   final ReceiptStatus? selectedReceiptStatus;
   final ValueChanged<ReceiptStatus?> onReceiptStatusChanged;
+
+  // INVOICE/RECEIPT DRAFT FILTER PASS: same pairing as
+  // invoiceDraftSelected above, for receipts.
+  final bool receiptDraftSelected;
+  final ValueChanged<bool> onReceiptDraftChanged;
 
   final int invoiceCount;
   final int quoteCount;
@@ -118,10 +229,14 @@ class DocumentFilterBar extends StatefulWidget {
     required this.onTypeChanged,
     required this.selectedPaymentStatus,
     required this.onPaymentStatusChanged,
+    required this.invoiceDraftSelected,
+    required this.onInvoiceDraftChanged,
     required this.selectedQuoteStatus,
     required this.onQuoteStatusChanged,
     required this.selectedReceiptStatus,
     required this.onReceiptStatusChanged,
+    required this.receiptDraftSelected,
+    required this.onReceiptDraftChanged,
     required this.invoiceCount,
     required this.quoteCount,
     required this.receiptCount,
@@ -227,8 +342,10 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
 
   bool get _hasActiveAdvancedFilters =>
       widget.selectedPaymentStatus != null ||
+      widget.invoiceDraftSelected ||
       widget.selectedQuoteStatus != null ||
       widget.selectedReceiptStatus != null ||
+      widget.receiptDraftSelected ||
       widget.selectedDateRange != DateRangePreset.values.first ||
       widget.customRangeStart != null ||
       widget.minAmount != null ||
@@ -316,8 +433,10 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                           GestureDetector(
                             onTap: () {
                               widget.onPaymentStatusChanged(null);
+                              widget.onInvoiceDraftChanged(false);
                               widget.onQuoteStatusChanged(null);
                               widget.onReceiptStatusChanged(null);
+                              widget.onReceiptDraftChanged(false);
                               widget.onDateRangeChanged(DateRangePreset.values.first);
                               widget.onCustomRangeChanged(null, null);
                               _minController.clear();
@@ -344,16 +463,42 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         label: widget.selectedType == DocTypeFilter.all
                             ? 'Invoice Status'
                             : 'Status',
-                        child: _SheetDropdown<PaymentStatus?>(
-                          value: widget.selectedPaymentStatus,
+                        // INVOICE/RECEIPT DRAFT FILTER PASS: speaks
+                        // _InvoiceStatusFilterOption instead of
+                        // PaymentStatus? directly, so it can offer a
+                        // "Draft" item that maps to completionPercent <
+                        // 100 instead of a real PaymentStatus value.
+                        child: _SheetDropdown<_InvoiceStatusFilterOption>(
+                          value: widget.invoiceDraftSelected
+                              ? _InvoiceStatusFilterOption.draft
+                              : _invoiceStatusFilterFromPaymentStatus(widget.selectedPaymentStatus),
                           hint: 'Any status',
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('Any status')),
+                            const DropdownMenuItem(
+                              value: _InvoiceStatusFilterOption.any,
+                              child: Text('Any status'),
+                            ),
+                            const DropdownMenuItem(
+                              value: _InvoiceStatusFilterOption.draft,
+                              child: Text('draft'),
+                            ),
                             ...PaymentStatus.values.map(
-                                (s) => DropdownMenuItem(value: s, child: Text(s.name))),
+                              (s) => DropdownMenuItem(
+                                value: _invoiceStatusFilterFromPaymentStatus(s),
+                                child: Text(s.name),
+                              ),
+                            ),
                           ],
-                          onChanged: (v) {
-                            widget.onPaymentStatusChanged(v);
+                          onChanged: (opt) {
+                            if (opt == null) return;
+                            if (opt == _InvoiceStatusFilterOption.draft) {
+                              widget.onPaymentStatusChanged(null);
+                              widget.onInvoiceDraftChanged(true);
+                            } else {
+                              widget.onPaymentStatusChanged(
+                                  _paymentStatusFromInvoiceStatusFilter(opt));
+                              widget.onInvoiceDraftChanged(false);
+                            }
                             setSheetState(() {});
                           },
                         ),
@@ -382,16 +527,41 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         label: widget.selectedType == DocTypeFilter.all
                             ? 'Receipt Status'
                             : 'Status',
-                        child: _SheetDropdown<ReceiptStatus?>(
-                          value: widget.selectedReceiptStatus,
+                        // INVOICE/RECEIPT DRAFT FILTER PASS: same
+                        // treatment as the Invoice Status dropdown above,
+                        // using _ReceiptStatusFilterOption instead of
+                        // ReceiptStatus? directly.
+                        child: _SheetDropdown<_ReceiptStatusFilterOption>(
+                          value: widget.receiptDraftSelected
+                              ? _ReceiptStatusFilterOption.draft
+                              : _receiptStatusFilterFromReceiptStatus(widget.selectedReceiptStatus),
                           hint: 'Any status',
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('Any status')),
+                            const DropdownMenuItem(
+                              value: _ReceiptStatusFilterOption.any,
+                              child: Text('Any status'),
+                            ),
+                            const DropdownMenuItem(
+                              value: _ReceiptStatusFilterOption.draft,
+                              child: Text('draft'),
+                            ),
                             ...ReceiptStatus.values.map(
-                                (s) => DropdownMenuItem(value: s, child: Text(s.name))),
+                              (s) => DropdownMenuItem(
+                                value: _receiptStatusFilterFromReceiptStatus(s),
+                                child: Text(s.name),
+                              ),
+                            ),
                           ],
-                          onChanged: (v) {
-                            widget.onReceiptStatusChanged(v);
+                          onChanged: (opt) {
+                            if (opt == null) return;
+                            if (opt == _ReceiptStatusFilterOption.draft) {
+                              widget.onReceiptStatusChanged(null);
+                              widget.onReceiptDraftChanged(true);
+                            } else {
+                              widget.onReceiptStatusChanged(
+                                  _receiptStatusFromReceiptStatusFilter(opt));
+                              widget.onReceiptDraftChanged(false);
+                            }
                             setSheetState(() {});
                           },
                         ),

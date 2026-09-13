@@ -1,22 +1,32 @@
 // lib/export/quote_export_service.dart
 //
-// Generates and exports quotes as XLSX and CSV — single-document and bulk.
+// PARITY FIX (this update): same fix as invoice_export_service.dart's
+// own PARITY FIX pass — see that file's header comment for the full
+// rationale, which applies identically here since QuoteData.lineItems is
+// the same shared LineItem class and QuoteData carries the same
+// itemTaxExtraByName/itemDiscountExtraByName/taxEnabled/discountEnabled/
+// taxName/discountName fields InvoiceData does. Three changes, both
+// builders (_buildSingleXlsxBytes and _buildSingleCsvString):
+//   1. Line-item Total column now uses item.lineNetTotal instead of the
+//      plain item.total; added Discount/Tax columns showing each row's
+//      own rate label/amount when set.
+//   2. Whole-quote Tax/Discount rows now gate on d.taxEnabled/
+//      d.discountEnabled (not just rate > 0), and use d.taxName/
+//      d.discountName when set.
+//   3. Added grouped-by-name "Item Tax"/"Item Discounts" breakdown rows
+//      so Subtotal + Tax - Discount actually reconciles to ESTIMATED
+//      TOTAL when a line item uses its own rate.
+// The bulk sheet gained "Item Tax Extra"/"Item Discount Extra" flat
+// columns for the same reconciliation reason (Estimated Total itself
+// was already correct — reads d.grandTotal directly).
+//
 // Mirrors invoice_export_service.dart exactly, built against the real
 // QuoteData fields confirmed in models/quote_data.dart: quoteNumber,
 // issueDate, expiryDate (no dueDate), businessName/Email/Phone/Address,
 // clientName/Email/Phone/Address, currency, lineItems, subtotal, taxRate,
 // taxAmount, discountRate, discountAmount, grandTotal, notes.
 //
-// Same conventions as InvoiceExportService:
-//  - "download" methods write to the same Downloads directory helper
-//    (Android: /storage/emulated/0/Download, else: app documents dir)
-//  - "share" methods write to getTemporaryDirectory() and call
-//    Share.shareXFiles(...)
-//  - Filenames follow the same Quote_<number-with-non-word-chars-stripped>
-//    pattern used for invoice PDFs/exports.
-//
-// Uses the same `excel` package dependency already added for
-// InvoiceExportService — no new pubspec entry needed.
+// Same conventions as InvoiceExportService.
 
 import 'dart:io';
 
@@ -29,7 +39,6 @@ import '../models/quote_data.dart';
 class QuoteExportService {
   // ── Public API: single document ─────────────────────────────────────────
 
-  /// Writes a single quote as an .xlsx file to Downloads and returns the path.
   Future<String> exportSingleXlsxToDownloads(SavedQuote quote) async {
     final bytes = _buildSingleXlsxBytes(quote);
     final dir = await _downloadsDir();
@@ -38,7 +47,6 @@ class QuoteExportService {
     return file.path;
   }
 
-  /// Writes a single quote as an .xlsx file to a temp dir and shares it.
   Future<void> shareSingleXlsx(SavedQuote quote) async {
     final bytes = _buildSingleXlsxBytes(quote);
     final dir = await getTemporaryDirectory();
@@ -52,7 +60,6 @@ class QuoteExportService {
     );
   }
 
-  /// Writes a single quote as a .csv file to Downloads and returns the path.
   Future<String> exportSingleCsvToDownloads(SavedQuote quote) async {
     final csv = _buildSingleCsvString(quote);
     final dir = await _downloadsDir();
@@ -61,7 +68,6 @@ class QuoteExportService {
     return file.path;
   }
 
-  /// Writes a single quote as a .csv file to a temp dir and shares it.
   Future<void> shareSingleCsv(SavedQuote quote) async {
     final csv = _buildSingleCsvString(quote);
     final dir = await getTemporaryDirectory();
@@ -75,8 +81,6 @@ class QuoteExportService {
 
   // ── Public API: bulk export ─────────────────────────────────────────────
 
-  /// Writes one row per quote (summary totals, no line-item breakdown)
-  /// as an .xlsx file to Downloads and returns the path.
   Future<String> exportBulkXlsxToDownloads(List<SavedQuote> quotes) async {
     final bytes = _buildBulkXlsxBytes(quotes);
     final dir = await _downloadsDir();
@@ -151,14 +155,21 @@ class QuoteExportService {
     header('Currency', d.currency);
     r++; // blank row
 
-    // Line items table
-    const cols = ['Description', 'Quantity', 'Unit Price', 'Total'];
+    // PARITY FIX: added Discount/Tax columns; Total below uses
+    // lineNetTotal instead of the plain qty x price total.
+    const cols = ['Description', 'Quantity', 'Unit Price', 'Discount', 'Tax', 'Total'];
     for (int c = 0; c < cols.length; c++) {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
           .value = xls.TextCellValue(cols[c]);
     }
     r++;
     for (final item in d.lineItems) {
+      final discountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+      final taxAmt = item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0;
+      final signedTaxAmt = item.taxEnabled
+          ? (item.itemTaxIsAddition ? taxAmt : -taxAmt)
+          : 0.0;
+
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: r))
           .value = xls.TextCellValue(item.description);
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: r))
@@ -166,23 +177,49 @@ class QuoteExportService {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: r))
           .value = xls.DoubleCellValue(item.unitPrice);
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r))
-          .value = xls.DoubleCellValue(item.total);
+          .value = item.discountEnabled
+              ? xls.TextCellValue(
+                  '-${discountAmt.toStringAsFixed(2)}${item.itemDiscountName.trim().isEmpty ? '' : ' (${item.itemDiscountName.trim()})'}')
+              : xls.TextCellValue('');
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: r))
+          .value = item.taxEnabled
+              ? xls.TextCellValue(
+                  '${signedTaxAmt < 0 ? '-' : ''}${signedTaxAmt.abs().toStringAsFixed(2)}${item.itemTaxName.trim().isEmpty ? '' : ' (${item.itemTaxName.trim()})'}')
+              : xls.TextCellValue('');
+      // PARITY FIX: lineNetTotal instead of the plain qty x price total.
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: r))
+          .value = xls.DoubleCellValue(item.lineNetTotal);
       r++;
     }
     r++; // blank row
 
     void totalRow(String label, double value) {
-      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: r))
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: r))
           .value = xls.TextCellValue(label);
-      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r))
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: r))
           .value = xls.DoubleCellValue(value);
       r++;
     }
 
     totalRow('Subtotal', d.subtotal);
-    if (d.taxRate > 0) totalRow('Tax (${d.taxRate}%)', d.taxAmount);
-    if (d.discountRate > 0) {
-      totalRow('Discount (${d.discountRate}%)', -d.discountAmount);
+    // PARITY FIX: gated on taxEnabled/discountEnabled, not just rate > 0;
+    // uses taxName/discountName when set.
+    if (d.taxEnabled && d.taxRate > 0) {
+      totalRow('${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${d.taxRate}%)', d.taxAmount);
+    }
+    if (d.discountEnabled && d.discountRate > 0) {
+      totalRow('${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${d.discountRate}%)', -d.discountAmount);
+    }
+    // PARITY FIX: grouped-by-name per-item breakdown rows.
+    for (final entry in d.itemDiscountExtraByName.entries) {
+      if (entry.value > 0) {
+        totalRow(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})', -entry.value);
+      }
+    }
+    for (final entry in d.itemTaxExtraByName.entries) {
+      if (entry.value != 0) {
+        totalRow(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})', entry.value);
+      }
     }
     totalRow('ESTIMATED TOTAL', d.grandTotal);
 
@@ -206,6 +243,9 @@ class QuoteExportService {
       workbook.delete('Sheet1');
     }
 
+    // PARITY FIX: added Item Tax Extra/Item Discount Extra columns so
+    // Subtotal + Tax - Discount + Item Tax Extra - Item Discount Extra
+    // reconciles to Estimated Total on every row.
     const cols = [
       'Quote Number',
       'Issue Date',
@@ -216,6 +256,8 @@ class QuoteExportService {
       'Subtotal',
       'Tax',
       'Discount',
+      'Item Tax Extra',
+      'Item Discount Extra',
       'Estimated Total',
     ];
     for (int c = 0; c < cols.length; c++) {
@@ -236,6 +278,8 @@ class QuoteExportService {
         xls.DoubleCellValue(d.subtotal),
         xls.DoubleCellValue(d.taxAmount),
         xls.DoubleCellValue(d.discountAmount),
+        xls.DoubleCellValue(d.itemTaxExtra),
+        xls.DoubleCellValue(d.itemDiscountExtra),
         xls.DoubleCellValue(d.grandTotal),
       ];
       for (int c = 0; c < values.length; c++) {
@@ -275,19 +319,47 @@ class QuoteExportService {
     kv('Currency', d.currency);
     buf.writeln();
 
-    buf.writeln('Description,Quantity,Unit Price,Total');
+    // PARITY FIX: Discount/Tax columns added; Total column now uses
+    // lineNetTotal instead of the plain qty x price total.
+    buf.writeln('Description,Quantity,Unit Price,Discount,Tax,Total');
     for (final item in d.lineItems) {
+      final discountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+      final taxAmt = item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0;
+      final signedTaxAmt = item.taxEnabled
+          ? (item.itemTaxIsAddition ? taxAmt : -taxAmt)
+          : 0.0;
+      final discountCell = item.discountEnabled
+          ? '-${discountAmt.toStringAsFixed(2)}${item.itemDiscountName.trim().isEmpty ? '' : ' (${item.itemDiscountName.trim()})'}'
+          : '';
+      final taxCell = item.taxEnabled
+          ? '${signedTaxAmt < 0 ? '-' : ''}${signedTaxAmt.abs().toStringAsFixed(2)}${item.itemTaxName.trim().isEmpty ? '' : ' (${item.itemTaxName.trim()})'}'
+          : '';
       buf.writeln(
-          '${_csv(item.description)},${item.quantity},${item.unitPrice},${item.total}');
+          '${_csv(item.description)},${item.quantity},${item.unitPrice},${_csv(discountCell)},${_csv(taxCell)},${item.lineNetTotal}');
     }
     buf.writeln();
 
-    buf.writeln(',,Subtotal,${d.subtotal}');
-    if (d.taxRate > 0) buf.writeln(',,Tax (${d.taxRate}%),${d.taxAmount}');
-    if (d.discountRate > 0) {
-      buf.writeln(',,Discount (${d.discountRate}%),-${d.discountAmount}');
+    buf.writeln(',,,,Subtotal,${d.subtotal}');
+    // PARITY FIX: gated on taxEnabled/discountEnabled, not just rate > 0;
+    // uses taxName/discountName when set.
+    if (d.taxEnabled && d.taxRate > 0) {
+      buf.writeln(',,,,${_csv('${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${d.taxRate}%)')},${d.taxAmount}');
     }
-    buf.writeln(',,ESTIMATED TOTAL,${d.grandTotal}');
+    if (d.discountEnabled && d.discountRate > 0) {
+      buf.writeln(',,,,${_csv('${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${d.discountRate}%)')},-${d.discountAmount}');
+    }
+    // PARITY FIX: grouped-by-name per-item breakdown rows.
+    for (final entry in d.itemDiscountExtraByName.entries) {
+      if (entry.value > 0) {
+        buf.writeln(',,,,${_csv(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})')},-${entry.value}');
+      }
+    }
+    for (final entry in d.itemTaxExtraByName.entries) {
+      if (entry.value != 0) {
+        buf.writeln(',,,,${_csv(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})')},${entry.value}');
+      }
+    }
+    buf.writeln(',,,,ESTIMATED TOTAL,${d.grandTotal}');
 
     if (d.notes.isNotEmpty) {
       buf.writeln();
@@ -299,8 +371,9 @@ class QuoteExportService {
 
   String _buildBulkCsvString(List<SavedQuote> quotes) {
     final buf = StringBuffer();
+    // PARITY FIX: added Item Tax Extra/Item Discount Extra columns.
     buf.writeln(
-        'Quote Number,Issue Date,Valid Until,Client Name,Client Email,Currency,Subtotal,Tax,Discount,Estimated Total');
+        'Quote Number,Issue Date,Valid Until,Client Name,Client Email,Currency,Subtotal,Tax,Discount,Item Tax Extra,Item Discount Extra,Estimated Total');
     for (final q in quotes) {
       final d = q.data;
       buf.writeln([
@@ -313,6 +386,8 @@ class QuoteExportService {
         d.subtotal,
         d.taxAmount,
         d.discountAmount,
+        d.itemTaxExtra,
+        d.itemDiscountExtra,
         d.grandTotal,
       ].join(','));
     }

@@ -82,7 +82,10 @@ class _DocCompactGridCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (entry.isPositiveStatus) positiveStatusDot(),
+                        // STATUS DOT COLOR PASS: was
+                        // `if (entry.isPositiveStatus) positiveStatusDot()`
+                        // — see the matching comment in doc_card_grid.dart.
+                        if (!entry.statusHidden) statusDot(entry.statusColor),
                       ],
                     ),
                     if (isDecision) ...[
@@ -253,7 +256,11 @@ class _DocCompactRow extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (entry.isPositiveStatus) positiveStatusDot(),
+                              // STATUS DOT COLOR PASS: was
+                              // `if (entry.isPositiveStatus) positiveStatusDot()`
+                              // — see the matching comment in
+                              // doc_card_grid.dart.
+                              if (!entry.statusHidden) statusDot(entry.statusColor),
                             ],
                           ),
                           Text(

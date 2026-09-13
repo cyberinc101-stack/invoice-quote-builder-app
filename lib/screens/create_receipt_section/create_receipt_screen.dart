@@ -1,6 +1,18 @@
 // lib/screens/create_receipt_section/create_receipt_screen.dart
 //
-// SIGNATURE SYNC FIX (this update): two related bugs, both around the
+// TOAST PARITY FIX (this update): _showValidationError()'s SnackBar
+// (used for "Select or create a receipt to continue." and "Select or
+// add a template to continue") was explicitly set to
+// `behavior: SnackBarBehavior.floating` — a rounded, margined bar that
+// floats and overlaps the content above it. Quote's equivalent
+// (quote_editor_screen.dart's _showSnack()) never sets `behavior` at
+// all, which defaults to SnackBarBehavior.fixed — a full-width bar
+// docked directly above the bottom nav bar, not overlapping anything.
+// Removed the `behavior: SnackBarBehavior.floating` line so Receipt's
+// toast now docks the same way Quote's does (matching the identical fix
+// applied to step_create_invoice.dart's _continue()).
+//
+// SIGNATURE SYNC FIX (earlier): two related bugs, both around the
 // Signature feature (receipt_provider.dart's SIGNATURE PASS added
 // updateSignatureMode()/updateSignatureName()/updateSignatureImagePath()/
 // updateSignatureFontSize()/updateSignatureFontFamily()/
@@ -531,11 +543,21 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
+  // TOAST PARITY FIX: this SnackBar previously set
+  // `behavior: SnackBarBehavior.floating`, which renders as a rounded,
+  // margined bar that floats and overlaps the content above it. Quote's
+  // equivalent toast (quote_editor_screen.dart's _showSnack()) never
+  // sets `behavior` at all — leaving it at the SnackBar default of
+  // SnackBarBehavior.fixed, a full-width bar docked directly above the
+  // bottom nav bar with no overlap. Removed the `behavior:` line here so
+  // Receipt's "Select or create a receipt to continue"/"Select or add a
+  // template to continue" toasts now dock the same way Quote's does
+  // (matching the identical fix applied to
+  // step_create_invoice.dart's _continue()).
   void _showValidationError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }

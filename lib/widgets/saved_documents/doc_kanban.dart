@@ -3,7 +3,14 @@
 //
 // Part of saved_documents_section.dart — the kanban board layout.
 //
-// FOLDER BUTTON VISIBILITY PASS (this update): the per-column "convert to
+// STATUS DOT COLOR PASS (this update): the small status dot on each
+// kanban card used to be a fixed green shown only when
+// entry.isPositiveStatus was true — see the matching change in
+// cards/doc_card_list.dart. Swapped to statusDot(entry.statusColor) so
+// the dot on a kanban card matches whichever status is actually selected
+// (Unpaid/Overdue/Partial/etc.), not just Paid/Accepted/Issued in green.
+//
+// FOLDER BUTTON VISIBILITY PASS (earlier update): the per-column "convert to
 // folder" trigger in _DocKanbanClientColumn was a bare 14px outline icon
 // at low opacity — easy to miss as an actual button rather than a static
 // glyph. It's now wrapped in a filled, bordered pill (same visual language
@@ -264,7 +271,12 @@ class _DocKanbanCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (entry.isPositiveStatus) positiveStatusDot(),
+                      // STATUS DOT COLOR PASS: was
+                      // `if (entry.isPositiveStatus) positiveStatusDot()`
+                      // — fixed green, only for Paid/Accepted/Issued. Now
+                      // matches entry.statusColor so every status gets its
+                      // own dot color, same change as the list card.
+                      if (!entry.statusHidden) statusDot(entry.statusColor),
                     ],
                   ),
                 ),

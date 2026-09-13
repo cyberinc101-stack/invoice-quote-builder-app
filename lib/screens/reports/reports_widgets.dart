@@ -5,7 +5,19 @@
 // (no provider reads in here) so the screen stays the single source of
 // truth for data and these just render whatever numbers they're given.
 //
-// HOME UI-PARITY PASS (this update): added ReportsHeroCard — a plain
+// TAX PAYABLE PASS (this update): added TaxPayableCard — output tax
+// collected on invoices/receipts, optionally netted against input tax
+// paid on expenses (ReportsPrefs.includeInputCreditsInTaxPayable), under
+// a free-text label (ReportsPrefs.taxTypeLabel, e.g. 'GST'/'VAT'/'Sales
+// Tax'). Deliberately separate from the existing TaxSetAsideCard, which
+// is an INCOME tax planning estimate (net × a flat rate) — this card is
+// about tax already collected from customers and owed to a tax
+// authority, a different accounting concept entirely. Purely
+// presentational, same as every other card in this file — the screen
+// computes outputTax/inputTax from InvoiceData/ReceiptData/ExpenseEntry
+// and passes the numbers in.
+//
+// HOME UI-PARITY PASS (earlier): added ReportsHeroCard — a plain
 // gradient wrapper using the exact same navy gradient
 // (Color(0xFF1A1A2E) -> Color(0xFF16213E) -> Color(0xFF0F3460)) and
 // rounded-corner/shadow treatment as HomeScreen's hero banner
@@ -176,6 +188,11 @@ class NetMarginBadge extends StatelessWidget {
 // rate (default 25%, clamped 0-60% in ReportsPrefs). This is a rough
 // planning number, not a tax calculation — copy says so explicitly so it
 // doesn't read as filed advice.
+//
+// NOTE: this is an INCOME tax planning estimate, distinct from
+// TaxPayableCard below, which tracks GST/VAT/sales tax already collected
+// from customers and owed to a tax authority — two different kinds of
+// tax, kept as two separate cards rather than merged into one.
 
 class TaxSetAsideCard extends StatelessWidget {
   final double net;
@@ -309,6 +326,211 @@ class _StepperButton extends StatelessWidget {
           padding: const EdgeInsets.all(6),
           child: Icon(icon, size: 14, color: accent),
         ),
+      ),
+    );
+  }
+}
+
+// ── Tax Payable card (GST / VAT / sales tax) ────────────────────────────
+//
+// TAX PAYABLE PASS: shows tax already collected from customers on
+// invoices/receipts (outputTax — fed in pre-computed by reports_screen.
+// dart's _outputTaxCollected(), which reads InvoiceData.taxAmount +
+// itemTaxExtra and ReceiptData.taxAmount, gated the same way Income is:
+// prefs.includeInvoices/includeReceipts, paid/issued only, _isReportable).
+// When includeInputCredits is true, nets that against inputTax (fed in
+// by _inputTaxPaid(), which sums ExpenseEntry.taxAmount over the period's
+// non-excluded expenses) to show what's actually owed — a real GST/VAT
+// return calculation. When false, shows collected tax only, matching a
+// simple sales-tax jurisdiction with no input-credit system.
+//
+// The tax type name (taxTypeLabel) and the includeInputCredits toggle are
+// both editable inline via the pencil icon, backed by ReportsPrefs —
+// same "tap to edit, persists immediately" pattern as IncomeGoalCard's
+// goal editor and TaxSetAsideCard's rate stepper.
+//
+// Net-payable color: amber/orange when tax is owed (positive), green
+// when input credits exceed output tax (a refund is due) — deliberately
+// NOT red, since owing tax is the normal, expected case, not an error
+// state the way overdue invoices are.
+
+class TaxPayableCard extends StatelessWidget {
+  final String taxTypeLabel;
+  final double outputTax;
+  final double inputTax;
+  final bool includeInputCredits;
+  final bool isDark;
+  final Color accent;
+  final ValueChanged<String> onLabelChanged;
+  final ValueChanged<bool> onIncludeInputCreditsChanged;
+
+  const TaxPayableCard({
+    super.key,
+    required this.taxTypeLabel,
+    required this.outputTax,
+    required this.inputTax,
+    required this.includeInputCredits,
+    required this.isDark,
+    required this.accent,
+    required this.onLabelChanged,
+    required this.onIncludeInputCreditsChanged,
+  });
+
+  double get _netPayable => includeInputCredits ? (outputTax - inputTax) : outputTax;
+
+  Future<void> _editSettings(BuildContext context) async {
+    final controller = TextEditingController(text: taxTypeLabel);
+    bool localIncludeCredits = includeInputCredits;
+
+    final result = await showDialog<({String label, bool includeCredits})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocalState) => AlertDialog(
+          title: const Text('Tax Payable settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Tax type name',
+                  hintText: 'e.g. GST, VAT, Sales Tax',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Net off tax paid on expenses (input credits)',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  Switch(
+                    value: localIncludeCredits,
+                    onChanged: (v) => setLocalState(() => localIncludeCredits = v),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, (label: controller.text, includeCredits: localIncludeCredits)),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      onLabelChanged(result.label);
+      onIncludeInputCreditsChanged(result.includeCredits);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasAnyTax = outputTax > 0 || inputTax > 0;
+    final isRefundDue = includeInputCredits && _netPayable < 0;
+    final payableColor = isRefundDue ? const Color(0xFF4CAF50) : const Color(0xFFFF9800);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2235) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.account_balance_rounded, size: 16, color: accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$taxTypeLabel Payable',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: 0.6)),
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _editSettings(context),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.edit_rounded, size: 15, color: cs.onSurface.withValues(alpha: 0.4)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasAnyTax)
+            Text(
+              'No tax collected this period.',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5)),
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Collected on sales',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.75)),
+                  ),
+                ),
+                Text(
+                  outputTax.toStringAsFixed(2),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface),
+                ),
+              ],
+            ),
+            if (includeInputCredits) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Paid on expenses',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.75)),
+                    ),
+                  ),
+                  Text(
+                    '- ${inputTax.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Divider(color: cs.outline.withValues(alpha: 0.15), height: 1),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  includeInputCredits ? (isRefundDue ? 'Refund due' : 'Net payable') : 'Tax collected',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: cs.onSurface),
+                ),
+                const Spacer(),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: _netPayable.abs()),
+                  duration: const Duration(milliseconds: 650),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, v, _) => Text(
+                    v.toStringAsFixed(2),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: payableColor),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -677,7 +899,7 @@ class ReportsSectionHeader extends StatelessWidget {
   }
 }
 
-// â”€â”€ Overdue aging buckets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Overdue aging buckets ─────────────────────────────────────────────────
 //
 // Shows unpaid/overdue invoices split into 0-30 / 31-60 / 61+ days past
 // due, instead of one lump "Total Unpaid" figure. Only invoices with a
@@ -767,7 +989,7 @@ class AgingBucketsCard extends StatelessWidget {
   }
 }
 
-// â”€â”€ Avg. days to get paid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Avg. days to get paid ───────────────────────────────────────────────
 
 class DaysToPaidCard extends StatelessWidget {
   final double? averageDays;
@@ -822,7 +1044,7 @@ class DaysToPaidCard extends StatelessWidget {
   }
 }
 
-// â”€â”€ Monthly income goal + progress bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Monthly income goal + progress bar ──────────────────────────────────
 //
 // Tap the pencil (or the "tap to set" prompt when no goal exists yet) to
 // edit. Goal is persisted via ReportsPrefs.monthlyIncomeGoal, same

@@ -1,56 +1,52 @@
 // gradient_modern_template.dart
 // lib/document_layout_templates/06_gradient_modern/gradient_modern_template.dart
 //
-// SPACING TIGHTEN PASS (this update): the two-column header had generous
-// vertical gaps stacking up in a few spots — 16px between the business
-// contact block and the "INVOICE" heading, 8px between that heading and
-// the doc-number line, 7px of bottom padding under every client detail
-// line on the right, and 22px before the gradient line-items banner.
-// Those add up fast in a header that's otherwise fairly compact content,
-// leaving visible dead space (especially once the right column runs out
-// of client detail lines before the left column runs out of meta rows).
-// Trimmed to 10/6/5/16 respectively — same structure, same content, just
-// less air between each line. Nothing else changed.
+// ITEMS-HEADER-ROW PASS (this update): _gradientModernFullHeader and
+// _gradientModernContinuationHeader no longer call
+// _gradientWaveHeaderRow() themselves — that custom banner row is now
+// supplied via buildLineItemsHeaderRow on every Preview class below, and
+// A4Paginator decides per page whether to actually show it (skipped on a
+// totals-only overflow page with zero items). See a4_paginator.dart's
+// header comment for the bug this fixes.
 //
-// CODESO REFERENCE REDESIGN PASS (earlier): the stat-card dashboard
-// row (every meta field as its own small elevated white card in a Wrap)
-// is replaced with a two-column header — left column: logo + business
-// name, then a big doc-type heading ("INVOICE") with doc number and both
-// meta fields stacked underneath it; right column: the recipient block,
-// with each client detail (address/email/phone) as a small accent-
-// colored caption over a dark value line. Below that, the line-items
-// header row is no longer the shared plain-rule row — this template now
-// draws its own gradient banner (near-black fading into the document's
-// accent colour, left to right) with a fully rounded right end, holding
-// the same DESCRIPTION/QTY/UNIT PRICE/TOTAL labels in white. It keeps the
-// exact same column flex proportions (5/1/2/2) as
-// buildSharedLineItemsHeaderRow so the line items rendered underneath by
-// shared_doc_widgets.dart still line up correctly — only the container
-// styling changes, not the column layout contract.
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_line_items.dart and
+// doc_totals.dart removed — sharedLineItemColumnFlags/kInk/kGrey etc all
+// come from the bare doc_header.dart import below; nothing here was ever
+// actually used from either removed import.
 //
-// This is a structurally different device from every other template's
-// skeleton (not a Row(logo | identity | doc-type), not a stat-card Wrap,
-// not a flat pill cluster) — a genuine two-column split with a signature
-// gradient banner carried through into the continuation header too.
+// SHARED/EXECUTIVE PARITY PASS — PHASE 2 (earlier): _gradientWaveHeaderRow
+// now takes the adapter and builds its trailing columns from
+// sharedLineItemColumnFlags(a) so DESCRIPTION/QTY/[UNIT]/UNIT PRICE/
+// [DISCOUNT]/[TAX]/TOTAL always land exactly where the real data row
+// (the shared default — Gradient Modern supplies no buildLineItemRow
+// override) places them.
 //
-// NOTE on the reference design's dark wavy footer band (with the phone/
-// email/location contact badges): like Tech Dark's page-corner wedge,
-// that sits at the physical bottom of the page, which is owned by
-// TemplateDocument's shared footerBuilder (the thin "thank you" strip),
-// not by this file's header builders. Reproducing it would mean editing
-// shared pagination code used by all 10 templates, so it's out of scope
-// here — business contact details are instead kept as a compact line
-// under the business name up top, so that data isn't dropped entirely.
-//
-// Everything below the header (line items, totals, notes, footer) still
-// comes from shared_doc_widgets.dart unchanged.
+// CODESO REFERENCE REDESIGN PASS (earlier): two-column header — left:
+// logo + business name, doc-type heading, doc number + both meta fields;
+// right: recipient block.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/template_document.dart';
+
+// SHARED/EXECUTIVE PARITY PASS: matches shared_doc_widgets.dart's private
+// kColGap value exactly (10.0) — kept as a local copy since that constant
+// isn't exported, and this banner needs the identical gap so its columns
+// land at the same x-positions as the real data row beneath it.
+const double _kGapW = 10.0;
+
+List<Widget> _withGaps(List<Widget> columns) {
+  final out = <Widget>[];
+  for (var i = 0; i < columns.length; i++) {
+    if (i > 0) out.add(const SizedBox(width: _kGapW));
+    out.add(columns[i]);
+  }
+  return out;
+}
 
 // -----------------------------------------------------------------------
 // Small accent-caption / dark-value line, used for the recipient block's
@@ -77,169 +73,168 @@ Widget _clientDetailLine(String label, String value, Color accent, String ff) =>
 // -----------------------------------------------------------------------
 // Signature device: gradient banner (near-black -> accent) with a fully
 // rounded right end, carrying the line-item column labels in white.
-// Same flex proportions as buildSharedLineItemsHeaderRow (5/1/2/2) so the
-// shared item rows underneath still align.
 // -----------------------------------------------------------------------
-Widget _gradientWaveHeaderRow({required Color accent, required String ff}) {
+Widget _gradientWaveHeaderRow({required DocTemplateAdapter adapter}) {
+  final ff = adapter.fontFamily;
+  final accent = adapter.accent;
+  final flags = sharedLineItemColumnFlags(adapter);
   final hdr = TextStyle(
       fontSize: 8.5, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1.0, fontFamily: ff);
+
+  final trailingCols = <Widget>[
+    Expanded(flex: 2, child: Text('QTY', textAlign: TextAlign.center, style: hdr)),
+    if (flags.showUnitCol)
+      Expanded(flex: 2, child: Text('UNIT', textAlign: TextAlign.center, style: hdr)),
+    Expanded(flex: 2, child: Text('UNIT PRICE', textAlign: TextAlign.right, style: hdr)),
+    if (flags.showDiscountCol)
+      Expanded(flex: 2, child: Text('DISCOUNT', textAlign: TextAlign.right, style: hdr)),
+    if (flags.showTaxCol)
+      Expanded(flex: 2, child: Text('TAX', textAlign: TextAlign.right, style: hdr)),
+    Expanded(flex: 2, child: Text('TOTAL', textAlign: TextAlign.right, style: hdr)),
+  ];
+
   return Container(
-    height: 34,
-    padding: const EdgeInsets.symmetric(horizontal: 14),
+    constraints: const BoxConstraints(minHeight: 34),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
     alignment: Alignment.center,
     decoration: BoxDecoration(
       gradient: LinearGradient(colors: [kInk, accent], begin: Alignment.centerLeft, end: Alignment.centerRight),
       borderRadius: const BorderRadius.horizontal(right: Radius.circular(17)),
     ),
-    child: Row(
-      children: [
-        Expanded(flex: 5, child: Text('DESCRIPTION', style: hdr)),
-        Expanded(flex: 1, child: Text('QTY', textAlign: TextAlign.center, style: hdr)),
-        Expanded(flex: 2, child: Text('UNIT PRICE', textAlign: TextAlign.right, style: hdr)),
-        Expanded(flex: 2, child: Text('TOTAL', textAlign: TextAlign.right, style: hdr)),
-      ],
-    ),
+    child: Row(children: [
+      Expanded(flex: 5, child: Text('DESCRIPTION', style: hdr)),
+      const SizedBox(width: _kGapW),
+      ..._withGaps(trailingCols),
+    ]),
   );
 }
 
 // -----------------------------------------------------------------------
 // Header design
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// _gradientWaveHeaderRow(adapter: a) — supplied via this file's Preview
+// classes instead.
 // -----------------------------------------------------------------------
 
 Widget _gradientModernFullHeader(DocTemplateAdapter a) {
-  return Column(
+  return Row(
     crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Left column — logo/identity, then the big doc-type heading
-          // with doc number and meta fields stacked underneath.
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+      // Left column — logo/identity, then the big doc-type heading
+      // with doc number and meta fields stacked underneath.
+      Expanded(
+        flex: 3,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    buildSharedLogo(a, size: 34),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        a.businessName.isEmpty ? 'Your Business' : a.businessName,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: kInk,
-                            letterSpacing: 0.3,
-                            fontFamily: a.fontFamily),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                buildSharedLogo(a, size: 34),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    a.businessName.isEmpty ? 'Your Business' : a.businessName,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: kInk,
+                        letterSpacing: 0.3,
+                        fontFamily: a.fontFamily),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                if (a.businessAddress.isNotEmpty || a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  if (a.businessAddress.isNotEmpty)
-                    Text(a.businessAddress,
-                        style: TextStyle(fontSize: 8, color: kGrey, fontFamily: a.fontFamily),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  if (a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty)
-                    Text(
-                      [a.businessEmail, a.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
-                      style: TextStyle(fontSize: 8, color: kGrey, fontFamily: a.fontFamily),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-                const SizedBox(height: 10),
-                Text(
-                  a.docTypeLabel,
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: kInk,
-                      letterSpacing: 0.5,
-                      fontFamily: a.fontFamily),
-                ),
-                const SizedBox(height: 6),
-                Text('${a.docTypeLabel} # ${a.docNumber.isEmpty ? '-' : a.docNumber}',
-                    style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
-                const SizedBox(height: 2),
-                Text('${a.metaLabel1}: ${a.metaValue1.isEmpty ? '-' : a.metaValue1}',
-                    style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
-                const SizedBox(height: 2),
-                Text('${a.metaLabel2}: ${a.metaValue2.isEmpty ? '-' : a.metaValue2}',
-                    style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
               ],
             ),
-          ),
-          const SizedBox(width: 20),
-          // Right column — recipient block, accent-caption / dark-value
-          // detail lines (mirrors the reference's "Invoice To" panel).
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(a.recipientLabel.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: a.accent,
-                        letterSpacing: 0.8,
-                        fontFamily: a.fontFamily)),
-                const SizedBox(height: 6),
-                Text(a.clientName.isEmpty ? 'Client name' : a.clientName,
-                    style: TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w700, color: kInk, fontFamily: a.fontFamily),
+            if (a.businessAddress.isNotEmpty || a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              if (a.businessAddress.isNotEmpty)
+                Text(a.businessAddress,
+                    style: TextStyle(fontSize: 8, color: kGrey, fontFamily: a.fontFamily),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
-                if (a.clientAddress.isNotEmpty) _clientDetailLine('Address', a.clientAddress, a.accent, a.fontFamily),
-                if (a.clientEmail.isNotEmpty) _clientDetailLine('Email', a.clientEmail, a.accent, a.fontFamily),
-                if (a.clientPhone.isNotEmpty) _clientDetailLine('Phone', a.clientPhone, a.accent, a.fontFamily),
-              ],
+              if (a.businessEmail.isNotEmpty || a.businessPhone.isNotEmpty)
+                Text(
+                  [a.businessEmail, a.businessPhone].where((s) => s.isNotEmpty).join('   ·   '),
+                  style: TextStyle(fontSize: 8, color: kGrey, fontFamily: a.fontFamily),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+            const SizedBox(height: 10),
+            Text(
+              a.docTypeLabel,
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: kInk,
+                  letterSpacing: 0.5,
+                  fontFamily: a.fontFamily),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text('${a.docTypeLabel} # ${a.docNumber.isEmpty ? '-' : a.docNumber}',
+                style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
+            const SizedBox(height: 2),
+            Text('${a.metaLabel1}: ${a.metaValue1.isEmpty ? '-' : a.metaValue1}',
+                style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
+            const SizedBox(height: 2),
+            Text('${a.metaLabel2}: ${a.metaValue2.isEmpty ? '-' : a.metaValue2}',
+                style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
+          ],
+        ),
       ),
-      const SizedBox(height: 16),
-      _gradientWaveHeaderRow(accent: a.accent, ff: a.fontFamily),
+      const SizedBox(width: 20),
+      // Right column — recipient block.
+      Expanded(
+        flex: 2,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(a.recipientLabel.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: a.accent,
+                    letterSpacing: 0.8,
+                    fontFamily: a.fontFamily)),
+            const SizedBox(height: 6),
+            Text(a.clientName.isEmpty ? 'Client name' : a.clientName,
+                style: TextStyle(
+                    fontSize: 11.5, fontWeight: FontWeight.w700, color: kInk, fontFamily: a.fontFamily),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 6),
+            if (a.clientAddress.isNotEmpty) _clientDetailLine('Address', a.clientAddress, a.accent, a.fontFamily),
+            if (a.clientEmail.isNotEmpty) _clientDetailLine('Email', a.clientEmail, a.accent, a.fontFamily),
+            if (a.clientPhone.isNotEmpty) _clientDetailLine('Phone', a.clientPhone, a.accent, a.fontFamily),
+          ],
+        ),
+      ),
     ],
   );
 }
 
 Widget _gradientModernContinuationHeader(DocTemplateAdapter a) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: kInk, fontFamily: a.fontFamily)),
-          Text('${a.docTypeLabel} #${a.docNumber.isEmpty ? '-' : a.docNumber} ${a.continuationSuffix}',
-              style: TextStyle(fontSize: 9.5, color: a.accent, fontFamily: a.fontFamily)),
-        ],
-      ),
-      const SizedBox(height: 14),
-      _gradientWaveHeaderRow(accent: a.accent, ff: a.fontFamily),
+      Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: kInk, fontFamily: a.fontFamily)),
+      Text('${a.docTypeLabel} #${a.docNumber.isEmpty ? '-' : a.docNumber} ${a.continuationSuffix}',
+          style: TextStyle(fontSize: 9.5, color: a.accent, fontFamily: a.fontFamily)),
     ],
   );
 }
 
 // -----------------------------------------------------------------------
-// Preview wrappers - one per doc type, each ~5 lines: convert to the
-// adapter, hand off to TemplateDocument. These are what preview_registry
-// files (invoice / quote / receipt) import and wire into their id switch.
+// Preview wrappers - no buildLineItemRow/buildTotalsSection/
+// buildFooterContent overrides — Gradient Modern intentionally relies on
+// the shared defaults, which is exactly why _gradientWaveHeaderRow above
+// had to be rebuilt to match them.
 // -----------------------------------------------------------------------
 
 class GradientModernInvoicePreview extends StatelessWidget {
@@ -252,6 +247,7 @@ class GradientModernInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _gradientModernFullHeader,
         buildContinuationHeader: _gradientModernContinuationHeader,
+        buildLineItemsHeaderRow: (a) => _gradientWaveHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -266,6 +262,7 @@ class GradientModernQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _gradientModernFullHeader,
         buildContinuationHeader: _gradientModernContinuationHeader,
+        buildLineItemsHeaderRow: (a) => _gradientWaveHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -280,6 +277,7 @@ class GradientModernReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _gradientModernFullHeader,
         buildContinuationHeader: _gradientModernContinuationHeader,
+        buildLineItemsHeaderRow: (a) => _gradientWaveHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }

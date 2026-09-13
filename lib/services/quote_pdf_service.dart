@@ -1,6 +1,18 @@
 // lib/services/quote_pdf_service.dart
 //
-// OFFLINE SIGNATURE FONT PARITY PASS (this update): mirrors the fix
+// PRINT ACTION PASS (this update): added printQuote(), mirroring
+// ReceiptPdfService.printReceipt() / the new InvoicePdfService.
+// printInvoice() exactly — builds the same PDF bytes _buildPdf() already
+// produces for Download/Share, then hands them to Printing.layoutPdf()
+// so the OS print dialog opens directly. Always PdfPageFormat.a4 — Quote
+// has no thermal/paper-format concept the way Receipt does. Optional
+// [historyProvider] logs a `printed` History event on success, same
+// pattern as generateAndSharePDF's [historyProvider] param elsewhere in
+// this file. Wired up by quote_full_preview_screen.dart's new Print
+// button (quote_preview_bottom_bar.dart), matching Receipt's identical
+// button.
+//
+// OFFLINE SIGNATURE FONT PARITY PASS (earlier): mirrors the fix
 // already applied to invoice_pdf_extra_sections.dart's
 // _pdfSignatureFont() — this file's own _pdfSignatureFont() still
 // called PdfGoogleFonts.xRegular() for the six script fonts, which
@@ -94,6 +106,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/quote_data.dart';
@@ -152,6 +165,36 @@ class QuotePdfService {
     int? layoutTemplateId,
   }) {
     return _buildPdf(quote, layoutTemplateId: layoutTemplateId);
+  }
+
+  // PRINT ACTION PASS: builds the same bytes Download/Share already use
+  // and hands them straight to the OS print dialog via
+  // Printing.layoutPdf() — mirrors ReceiptPdfService.printReceipt() /
+  // InvoicePdfService.printInvoice() exactly. [historyProvider], when
+  // passed, logs a `printed` History event on success.
+  Future<void> printQuote(
+    SavedQuote quote, {
+    int? layoutTemplateId,
+    HistoryProvider? historyProvider,
+  }) async {
+    final bytes = await _buildPdf(quote, layoutTemplateId: layoutTemplateId);
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name:
+          'Quote_${quote.data.quoteNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf',
+      format: PdfPageFormat.a4,
+    );
+    if (historyProvider != null) {
+      final d = quote.data;
+      unawaited(historyProvider.logPrinted(
+        docType: HistoryDocType.quote,
+        docId: quote.id,
+        docNumber: d.quoteNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.grandTotal,
+        currency: d.currency,
+      ));
+    }
   }
 
   // ── Layout dispatcher ───────────────────────────────────────────────────────

@@ -1,128 +1,130 @@
 // lib/screens/invoice_create_section/step_customize/step_customise.dart
 //
-// HISTORY WIRING PASS (this update): _handleSave() now logs a 'created'
+// MERGE PASS (this update): imports redirected off the three deleted
+// executive_invoice_logic_data.dart / executive_invoice_stationary_
+// layout.dart files. ExecutiveInvoicePreview and invoiceAccent now come
+// from executive_template.dart (the merged, adapter-based file that
+// replaces them — see that file's own MERGE PASS header comment), and
+// kPageW now comes from shared_doc_widgets.dart. No other change in this
+// file — same widget tree, same behavior, same call sites.
+//
+// FONT CHIP PREVIEW PASS (earlier): the "Font Family" chips
+// (_FontSection) now render each chip's own label IN that font, the
+// same way the Signature Font chips beneath the Signature toggle
+// already do — so tapping through Roboto/Lato/Lora/etc. previews the
+// actual look before committing, instead of every chip label rendering
+// in whatever the app's own default UI font happens to be. All nine
+// real fonts are locally bundled in pubspec.yaml (no GoogleFonts/
+// network call involved), so a plain TextStyle(fontFamily: font)
+// resolves correctly. 'Default' is a sentinel that deliberately matches
+// no registered family — its chip previews with fontFamily: null (the
+// platform default) rather than passing the literal string 'Default'
+// as a font name.
+//
+// FONT FAMILY LIST FIX (earlier): _kFonts previously listed
+// "Playfair Display" and "Source Sans Pro" — neither matched a font
+// family actually registered in pubspec.yaml ("Playfair Display" was
+// registered there as plain "Playfair"; "Source Sans Pro" wasn't
+// bundled at all). Selecting either chip set InvoiceData.fontFamily to
+// a string that resolves to nothing, so every TextStyle(fontFamily: ff)
+// call site silently fell back to the platform default — this was the
+// "font changer not working" bug. Fixed two ways: (1) pubspec.yaml's
+// Playfair family entry is renamed to "Playfair Display" to match this
+// list and the font's real name: (2) "Source Sans Pro" is replaced with
+// the four fonts pubspec already bundles but this list never offered —
+// Lora, Nunito, Raleway, Space Grotesk. _kFonts now exactly mirrors
+// pubspec's registered family names, so every chip resolves to a real,
+// loaded font.
+//
+// SIGNATURE FONT FAMILY PASS (earlier): the Signature row's inline
+// "Size" slider (added by the earlier SIGNATURE SIZER PASS) now also
+// grows a row of six font chips directly beneath it, visible only while
+// the Signature toggle is on and only relevant when signature mode is
+// 'typed' (the chips are harmless — just unused — for 'image'/'blank'
+// modes, since InvoiceData.signatureFontFamily only affects the typed
+// render path in executive_invoice_payment_terms_signature.dart /
+// invoice_pdf_extra_sections.dart). Reads/writes
+// InvoiceData.signatureFontFamily via the new
+// InvoiceProvider.updateSignatureFontFamily(). Font list
+// (_kSignatureFonts) is kept local to this file rather than imported
+// from the stationary-layout file, so this file has no compile-time
+// dependency on that file's internals — six real fonts, now bundled
+// locally (see pubspec.yaml's SIGNATURE FONT FAMILY PASS entries):
+// Dancing Script, Great Vibes, Sacramento, Pacifico, Alex Brush, Caveat.
+//
+// PREVIEW BUTTON PARITY PASS (earlier): added an inline "Preview &
+// Download" call-to-action button, matching the one Receipt's
+// ReceiptStepCustomise already has (receipt_step_customise.dart) —
+// placed directly after the Summary section, before "Back to Top",
+// same position Receipt uses. New private _PreviewButton widget watches
+// InvoiceProvider itself to pick up the invoice's own accent color
+// (invoiceAccent()) for its gradient, rather than Receipt's fixed green,
+// and calls the existing _openFullPreview() callback already used by
+// tapping the Live Preview card above — no new navigation logic, just a
+// second, more visible way to reach the same screen.
+//
+// PAYMENT TERMS REMOVAL PASS (earlier): the "Payment Terms" toggle
+// row has been removed from the Payment Info group in _kFieldGroups —
+// matches the corresponding removal in client_info.dart
+// (BusinessInfo.paymentTerms), invoice_data.dart (InvoiceData.paymentTerms
+// + its enabledFields default), the template editor's "Payment Terms /
+// Due Note" input field, and the two render sites
+// (executive_invoice_payment_terms_signature.dart's buildPaymentInfoPanel,
+// invoice_pdf_extra_sections.dart's buildPdfPaymentInfoPanel). Payment
+// Info is now a 5-field group instead of 6.
+//
+// PERSISTED GROUP COLLAPSE PASS (earlier): each field group in
+// _FieldsSection (Header & Meta, Billed To, Invoice Details, Payment
+// Info, Terms & Signature, Notes & Thank You) now remembers its own
+// expand/collapse state via SharedPreferences, keyed per group label —
+// same pattern as step_templates.dart's _CollapsibleGroup. Every group
+// starts COLLAPSED the very first time (no persisted value yet), and
+// after that stays however the person last left it, whether that was
+// via tapping the header row or flipping the group's master switch.
+// Previously a group's initial expand state was seeded from whether
+// its fields happened to already be all-on (_groupIsOn) — that
+// heuristic is gone; _expanded now only ever reflects the persisted (or
+// default-false) value plus whatever the person does in this session.
+//
+// SIGNATURE SIZER PASS (earlier): the Signature row in the Terms &
+// Signature group grows an inline "Size" slider directly beneath its
+// switch, visible only while the switch is on. Reads/writes
+// InvoiceData.signatureFontSize via InvoiceProvider.updateSignatureFontSize().
+//
+// AMOUNT DUE PASS (earlier): added two toggles — dueDateSummary and
+// amountDue — to the Invoice Details group, gating the Due Date/Amount
+// Due bar rendered directly under Grand Total.
+//
+// GROUPED TOGGLES PASS (earlier): _FieldsSection rebuilt from a flat
+// list of SwitchListTiles into six collapsible groups — see this pass's
+// note in the class body for full behaviour.
+//
+// PAYMENT INFO / TERMS & SIGNATURE TOGGLES PASS (earlier): added
+// show/hide toggle rows for the eight new InvoiceData fields.
+//
+// HISTORY WIRING PASS (earlier): _handleSave() now logs a 'created'
 // activity-feed event via HistoryProvider right after
-// InvoiceProvider.saveCurrentInvoice() succeeds — the same pattern
-// Quote's and Receipt's own save flows already got
-// (quote_editor_screen.dart / create_receipt_screen.dart's _save()).
-// Fire-and-forget (unawaited), logged from the just-saved SavedInvoice
-// so it reflects exactly what got persisted, not the provider's live
-// (possibly since-reset) invoiceData. This was the one remaining gap in
-// History's create-event coverage — Invoice was the only one of the
-// three document types where creating a document didn't show up in the
-// activity feed at all.
+// InvoiceProvider.saveCurrentInvoice() succeeds.
 //
-// SAVE-FROM-CUSTOMISE PASS (earlier update): matches Quote's Customise-step
-// flow (quote_step_customise.dart / quote_editor_screen.dart) — Invoice's
-// save no longer happens via a dialog on InvoiceFullPreviewScreen. This
-// step now:
-//   - Shows an "Invoice Title" section at the very top (before Live
-//     Preview), same position/shape as Quote Title on
-//     quote_step_customise.dart. Seeded with the same suggested-title
-//     logic the old dialog used (clientName — invoiceNumber).
-//   - The bottom bar's primary button is now "Save Invoice" (was
-//     "Preview & Download") — tapping it validates the title, calls
-//     InvoiceProvider.saveCurrentInvoice() directly, and navigates to
-//     the saved invoice's detail screen. Matches
-//     quote_editor_screen.dart's _save() exactly.
-//   - The Live Preview card is now tappable — tapping it still opens
-//     InvoiceFullPreviewScreen for PDF export/share (that screen's own
-//     Save dialog is removed in this same pass; see its header comment).
+// SAVE-FROM-CUSTOMISE PASS (earlier): Invoice's save no longer happens
+// via a dialog on InvoiceFullPreviewScreen — this step now shows an
+// "Invoice Title" section and the bottom bar's primary button is
+// "Save Invoice".
 //
-// SUMMARY LAYOUT PASS (earlier update): the Summary section no longer
-// wraps InvoiceTotalsCard in the bordered _SectionCard box every other
-// section on this step uses. Quote's step_customise.dart shows Summary
-// as a plain section header (accent bar + icon + label, via
-// quoteSectionHeader()) directly above QuoteTotalsCard, with no extra
-// box around the pair — InvoiceTotalsCard already carries its own
-// border/background, so a _SectionCard around it was doubling up the
-// framing and looked visually different from Quote's/Receipt's Summary.
-// Added _plainSectionHeader() (mirrors quoteSectionHeader/
-// receiptSectionHeader's look exactly: coloured bar + icon + label) and
-// _SummarySection now uses that instead of _SectionCard. The new Title
-// section above also uses _plainSectionHeader().
+// SUMMARY LAYOUT / SUMMARY PASS (earlier): added a plain-header Summary
+// section with InvoiceTotalsCard.
 //
-// SUMMARY PASS (earlier update): added a "Summary" section
-// (InvoiceTotalsCard, new in invoice_edit_widgets.dart) — Invoice's
-// Customise step was the only one of the three documents with no totals
-// summary at all; Quote's and Receipt's step_customise.dart both show
-// one right after their last styling control. Placed the same way here:
-// directly after Text Size, before "Back to Top". Reads InvoiceData's
-// existing subtotal/taxAmount/discountAmount/grandTotal getters and
-// taxRate/discountRate directly — no InvoiceProvider or InvoiceData
-// changes were needed, that math already existed and simply had no UI
-// showing it on this step.
+// FIELDS SECTION REORDER / FIELDS SECTION PASS (earlier): added and
+// repositioned the "Invoice Fields" toggle section under Live Preview.
 //
-// FIELDS SECTION REORDER PASS (earlier update): moved the "Invoice Fields" /
-// "Customer Fields" toggle section to sit directly under Live Preview --
-// i.e. BEFORE Business Logo -- to match where Quote and Receipt's own
-// field-toggle sections currently sit in their Customise steps. Previously
-// this section sat at the bottom (after Text Size, before "Back to Top");
-// that positioning is superseded by this pass. No logic changed -- still
-// reads/writes InvoiceData.enabledFields via
-// InvoiceProvider.updateEnabledFields().
-//
-// FIELDS SECTION PASS (earlier update): added the "Invoice Fields" /
-// "Customer Fields" toggle section that was missing from this step
-// entirely (this is why it never showed up on the Invoice screen -- it
-// simply hadn't been built here, unlike Quote/Receipt which already had
-// their own field-toggle sections). Reads/writes InvoiceData.enabledFields
-// directly via InvoiceProvider.updateEnabledFields() (both already existed
-// and were already fully wired to the PDF/preview templates), so this is
-// fully functional immediately -- no further wiring needed for Invoice.
-//
-// LOGO SIZE RANGE PASS (earlier update): the "Logo Size" slider previously
-// topped out at 60px, which was too small a ceiling for people who want
-// a prominent logo. Range widened to 24-96px (was 24-60), and the live
-// preview box's clamp in _LogoSection widened to match (was capped at
-// 220, now 260) so the bigger sizes are actually visible while sizing.
-// NOTE: executive_template.dart's header logo is still rendered at a
-// hardcoded 44px and does not yet read businessLogoDisplaySize -- that
-// still needs doc_template_adapter.dart / shared_doc_widgets.dart wired
-// up before this slider will visibly affect the Executive preview/PDF.
-//
-// COLOR PICKER CONSOLIDATION (earlier update): _ColourSection no longer uses
-// its own small-square Wrap design. It's replaced with the exact
-// grid-tile picker (gradient tile + checkmark overlay + label underneath,
-// 3-column GridView) that used to live on step_create_invoice.dart --
-// that step's Color Scheme section has been removed entirely, since it
-// was a duplicate control writing to the same InvoiceData.colorScheme
-// field as this one. This is now the ONLY place in the wizard to change
-// the invoice's accent color. Added the invoice_color_ext.dart import for
-// the .displayName/.primaryColor/.accentColor extension getters the grid
-// tiles use; the old _kPresetColors list (with its own separate display
-// names, e.g. "Slate"/"Amber" instead of "Charcoal"/"Sunset Orange") is
-// removed so both the tile art and the names now match exactly what used
-// to render on step_create_invoice.dart. _colorForScheme() is kept as-is
-// since _LogoSection/_LogoSizeSection/_FontSection/_SizeSection all still
-// use it for their own accent tinting.
-//
-// TEMPLATE PASS (earlier update): _InvoicePreviewCard no longer hardcodes
-// ExecutiveInvoicePreview — it now dispatches on data.layoutTemplateId via
-// buildInvoicePreview() (preview_registry.dart), the same function the
-// template chooser grid and its full-preview modal already use. This is
-// what actually makes "the template you picked" and "the invoice you're
-// customising" match — previously this live preview (and the full
-// preview screen, and the PDF-preview mockup) all rendered as Executive
-// regardless of what was picked in InvoiceTemplateChooserScreen. Only
-// Executive is paginated (via A4Paginator/onPageCount) today, so the page
-// counter badge only updates for that template; every other design
-// renders as a single natural-height page.
-//
-// LOGO SIZER PASS (earlier update): added a new "Business Logo" section
-// using SharedLogoPicker (same widget step_templates.dart uses for the
-// saved BusinessInfo template's logo) so the actual invoice's logo can be
-// repositioned/zoomed/reshaped right here, without leaving this step.
-// Wired to InvoiceProvider.updateBusinessLogo(). NOTE: the underlying
-// template layout files (executive_invoice_stationary_layout.dart etc.)
-// don't yet read businessLogoOffsetDx/Dy/Scale/Shape when painting the
-// logo — this control saves the values, but they won't visually move/
-// zoom the logo in the preview until those layout files are updated to
-// use them.
+// LOGO SIZE RANGE / COLOR PICKER CONSOLIDATION / TEMPLATE / LOGO SIZER
+// PASSES (earlier): see prior header comments for each of these —
+// unaffected by this update.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../providers/invoice_provider.dart';
 import '../../../providers/history_provider.dart';
@@ -134,11 +136,33 @@ import '../invoice_edit_widgets.dart' show InvoiceTotalsCard;
 import '../step_create_invoice/create_invoice_form_widgets.dart' show CreateInvoiceField;
 import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'invoice_full_preview_screen.dart';
-import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
-import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
-    show kPageW, invoiceAccent;
+// MERGE PASS: both symbols now come from the merged executive_template.dart
+// instead of the deleted executive_invoice_logic_data.dart /
+// executive_invoice_stationary_layout.dart.
+import '../../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveInvoicePreview, invoiceAccent;
+// MERGE PASS: kPageW now lives on the shared widgets file (every
+// template's page geometry constant lives here, not per-template).
+import '../../../document_layout_templates/document_template_layout_data/doc_header.dart'
+    show kPageW;
 import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
+
+// SIGNATURE FONT FAMILY PASS: the six real script font families offered
+// for a typed signature — now bundled locally (see pubspec.yaml), not
+// fetched at runtime. Kept local to this file (rather than imported
+// from the stationary-layout file) so this file has no compile-time
+// dependency on that file's internals — just the string names, which
+// InvoiceData.signatureFontFamily stores directly and consumers
+// resolve by exact registered family name.
+const List<String> kSignatureFonts = [
+  'Dancing Script',
+  'Great Vibes',
+  'Sacramento',
+  'Pacifico',
+  'Alex Brush',
+  'Caveat',
+];
 
 // =============================================================================
 // Public entry point
@@ -155,11 +179,6 @@ class StepCustomise extends StatefulWidget {
 class _StepCustomiseState extends State<StepCustomise> {
   final ScrollController _scrollController = ScrollController();
 
-  // SAVE-FROM-CUSTOMISE PASS: title now lives here instead of being
-  // collected via a dialog on InvoiceFullPreviewScreen. Seeded with the
-  // same suggested-title logic that dialog used to build
-  // (clientName — invoiceNumber, falling back to just invoiceNumber, or
-  // blank).
   late final TextEditingController _titleCtrl;
   bool _saving = false;
 
@@ -199,19 +218,6 @@ class _StepCustomiseState extends State<StepCustomise> {
     );
   }
 
-  // SAVE-FROM-CUSTOMISE PASS: replaces the old dialog-driven
-  // _handleSaveInvoice() on InvoiceFullPreviewScreen. Matches
-  // quote_editor_screen.dart's _save() shape — validate the title,
-  // save, reset the draft, navigate to the saved invoice's detail
-  // screen, clearing the wizard stack beneath it.
-  //
-  // HISTORY WIRING PASS: logs a 'created' event right after the save
-  // succeeds, using the just-saved SavedInvoice (`saved`) rather than
-  // provider.invoiceData — provider.resetInvoiceData() runs immediately
-  // after, so reading from the provider at that point would be reading
-  // already-reset (or racing) state. Fire-and-forget (unawaited) so a
-  // logging failure can never block navigation to the saved invoice's
-  // detail screen.
   Future<void> _handleSave() async {
     if (_titleCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -267,7 +273,6 @@ class _StepCustomiseState extends State<StepCustomise> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ---- Header ----
                 Text(
                   'Customise',
                   style: TextStyle(
@@ -287,54 +292,45 @@ class _StepCustomiseState extends State<StepCustomise> {
 
                 const SizedBox(height: 20),
 
-                // ---- Invoice title ----
-                // SAVE-FROM-CUSTOMISE PASS: sits first, before Live
-                // Preview — same position as Quote Title on
-                // quote_step_customise.dart.
                 _TitleSection(titleCtrl: _titleCtrl),
                 const SizedBox(height: 24),
 
-                // ---- Live invoice preview ----
-                // SAVE-FROM-CUSTOMISE PASS: now tappable — opens
-                // InvoiceFullPreviewScreen for PDF export/share.
                 GestureDetector(
                   onTap: _openFullPreview,
                   child: const _InvoicePreviewCard(),
                 ),
                 const SizedBox(height: 24),
 
-                // ---- Invoice / Customer fields ----
-                // FIELDS SECTION REORDER PASS: sits directly under Live
-                // Preview -- BEFORE Business Logo -- matching where Quote
-                // and Receipt's own field-toggle sections sit.
                 const _FieldsSection(),
                 const SizedBox(height: 16),
 
-                // ---- Business logo sizer ----
                 const _LogoSection(),
                 const SizedBox(height: 16),
 
-                // ---- Business logo size ----
                 const _LogoSizeSection(),
                 const SizedBox(height: 16),
 
-                // ---- Accent colour ----
                 const _ColourSection(),
                 const SizedBox(height: 16),
 
-                // ---- Font family ----
                 const _FontSection(),
                 const SizedBox(height: 16),
 
-                // ---- Text size ----
                 const _SizeSection(),
                 const SizedBox(height: 24),
 
-                // ---- Summary ----
                 const _SummarySection(),
                 const SizedBox(height: 20),
 
-                // ---- Back to top ----
+                // PREVIEW BUTTON PARITY PASS: matches Receipt's inline
+                // "Preview & Download" CTA button
+                // (receipt_step_customise.dart) — same position (right
+                // after Summary), same shape, but tinted with this
+                // invoice's own accent color instead of Receipt's fixed
+                // green.
+                _PreviewButton(onTap: _openFullPreview),
+                const SizedBox(height: 20),
+
                 GestureDetector(
                   onTap: _scrollToTop,
                   child: Container(
@@ -375,8 +371,6 @@ class _StepCustomiseState extends State<StepCustomise> {
           ),
         ),
 
-        // SAVE-FROM-CUSTOMISE PASS: primary action is now Save (was
-        // Preview & Download).
         _BottomBar(onBack: widget.onBack, onSave: _handleSave, isSaving: _saving),
       ],
     );
@@ -384,12 +378,56 @@ class _StepCustomiseState extends State<StepCustomise> {
 }
 
 // =============================================================================
+// Preview & Download button — PREVIEW BUTTON PARITY PASS: mirrors
+// Receipt's inline CTA button exactly in shape/layout, but watches
+// InvoiceProvider itself to pick up this invoice's own accent color via
+// invoiceAccent() rather than Receipt's fixed green gradient.
+// =============================================================================
+
+class _PreviewButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _PreviewButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<InvoiceProvider>();
+    final accent = invoiceAccent(provider.invoiceData);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [accent, accent.withValues(alpha: 0.80)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.preview_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Preview & Download',
+              style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
 // Title section
 // =============================================================================
-//
-// SAVE-FROM-CUSTOMISE PASS: new. Same position/shape as Quote Title on
-// quote_step_customise.dart — a plain header (no bordered box) directly
-// above a single required text field.
 
 class _TitleSection extends StatelessWidget {
   final TextEditingController titleCtrl;
@@ -418,8 +456,7 @@ class _TitleSection extends StatelessWidget {
 }
 
 // =============================================================================
-// Inline invoice preview -- renders whichever design template.layoutTemplateId
-// points to, scaled to width
+// Inline invoice preview
 // =============================================================================
 
 class _InvoicePreviewCard extends StatefulWidget {
@@ -439,11 +476,6 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
     });
   }
 
-  // Dispatches on data.layoutTemplateId — Executive (id 1) is the only
-  // paginated design today (via A4Paginator/onPageCount), so it's built
-  // directly to keep that callback; every other template renders as a
-  // single natural-height page via buildInvoicePreview(), falling back to
-  // Executive if the id is unrecognized.
   Widget _buildPreviewWidget(InvoiceData data) {
     if (data.layoutTemplateId == 1) {
       return ExecutiveInvoicePreview(data: data, onPageCount: _setPageCount);
@@ -522,7 +554,7 @@ class _InvoicePreviewCardState extends State<_InvoicePreviewCard> {
 }
 
 // =============================================================================
-// Business logo section — reposition/zoom/shape via SharedLogoPicker
+// Business logo section
 // =============================================================================
 
 class _LogoSection extends StatelessWidget {
@@ -536,10 +568,6 @@ class _LogoSection extends StatelessWidget {
     final accent   = _colorForScheme(data.colorScheme);
     final hasLogo  = data.businessLogoPath != null && data.businessLogoPath!.isNotEmpty;
     final currentShape = logoShapeFromString(data.businessLogoShape);
-    // Preview box grows/shrinks live as the Logo Size slider moves, so the
-    // user sees the change here without scrolling up to the Live Preview.
-    // LOGO SIZE RANGE PASS: clamp ceiling raised 220 -> 260 to match the
-    // slider's new 96px max so larger sizes are actually visible here.
     final previewSize = (90.0 + (data.businessLogoDisplaySize - 40.0) * 3.0).clamp(90.0, 260.0);
 
     return _SectionCard(
@@ -659,9 +687,6 @@ class _LogoSizeSection extends StatelessWidget {
                     ),
                     child: Slider(
                       value: data.businessLogoDisplaySize,
-                      // LOGO SIZE RANGE PASS: ceiling raised 60 -> 96 so a
-                      // logo can actually be made prominent. Divisions
-                      // bumped so each step is still a clean whole number.
                       min: 24,
                       max: 96,
                       divisions: 12,
@@ -690,11 +715,6 @@ class _LogoSizeSection extends StatelessWidget {
 // Colour section
 // =============================================================================
 
-// Maps each InvoiceColor to its display Color for accent tinting
-// elsewhere on this step (logo section, logo size slider, font tiles,
-// text size slider, summary card, title field). Independent of the grid
-// picker below, which reads primaryColor/accentColor/displayName
-// straight off the InvoiceColor extension in invoice_color_ext.dart.
 Color _colorForScheme(InvoiceColor scheme) {
   const map = {
     InvoiceColor.blue:   Color(0xFF1565C0),
@@ -709,12 +729,6 @@ Color _colorForScheme(InvoiceColor scheme) {
   return map[scheme] ?? const Color(0xFF1565C0);
 }
 
-// SUMMARY LAYOUT PASS: plain section header — coloured accent bar + icon
-// + label — mirroring quoteSectionHeader (quote_edit_widgets.dart) and
-// receiptSectionHeader (receipt_edit_widgets.dart) exactly. Used by
-// _TitleSection and _SummarySection; every other section on this step
-// still uses the bordered _SectionCard look, which is Invoice's own
-// established design for its styling controls.
 Widget _plainSectionHeader(
   BuildContext context,
   String label,
@@ -751,10 +765,6 @@ Widget _plainSectionHeader(
   );
 }
 
-// Grid-tile picker — same design (gradient tile, checkmark overlay, label
-// underneath, 3-column grid) that previously lived as _ColorSchemePicker
-// on step_create_invoice.dart. This is now the only Color Scheme picker
-// in the wizard.
 class _ColourSection extends StatelessWidget {
   const _ColourSection();
 
@@ -856,14 +866,25 @@ class _ColourSection extends StatelessWidget {
 // Font section
 // =============================================================================
 
+// FONT FAMILY LIST FIX: this list now exactly mirrors the family names
+// actually registered in pubspec.yaml's flutter: fonts: section (plus
+// the 'Default' sentinel, which deliberately doesn't match any
+// registered family — it falls through to the platform default on
+// purpose). Previously included "Playfair Display" (pubspec only
+// registered "Playfair" — mismatch) and "Source Sans Pro" (never
+// bundled at all), and never offered Lora/Nunito/Raleway/Space Grotesk
+// even though those were already bundled and unused.
 const _kFonts = [
   'Default',
   'Roboto',
   'Lato',
+  'Lora',
   'Montserrat',
+  'Nunito',
   'Open Sans',
   'Playfair Display',
-  'Source Sans Pro',
+  'Raleway',
+  'Space Grotesk',
 ];
 
 class _FontSection extends StatelessWidget {
@@ -885,6 +906,13 @@ class _FontSection extends StatelessWidget {
         runSpacing: 8,
         children: _kFonts.map((font) {
           final isActive = font == selected;
+          // FONT CHIP PREVIEW PASS: 'Default' deliberately matches no
+          // registered family — preview it with the platform default
+          // (fontFamily: null) rather than passing the literal string
+          // 'Default' as a font name. Every other entry here is a real,
+          // locally-bundled family (see pubspec.yaml), so passing it
+          // straight through resolves correctly with no network call.
+          final previewFamily = font == 'Default' ? null : font;
           return GestureDetector(
             onTap: () => provider.updateFontFamily(font),
             child: AnimatedContainer(
@@ -907,6 +935,7 @@ class _FontSection extends StatelessWidget {
               child: Text(
                 font,
                 style: TextStyle(
+                  fontFamily: previewFamily,
                   fontSize: 12,
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                   color: isActive
@@ -983,14 +1012,8 @@ class _SizeSection extends StatelessWidget {
 }
 
 // =============================================================================
-// Summary section — InvoiceTotalsCard
+// Summary section
 // =============================================================================
-//
-// SUMMARY LAYOUT PASS: no longer wrapped in _SectionCard's bordered box.
-// Uses _plainSectionHeader() + InvoiceTotalsCard directly, matching
-// Quote's/Receipt's Summary sections exactly (a plain header sitting
-// right above the totals card, which already carries its own
-// background/border).
 
 class _SummarySection extends StatelessWidget {
   const _SummarySection();
@@ -1029,85 +1052,343 @@ class _SummarySection extends StatelessWidget {
 }
 
 // =============================================================================
-// Fields section — Invoice Fields / Customer Fields toggles
+// Fields section — GROUPED, collapsible, each group with its own master
+// switch and a REMEMBERED (persisted) expand state — see file header
+// comment (PERSISTED GROUP COLLAPSE PASS).
 // =============================================================================
-//
-// FIELDS SECTION PASS: InvoiceData.enabledFields and
-// InvoiceProvider.updateEnabledFields() already existed and were already
-// read by the PDF/preview templates, but no widget on this step ever
-// displayed or wrote to them. Mirrors the design language of every other
-// section on this step (_SectionCard wrapper) rather than Quote/Receipt's
-// plainer sectionHeader+switch-row style, since Invoice is this app's
-// reference layout.
-//
-// FIELDS SECTION REORDER PASS: now placed directly under Live Preview,
-// before Business Logo -- matching where Quote/Receipt's field toggles sit.
 
-class _FieldsSection extends StatelessWidget {
+class _FieldToggleSpec {
+  final String key;
+  final String label;
+  final IconData icon;
+  const _FieldToggleSpec(this.key, this.label, this.icon);
+}
+
+class _FieldGroupSpec {
+  final String label;
+  final IconData icon;
+  final List<_FieldToggleSpec> fields;
+  const _FieldGroupSpec(this.label, this.icon, this.fields);
+}
+
+const _kFieldGroups = <_FieldGroupSpec>[
+  _FieldGroupSpec('Header & Meta', Icons.tag_rounded, [
+    _FieldToggleSpec('invoiceNumber', 'Invoice Number', Icons.tag_rounded),
+    _FieldToggleSpec('date', 'Issue Date', Icons.calendar_today_rounded),
+    _FieldToggleSpec('dueDate', 'Due Date', Icons.event_rounded),
+    _FieldToggleSpec('businessLogo', 'Business Logo', Icons.image_rounded),
+  ]),
+  _FieldGroupSpec('Billed To', Icons.person_rounded, [
+    _FieldToggleSpec('customerName', 'Customer Name', Icons.person_outline_rounded),
+    _FieldToggleSpec('customerEmail', 'Customer Email', Icons.email_rounded),
+    _FieldToggleSpec('customerPhone', 'Customer Phone', Icons.phone_rounded),
+    _FieldToggleSpec('customerAddress', 'Customer Address', Icons.location_on_rounded),
+  ]),
+  _FieldGroupSpec('Invoice Details', Icons.receipt_long_rounded, [
+    _FieldToggleSpec('tax', 'Tax', Icons.percent_rounded),
+    _FieldToggleSpec('discount', 'Discount', Icons.local_offer_rounded),
+    _FieldToggleSpec('dueDateSummary', 'Due Date (Totals)', Icons.event_available_rounded),
+    _FieldToggleSpec('amountDue', 'Amount Due (Totals)', Icons.payments_rounded),
+  ]),
+  // PAYMENT TERMS REMOVAL PASS: 'paymentTerms' toggle row removed — this
+  // group is now 5 fields instead of 6.
+  _FieldGroupSpec('Payment Info', Icons.account_balance_rounded, [
+    _FieldToggleSpec('bankName', 'Bank Name', Icons.account_balance_rounded),
+    _FieldToggleSpec('accountName', 'Account Name', Icons.badge_outlined),
+    _FieldToggleSpec('accountNumber', 'Account Number', Icons.pin_rounded),
+    _FieldToggleSpec('otherPaymentDetails', 'Other Payment Details', Icons.notes_outlined),
+    _FieldToggleSpec('poNumber', 'PO / Reference Number', Icons.confirmation_number_outlined),
+  ]),
+  _FieldGroupSpec('Terms & Signature', Icons.gavel_rounded, [
+    _FieldToggleSpec('termsAndConditions', 'Terms & Conditions', Icons.gavel_rounded),
+    _FieldToggleSpec('signature', 'Signature', Icons.draw_outlined),
+  ]),
+  _FieldGroupSpec('Notes & Thank You', Icons.notes_rounded, [
+    _FieldToggleSpec('notes', 'Notes', Icons.notes_rounded),
+    _FieldToggleSpec('thankYouMessage', 'Thank You Message', Icons.favorite_border_rounded),
+  ]),
+];
+
+// PERSISTED GROUP COLLAPSE PASS: SharedPreferences key prefix for each
+// group's remembered expand/collapse state. Keyed by group label; not
+// per-invoice — this is a sheet-level UI preference.
+const _kFieldGroupExpandedPrefPrefix = 'invoice_customise_field_group_expanded_';
+
+class _FieldsSection extends StatefulWidget {
   const _FieldsSection();
 
-  Widget _toggleRow(
-    BuildContext context,
-    InvoiceProvider provider,
-    String key,
-    String label, {
-    IconData? icon,
-  }) {
+  @override
+  State<_FieldsSection> createState() => _FieldsSectionState();
+}
+
+class _FieldsSectionState extends State<_FieldsSection> {
+  // Group label -> expanded. Starts empty; _loadPersistedExpand() fills
+  // it in from SharedPreferences (defaulting each group to false/closed
+  // if nothing was ever persisted for it). Until that load completes,
+  // _groupCard's `_expanded[group.label] ?? false` reads as closed too,
+  // so there's no flicker from an open-then-closes-again default.
+  final Map<String, bool> _expanded = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPersistedExpand();
+  }
+
+  Future<void> _loadPersistedExpand() async {
+    final prefs = await SharedPreferences.getInstance();
+    final loaded = <String, bool>{};
+    for (final g in _kFieldGroups) {
+      loaded[g.label] = prefs.getBool('$_kFieldGroupExpandedPrefPrefix${g.label}') ?? false;
+    }
+    if (!mounted) return;
+    setState(() => _expanded.addAll(loaded));
+  }
+
+  Future<void> _persistExpand(String groupLabel, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_kFieldGroupExpandedPrefPrefix$groupLabel', value);
+  }
+
+  bool _groupIsOn(InvoiceData data, _FieldGroupSpec group) {
+    return group.fields.every((f) => data.enabledFields[f.key] ?? true);
+  }
+
+  void _toggleGroup(InvoiceProvider provider, _FieldGroupSpec group, bool v) {
+    final updated = Map<String, bool>.from(provider.invoiceData.enabledFields);
+    for (final f in group.fields) {
+      updated[f.key] = v;
+    }
+    provider.updateEnabledFields(updated);
+    setState(() => _expanded[group.label] = v);
+    _persistExpand(group.label, v);
+  }
+
+  void _setExpanded(String groupLabel, bool v) {
+    setState(() => _expanded[groupLabel] = v);
+    _persistExpand(groupLabel, v);
+  }
+
+  Widget _fieldRow(BuildContext context, InvoiceProvider provider, _FieldToggleSpec f) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = _colorForScheme(provider.invoiceData.colorScheme);
-    final value = provider.invoiceData.enabledFields[key] ?? true;
+    final value = provider.invoiceData.enabledFields[f.key] ?? true;
+    final isSignatureRow = f.key == 'signature';
+    final sigSize = provider.invoiceData.signatureFontSize;
+    final sigFamily = provider.invoiceData.signatureFontFamily;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(9),
         color: isDark
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
-            : Colors.white,
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.25)
+            : const Color(0xFFFAFAFA),
       ),
-      child: SwitchListTile(
-        // OVERFLOW FIX (mirrors the identical fix applied to
-        // receipt_step_customise.dart's own _fieldToggleRow): `dense:
-        // true` removed — it locks the tile to a fixed single-line
-        // height, which would clip a wrapped 2-3 line label instead of
-        // letting the tile grow to fit it. The label is now wrapped in
-        // Expanded with softWrap enabled instead of sitting bare in the
-        // Row, so long labels (and longer translated strings, which run
-        // this same risk regardless of how well the English text fits)
-        // wrap onto more lines instead of overflowing past the switch.
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        title: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
-                softWrap: true,
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+            visualDensity: VisualDensity.compact,
+            title: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(f.icon, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    f.label,
+                    style: TextStyle(fontSize: 12.5, color: colorScheme.onSurface),
+                    softWrap: true,
+                  ),
+                ),
+              ],
+            ),
+            value: value,
+            activeThumbColor: accent,
+            onChanged: (v) {
+              final updated = Map<String, bool>.from(provider.invoiceData.enabledFields);
+              updated[f.key] = v;
+              provider.updateEnabledFields(updated);
+            },
+          ),
+          if (isSignatureRow && value) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.format_size_rounded, size: 15,
+                      color: colorScheme.onSurface.withValues(alpha: 0.45)),
+                  const SizedBox(width: 6),
+                  Text('Size', style: TextStyle(fontSize: 11,
+                      color: colorScheme.onSurface.withValues(alpha: 0.55))),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: accent,
+                        inactiveTrackColor: accent.withValues(alpha: 0.2),
+                        thumbColor: accent,
+                        overlayColor: accent.withValues(alpha: 0.15),
+                        trackHeight: 3,
+                      ),
+                      child: Slider(
+                        value: sigSize,
+                        min: 14,
+                        max: 36,
+                        divisions: 11,
+                        onChanged: (v) => provider.updateSignatureFontSize(v),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 28,
+                    child: Text('${sigSize.toInt()}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accent)),
+                  ),
+                ],
+              ),
+            ),
+            // SIGNATURE FONT FAMILY PASS: font-chip row directly beneath
+            // the Size slider — same visibility gate (signature toggle
+            // on). Tapping a chip writes InvoiceData.signatureFontFamily
+            // via InvoiceProvider.updateSignatureFontFamily(). Each
+            // chip's own label previews in its actual script font — now
+            // via a plain TextStyle(fontFamily:) against the locally
+            // bundled asset (see pubspec.yaml), not GoogleFonts.getFont()
+            // — so the person can see what they're picking before
+            // committing, with no network dependency.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: kSignatureFonts.map((font) {
+                  final active = sigFamily == font;
+                  return GestureDetector(
+                    onTap: () => provider.updateSignatureFontFamily(active ? '' : font),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? accent
+                            : (isDark
+                                ? colorScheme.surfaceContainerHighest
+                                : const Color(0xFFF0F0F0)),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: active ? accent : colorScheme.outline.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Text(
+                        font,
+                        style: TextStyle(
+                          fontFamily: font,
+                          fontSize: 13,
+                          color: active ? Colors.white : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
           ],
-        ),
-        value: value,
-        activeThumbColor: accent,
-        onChanged: (v) {
-          final updated = Map<String, bool>.from(provider.invoiceData.enabledFields);
-          updated[key] = v;
-          provider.updateEnabledFields(updated);
-        },
+        ],
+      ),
+    );
+  }
+
+  Widget _groupCard(BuildContext context, InvoiceProvider provider, _FieldGroupSpec group) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = _colorForScheme(provider.invoiceData.colorScheme);
+    final data = provider.invoiceData;
+    final groupOn = _groupIsOn(data, group);
+    // PERSISTED GROUP COLLAPSE PASS: reads only the remembered/default
+    // state — no longer falls back to groupOn (whether the fields
+    // happen to already be all-on), so a freshly-all-on group still
+    // starts closed until the person opens it themselves.
+    final isExpanded = _expanded[group.label] ?? false;
+    final onCount = group.fields.where((f) => data.enabledFields[f.key] ?? true).length;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(12),
+        color: isDark ? const Color(0xFF23233A) : Colors.white,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.vertical(
+              top: const Radius.circular(12),
+              bottom: isExpanded ? Radius.zero : const Radius.circular(12),
+            ),
+            onTap: () => _setExpanded(group.label, !isExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(group.icon, size: 17,
+                      color: groupOn ? accent : colorScheme.onSurface.withValues(alpha: 0.45)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      group.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$onCount/${group.fields.length}',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: accent),
+                    ),
+                  ),
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: colorScheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 6),
+                  Switch(
+                    value: groupOn,
+                    activeThumbColor: accent,
+                    onChanged: (v) => _toggleGroup(provider, group, v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Column(
+                children: [for (final f in group.fields) _fieldRow(context, provider, f)],
+              ),
+            ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final provider    = context.watch<InvoiceProvider>();
+    final provider = context.watch<InvoiceProvider>();
     final colorScheme = Theme.of(context).colorScheme;
 
     return _SectionCard(
@@ -1117,40 +1398,11 @@ class _FieldsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Toggle which fields appear on the generated invoice.',
+            'Flip a group on/off, or tap it to expand and fine-tune individual fields.',
             style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 10),
-          _toggleRow(context, provider, 'invoiceNumber', 'Invoice Number', icon: Icons.tag_rounded),
-          _toggleRow(context, provider, 'date', 'Issue Date', icon: Icons.calendar_today_rounded),
-          _toggleRow(context, provider, 'dueDate', 'Due Date', icon: Icons.event_rounded),
-          _toggleRow(context, provider, 'businessLogo', 'Business Logo', icon: Icons.image_rounded),
-          _toggleRow(context, provider, 'tax', 'Tax', icon: Icons.percent_rounded),
-          _toggleRow(context, provider, 'discount', 'Discount', icon: Icons.local_offer_rounded),
-          _toggleRow(context, provider, 'notes', 'Notes', icon: Icons.notes_rounded),
-          _toggleRow(context, provider, 'thankYouMessage', 'Thank You Message', icon: Icons.favorite_border_rounded),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.person_rounded, size: 14, color: colorScheme.onSurface.withValues(alpha: 0.5)),
-                const SizedBox(width: 6),
-                Text(
-                  'Customer Fields',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _toggleRow(context, provider, 'customerName', 'Customer Name', icon: Icons.person_outline_rounded),
-          _toggleRow(context, provider, 'customerEmail', 'Customer Email', icon: Icons.email_rounded),
-          _toggleRow(context, provider, 'customerPhone', 'Customer Phone', icon: Icons.phone_rounded),
-          _toggleRow(context, provider, 'customerAddress', 'Customer Address', icon: Icons.location_on_rounded),
+          for (final g in _kFieldGroups) _groupCard(context, provider, g),
         ],
       ),
     );
@@ -1254,14 +1506,6 @@ class _DoneCard extends StatelessWidget {
 // =============================================================================
 // Bottom bar
 // =============================================================================
-//
-// SAVE-FROM-CUSTOMISE PASS: primary action renamed Save Invoice (was
-// Preview & Download) and now performs the real save via onSave —
-// matches quote_step_customise.dart's own "Preview & Download" button
-// being separate from the wizard's Save action, except here the two
-// affordances have swapped roles: the tappable Live Preview card now
-// covers what "Preview & Download" used to do, freeing this bar's
-// primary button for Save, same as Quote's bottom nav bar.
 
 class _BottomBar extends StatelessWidget {
   final VoidCallback onBack;
@@ -1289,7 +1533,6 @@ class _BottomBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Back
           GestureDetector(
             onTap: onBack,
             child: Container(
@@ -1307,7 +1550,6 @@ class _BottomBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
 
-          // Save Invoice
           Expanded(
             child: GestureDetector(
               onTap: isSaving ? null : onSave,

@@ -1,301 +1,157 @@
 // executive_template.dart
 // lib/document_layout_templates/01_executive/executive_template.dart
 //
-// Consolidated, read-only Executive design in the same one-file-per-
-// template shape as every other design in document_layout_templates/
-// (nordic_template.dart, vibrant_template.dart, etc.) — built against the
-// shared DocTemplateAdapter/TemplateDocument plumbing in
-// document_layout_templates/shared/ instead of Executive's own bespoke
-// pagination-measuring code.
+// ITEMS-HEADER-ROW PASS (this update): _executiveFullHeader and
+// _executiveContinuationHeader no longer call
+// buildSharedLineItemsHeaderRow() themselves — that row is now supplied
+// to TemplateDocument via the new `buildLineItemsHeaderRow` param on
+// every Preview/Editor class below, and A4Paginator decides per page
+// whether to actually show it (skipped on a totals-only overflow page
+// with zero items). See a4_paginator.dart's header comment for the bug
+// this fixes: a floating column-header row above nothing whenever the
+// totals block overflowed to its own page.
 //
-// This file is for CHOOSER THUMBNAILS AND PREVIEW REGISTRIES ONLY. It
-// does not replace executive_invoice_stationary_layout.dart /
-// executive_invoice_logic_data.dart, which remain in use by:
-//   - invoice_editable_canvas_screen.dart (WYSIWYG editing — this design
-//     supports tappable/editable fields via InvoiceEditBundle; the other
-//     designs, and this consolidated file, are preview-only)
-//   - step_customise.dart's live preview (which needs the exact same
-//     editable-capable widget for continuity with the edit canvas)
+// MERGE PASS (earlier): this file does everything the three deleted
+// files did — executive_invoice_stationary_layout.dart, executive_quote_
+// stationary_layout.dart, executive_receipt_stationary_layout.dart, and
+// their matching *_payment_terms_signature.dart / *_logic_data.dart
+// files. Both Preview (read-only) AND Editor (WYSIWYG tap-to-edit) run
+// through the same DocTemplateAdapter/TemplateDocument plumbing.
 //
-// Quote and receipt have no editable-canvas equivalent, so their exports
-// here fully replace their old separate logic_data/stationary_layout
-// pairs for preview purposes — those two old file-pairs can be considered
-// legacy/unused once this file is wired into the preview registries,
-// though they haven't been deleted here to keep this change low-risk.
+// What changed to make the merge possible:
+//   1. invoiceAccent()/quoteAccent()/receiptAccent() now live HERE.
+//   2. _executiveFullHeader / _executiveContinuationHeader take an
+//      optional `edit` param and build via buildSharedHeaderIdentity() /
+//      buildSharedMetaRow() (doc_header.dart) instead of composing their
+//      own Text widgets.
+//   3. Three Editor wrapper widgets — ExecutiveInvoiceEditor,
+//      ExecutiveQuoteEditor, ExecutiveReceiptEditor — mirror the
+//      existing Preview wrappers exactly, but require a DocEditBundle
+//      and pass it through to TemplateDocument.
 //
-// TEMPLATE FIELD VISIBILITY PASS (this update): _executiveFullHeader and
-// _ExecutiveMetaRow now gate every field that has a matching toggle in
-// step_templates.dart's "Invoice Fields"/"Customer Fields" sheet, via the
-// new docFieldOn() helper (doc_template_adapter.dart) — businessName,
-// businessEmail, businessPhone, businessAddress, invoiceNumber (the doc
-// number line), customerName/Email/Phone/Address, date, dueDate. This is
-// the file that actually renders in the template chooser grid and the
-// "Preview" screen (via preview_registry.dart -> buildInvoicePreview),
-// which is why toggling a field off in the template sheet previously had
-// no visible effect there even after InvoiceData.enabledFields and the
-// separate WYSIWYG-canvas path (executive_invoice_stationary_layout.dart)
-// were fixed — this file, and the DocTemplateAdapter/shared_doc_widgets.
-// dart plumbing it's built on, were never wired to read that map at all.
-// Missing keys default to true, so quote/receipt (whose adapters don't
-// populate enabledFields yet — see doc_template_adapter.dart) and any
-// invoice saved before this field existed render exactly as before.
-//
-// SHARED LOGO PASS: _ExecutiveLogo now delegates to buildSharedLogo()
-// (shared_doc_widgets.dart) instead of its own plain ClipOval +
-// BoxFit.cover render.
-//
-// LOGO SIZE WIRING FIX (earlier update): the header logo was calling
-// buildSharedLogo(a, size: 44.0) -- a hardcoded override that ignored
-// whatever the user actually set via the Logo Size slider on the
-// Customise step (a.businessLogoDisplaySize). buildSharedLogo() already
-// falls back to a.businessLogoDisplaySize when no explicit `size` is
-// passed (see shared_doc_widgets.dart), so the fix is simply to stop
-// passing size at all here. No changes were needed in
-// doc_template_adapter.dart or shared_doc_widgets.dart -- both already
-// carried/consumed businessLogoDisplaySize correctly; this was purely an
-// unnecessary override sitting in this one template file.
-//
-// DOC NUMBER WRAP/ALIGNMENT FIX (earlier update): the "#INV-..." text in
-// the header's trailing Column previously had no width constraint and
-// no textAlign. When the number was long enough to wrap, the wrapped
-// second line defaulted to left-alignment inside the block (the block
-// itself was pushed right by CrossAxisAlignment.end), producing the
-// orphaned "#" visual bug reported: first line flush right, "#" and the
-// tail of the number appearing to float on their own line to the left.
-// Fixed by wrapping the trailing header column in a ConstrainedBox and
-// giving both header texts explicit textAlign: TextAlign.right, plus
-// capping the doc-number line to a single line with ellipsis overflow so
-// an unusually long number truncates cleanly instead of wrapping badly.
-// This is paired with a shorter default invoice-number format and a
-// lower max character cap on the Invoice Number field itself (see
-// step_create_invoice.dart) so truncation should now be rare in practice.
+// ENGINE FOLDER SPLIT PASS (earlier): imports redirected off shared/
+// (now removed) to document_template_layout_data/.
 
 import 'package:flutter/material.dart';
-import '../../models/invoice_data.dart' show InvoiceData;
-import '../../models/quote_data.dart' show QuoteData;
-import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../../models/invoice_data.dart' show InvoiceData, InvoiceColor;
+import '../../models/quote_data.dart' show QuoteData, QuoteColor;
+import '../../models/receipt_data.dart' show ReceiptData, ReceiptColor;
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_edit_bundle.dart';
+import '../document_template_layout_data/doc_header.dart'
+    show buildSharedHeaderIdentity, buildSharedMetaRow, kRule, kGrey, kGreyLight;
+import '../document_template_layout_data/doc_line_items.dart'
+    show buildSharedLineItemsHeaderRow;
+import '../document_template_layout_data/template_document.dart';
+
+// ─────────────────────────────────────────────────────────────────────────
+// MERGE PASS: the six script-font families offered for a typed
+// signature, moved here from the now-deleted
+// executive_invoice_payment_terms_signature.dart.
+// ─────────────────────────────────────────────────────────────────────────
+
+const List<String> kSignatureFonts = [
+  'Dancing Script',
+  'Great Vibes',
+  'Sacramento',
+  'Pacifico',
+  'Alex Brush',
+  'Caveat',
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// MERGE PASS: accent-color functions, moved here from the three deleted
+// *_stationary_layout.dart files. doc_template_adapter.dart's
+// invoiceToAdapter()/quoteToAdapter()/receiptToAdapter() import these
+// three from this file.
+// ─────────────────────────────────────────────────────────────────────────
+
+Color invoiceAccent(InvoiceData d) {
+  switch (d.colorScheme) {
+    case InvoiceColor.blue:   return const Color(0xFF2563EB);
+    case InvoiceColor.green:  return const Color(0xFF16A34A);
+    case InvoiceColor.purple: return const Color(0xFF7C3AED);
+    case InvoiceColor.orange: return const Color(0xFFEA580C);
+    case InvoiceColor.red:    return const Color(0xFFDC2626);
+    case InvoiceColor.teal:   return const Color(0xFF0D9488);
+    case InvoiceColor.black:  return const Color(0xFF1A1A1A);
+    case InvoiceColor.indigo: return const Color(0xFF4F46E5);
+  }
+}
+
+Color quoteAccent(QuoteData d) {
+  switch (d.colorScheme) {
+    case QuoteColor.blue:   return const Color(0xFF2563EB);
+    case QuoteColor.green:  return const Color(0xFF16A34A);
+    case QuoteColor.purple: return const Color(0xFF7C3AED);
+    case QuoteColor.orange: return const Color(0xFFEA580C);
+    case QuoteColor.red:    return const Color(0xFFDC2626);
+    case QuoteColor.teal:   return const Color(0xFF0D9488);
+    case QuoteColor.black:  return const Color(0xFF1A1A1A);
+    case QuoteColor.indigo: return const Color(0xFF4F46E5);
+  }
+}
+
+Color receiptAccent(ReceiptData d) {
+  switch (d.colorScheme) {
+    case ReceiptColor.blue:   return const Color(0xFF2563EB);
+    case ReceiptColor.green:  return const Color(0xFF16A34A);
+    case ReceiptColor.purple: return const Color(0xFF7C3AED);
+    case ReceiptColor.orange: return const Color(0xFFEA580C);
+    case ReceiptColor.red:    return const Color(0xFFDC2626);
+    case ReceiptColor.teal:   return const Color(0xFF0D9488);
+    case ReceiptColor.black:  return const Color(0xFF1A1A1A);
+    case ReceiptColor.indigo: return const Color(0xFF4F46E5);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Header design — diamond logo mark, generous whitespace, single page in
-// spirit (though now paginates properly via A4Paginator like every other
-// design, instead of Executive's old Transform.scale-to-fit approach).
+// spirit (paginates via A4Paginator like every other design).
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// buildSharedLineItemsHeaderRow(adapter: a) — A4Paginator renders that
+// row itself now, per page, only when the page has items. See this
+// file's own Preview/Editor classes for where it's supplied instead.
 // ─────────────────────────────────────────────────────────────────────────
 
-Widget _executiveFullHeader(DocTemplateAdapter a) {
-  final showBusinessName = docFieldOn(a, 'businessName');
-  final showBusinessAddress = docFieldOn(a, 'businessAddress');
-  final showBusinessEmail = docFieldOn(a, 'businessEmail');
-  final showBusinessPhone = docFieldOn(a, 'businessPhone');
-  final showDocNumber = docFieldOn(a, 'invoiceNumber');
-
+Widget _executiveFullHeader(DocTemplateAdapter a, {DocEditBundle? edit}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // LOGO SIZE WIRING FIX: no `size:` override -- buildSharedLogo()
-          // falls back to a.businessLogoDisplaySize on its own, so this
-          // now actually reflects the Logo Size slider on Customise.
-          // TEMPLATE FIELD VISIBILITY PASS: buildSharedLogo() itself now
-          // checks the businessLogo toggle internally.
-          buildSharedLogo(a),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showBusinessName) ...[
-                  Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                          color: kInk, fontFamily: a.fontFamily),
-                      softWrap: true, overflow: TextOverflow.visible),
-                  const SizedBox(height: 4),
-                ],
-                if (showBusinessAddress && a.businessAddress.isNotEmpty)
-                  Text(a.businessAddress, style: TextStyle(fontSize: 9, color: kGrey,
-                      height: 1.4, fontFamily: a.fontFamily), softWrap: true),
-                if ((showBusinessEmail && a.businessEmail.isNotEmpty) ||
-                    (showBusinessPhone && a.businessPhone.isNotEmpty))
-                  Text(
-                    [
-                      if (showBusinessEmail) a.businessEmail,
-                      if (showBusinessPhone) a.businessPhone,
-                    ].where((s) => s.isNotEmpty).join('   ·   '),
-                    style: TextStyle(fontSize: 9, color: kGrey, fontFamily: a.fontFamily),
-                  ),
-              ],
-            ),
-          ),
-          // DOC NUMBER WRAP/ALIGNMENT FIX: constrained width + right
-          // textAlign on both lines so a wrapped/truncated number never
-          // produces the orphaned "#" artifact.
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 150),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(a.docTypeLabel,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
-                        color: kInk, letterSpacing: 3.0, fontFamily: a.fontFamily),
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                if (showDocNumber) ...[
-                  const SizedBox(height: 6),
-                  Text('#${a.docNumber.isEmpty ? '—' : a.docNumber}',
-                      style: TextStyle(fontSize: 10.5, color: a.accent,
-                          fontWeight: FontWeight.w600, fontFamily: a.fontFamily),
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+      buildSharedHeaderIdentity(a: a, edit: edit),
       const SizedBox(height: 28),
       Container(height: 1, color: kRule),
       const SizedBox(height: 24),
-      _ExecutiveMetaRow(a: a),
-      const SizedBox(height: 28),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
+      buildSharedMetaRow(a: a, edit: edit),
     ],
   );
 }
 
-Widget _executiveContinuationHeader(DocTemplateAdapter a) {
+Widget _executiveContinuationHeader(DocTemplateAdapter a, {DocEditBundle? edit}) {
   final showDocNumber = docFieldOn(a, 'invoiceNumber');
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kGrey, fontFamily: a.fontFamily)),
-          Flexible(
-            child: Text(
-                showDocNumber
-                    ? '${a.docTypeLabel} #${a.docNumber.isEmpty ? '—' : a.docNumber} ${a.continuationSuffix}'
-                    : '${a.docTypeLabel} ${a.continuationSuffix}',
-                style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: a.fontFamily),
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
-    ],
-  );
-}
-
-class _ExecutiveMetaRow extends StatelessWidget {
-  final DocTemplateAdapter a;
-  const _ExecutiveMetaRow({required this.a});
-
-  @override
-  Widget build(BuildContext context) {
-    final showClientName = docFieldOn(a, 'customerName');
-    final showClientAddress = docFieldOn(a, 'customerAddress');
-    final showClientEmail = docFieldOn(a, 'customerEmail');
-    final showClientPhone = docFieldOn(a, 'customerPhone');
-    // Adapter's metaLabel1/metaValue1 and metaLabel2/metaValue2 carry
-    // different semantics per doc type (invoice: issue/due date; quote:
-    // issue date/valid-until; receipt: payment date/method) but the
-    // toggle keys 'date'/'dueDate' only really apply to invoices — for
-    // quote/receipt adapters enabledFields is unpopulated (see
-    // doc_template_adapter.dart), so docFieldOn defaults true there and
-    // this stays a no-op for those doc types.
-    final showMeta1 = docFieldOn(a, 'date');
-    final showMeta2 = docFieldOn(a, 'dueDate');
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(a.recipientLabel, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                  color: a.accent, letterSpacing: 1.6, fontFamily: a.fontFamily)),
-              const SizedBox(height: 8),
-              if (showClientName)
-                Text(a.clientName.isEmpty ? 'Client name' : a.clientName,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kInk, fontFamily: a.fontFamily),
-                    softWrap: true, overflow: TextOverflow.visible),
-              if (showClientAddress && a.clientAddress.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(a.clientAddress, style: TextStyle(fontSize: 9.5, color: kGrey, height: 1.4, fontFamily: a.fontFamily)),
-              ],
-              if (showClientEmail && a.clientEmail.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(a.clientEmail, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
-              ],
-              if (showClientPhone && a.clientPhone.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(a.clientPhone, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: a.fontFamily)),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showMeta1) ...[
-                _metaRow(a.metaLabel1, a.metaValue1, a.fontFamily),
-                const SizedBox(height: 6),
-              ],
-              if (showMeta2) ...[
-                _metaRow(a.metaLabel2, a.metaValue2, a.fontFamily),
-                const SizedBox(height: 10),
-              ],
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: a.statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(a.statusLabel,
-                    style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
-                        letterSpacing: 1.0, color: a.statusColor, fontFamily: a.fontFamily)),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _metaRow(String label, String value, String ff) => Row(
+  return Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(label, style: TextStyle(fontSize: 9.5, color: kGrey, fontFamily: ff)),
-      Text(value.isEmpty ? '—' : value,
-          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: kInk, fontFamily: ff)),
+      Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kGrey, fontFamily: a.fontFamily)),
+      Flexible(
+        child: Text(
+            showDocNumber
+                ? '${a.docTypeLabel} #${a.docNumber.isEmpty ? '—' : a.docNumber} ${a.continuationSuffix}'
+                : '${a.docTypeLabel} ${a.continuationSuffix}',
+            style: TextStyle(fontSize: 9.5, color: kGreyLight, fontFamily: a.fontFamily),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
+      ),
     ],
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Preview wrappers — one per doc type, same shape every other template's
-// file exposes. These are what preview_registry.dart files (invoice /
-// quote / receipt) should import for id == 1 going forward.
+// Preview wrappers — read-only (edit bundle is null internally).
 // ─────────────────────────────────────────────────────────────────────────
 
 class ExecutiveInvoicePreview extends StatelessWidget {
@@ -306,8 +162,9 @@ class ExecutiveInvoicePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: invoiceToAdapter(data),
-        buildFullHeader: _executiveFullHeader,
-        buildContinuationHeader: _executiveContinuationHeader,
+        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -320,8 +177,9 @@ class ExecutiveQuotePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: quoteToAdapter(data),
-        buildFullHeader: _executiveFullHeader,
-        buildContinuationHeader: _executiveContinuationHeader,
+        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -334,8 +192,66 @@ class ExecutiveReceiptPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: receiptToAdapter(data),
-        buildFullHeader: _executiveFullHeader,
-        buildContinuationHeader: _executiveContinuationHeader,
+        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MERGE PASS: Editor wrappers — WYSIWYG editable, mirror the Preview
+// wrappers exactly but require a DocEditBundle and pass it through to
+// TemplateDocument.
+// ─────────────────────────────────────────────────────────────────────────
+
+class ExecutiveInvoiceEditor extends StatelessWidget {
+  final InvoiceData data;
+  final DocEditBundle edit;
+  final void Function(int pageCount)? onPageCount;
+  const ExecutiveInvoiceEditor({super.key, required this.data, required this.edit, this.onPageCount});
+
+  @override
+  Widget build(BuildContext context) => TemplateDocument(
+        adapter: invoiceToAdapter(data),
+        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
+        onPageCount: onPageCount,
+        edit: edit,
+      );
+}
+
+class ExecutiveQuoteEditor extends StatelessWidget {
+  final QuoteData data;
+  final DocEditBundle edit;
+  final void Function(int pageCount)? onPageCount;
+  const ExecutiveQuoteEditor({super.key, required this.data, required this.edit, this.onPageCount});
+
+  @override
+  Widget build(BuildContext context) => TemplateDocument(
+        adapter: quoteToAdapter(data),
+        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
+        onPageCount: onPageCount,
+        edit: edit,
+      );
+}
+
+class ExecutiveReceiptEditor extends StatelessWidget {
+  final ReceiptData data;
+  final DocEditBundle edit;
+  final void Function(int pageCount)? onPageCount;
+  const ExecutiveReceiptEditor({super.key, required this.data, required this.edit, this.onPageCount});
+
+  @override
+  Widget build(BuildContext context) => TemplateDocument(
+        adapter: receiptToAdapter(data),
+        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
+        onPageCount: onPageCount,
+        edit: edit,
       );
 }

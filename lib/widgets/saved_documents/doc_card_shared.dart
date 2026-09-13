@@ -1,7 +1,22 @@
 // doc_card_shared.dart
 // lib/widgets/saved_documents/doc_card_shared.dart
 //
-// LOGO HIGHLIGHT / LOGO IMAGE TOGGLES (this pass): DocLogoAvatar and
+// STATUS DOT COLOR PASS (this update): the small dot shown next to a
+// card's title used to be a single hardcoded green
+// (positiveStatusDot()), only ever rendered when entry.isPositiveStatus
+// was true — in practice that meant it only ever showed for Paid/
+// Accepted/Issued, and always in the same green regardless of which
+// status that was. Added statusDot(Color) which takes whatever color the
+// caller passes (entry.statusColor, populated per-status in
+// saved_documents_section.dart from _paymentStatusInfo/_quoteStatusInfo/
+// _receiptStatusInfo) so the dot always matches the document's actual
+// current status color (orange for Unpaid, red for Overdue, blue for
+// Partial, etc.), not just green for "good" statuses.
+// positiveStatusDot() is kept as-is (now implemented in terms of
+// statusDot()) so any card layout not yet updated to use statusDot()
+// directly keeps compiling and rendering exactly as before.
+//
+// LOGO HIGHLIGHT / LOGO IMAGE TOGGLES (earlier pass): DocLogoAvatar and
 // DocLogoBanner both gained two new optional params:
 //   - showHighlight (default true): when false, the colored box-shadow
 //     glow behind the logo (image OR fallback initial/icon) is omitted —
@@ -207,14 +222,24 @@ class ThreeDotIcon extends StatelessWidget {
   }
 }
 
-// Small green dot shown next to a title when the entry's status is "good"
-// (Paid / Accepted / Issued). Reused inline in every card layout.
-Widget positiveStatusDot() => Container(
+// STATUS DOT COLOR PASS: small dot shown next to a card's title, colored
+// to match whatever status color the caller passes in — e.g.
+// entry.statusColor, which saved_documents_section.dart populates from
+// the same _paymentStatusInfo/_quoteStatusInfo/_receiptStatusInfo lookups
+// that already drive the status chip's own color. This is now the
+// preferred call for any card layout that wants the dot to reflect the
+// document's actual current status rather than a fixed color.
+Widget statusDot(Color color) => Container(
       width: 7,
       height: 7,
       margin: const EdgeInsets.only(left: 6),
-      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4CAF50)),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
     );
+
+// Small green dot shown next to a title when the entry's status is "good"
+// (Paid / Accepted / Issued). Kept for any card layout not yet migrated
+// to statusDot(Color) — implemented in terms of it so both stay in sync.
+Widget positiveStatusDot() => statusDot(const Color(0xFF4CAF50));
 
 // Bold Accepted/Declined pill for quote cards.
 Widget decisionBadge(String statusLabel, {double fontSize = 11}) {

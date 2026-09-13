@@ -5,7 +5,7 @@
 // OPTIONAL LABEL PASS (this update): QuoteField now appends "(Optional)"
 // to a field's label automatically whenever `required` is false —
 // matching the identical pass already applied to invoice's
-// step_templates.dart _SheetField. Required fields (which already carry
+// step_templates.dart _SheetField. Required fields (which alreadya carry
 // their own "*") are untouched. Since QuoteField is the shared widget
 // behind nearly every quote input (template sheet, customer sheet, and
 // the main quote step screens), this single fix makes every optional

@@ -1,7 +1,42 @@
 // invoice_provider.dart
 // lib/providers/invoice_provider.dart
 //
-// HISTORY LOGGING PASS (this update): saveCurrentInvoice(),
+// TEXT SIZE WIRING FIX (this update): the old `fontSize`
+// getter/`updateFontSize()` pair used to live entirely on this provider
+// as a plain, unsaved field (`double _fontSize = 14.0`) — it was never
+// read by InvoiceData, never persisted, and never reached the
+// renderer/PDF. `fontSize` now lives on InvoiceData itself (see that
+// file's own TEXT SIZE WIRING FIX note) and this provider is a thin
+// pass-through to it, exactly like every other single-field update
+// method here (updateFontFamily, updateBusinessLogoSize, etc). The
+// public getter/method signatures (`provider.fontSize`,
+// `provider.updateFontSize(v)`) are UNCHANGED, so step_customise.dart's
+// `_SizeSection` needs no changes at all — it already reads/writes
+// through exactly this API.
+//
+// SIGNATURE FONT FAMILY PASS (earlier): added updateSignatureFontFamily(),
+// mirroring updateSignatureFontSize()'s exact shape — a thin pass-through
+// to InvoiceData.copyWith. Backs the new font-chip row that appears
+// beneath the Signature toggle's Size slider on the Customise step
+// (step_customise.dart), only while that toggle is on. Lets the person
+// pick one of six google_fonts script families (Dancing Script, Great
+// Vibes, Sacramento, Pacifico, Alex Brush, Caveat) for a typed signature
+// instead of the default italic body-font look.
+//
+// TAX/DISCOUNT NAMING PASS (earlier): updateInvoiceDetails() gained
+// taxName/discountName params, mirroring how taxRate/discountRate are
+// already threaded through — a thin pass-through to InvoiceData.
+// copyWith. Backs the new "Tax Name"/"Discount Name" fields on the
+// Create Invoice sheet (create_invoice_bottom_sheet.dart), so a custom
+// label like "GST" or "VAT" can be set the same way the rate itself is.
+//
+// SIGNATURE SIZER PASS (earlier update): added updateSignatureFontSize(),
+// mirroring updateFontSize()'s exact shape — a thin pass-through to
+// InvoiceData.copyWith. Backs the new "Size" slider that appears
+// beneath the Signature toggle row on the Customise step
+// (step_customise.dart), only while that toggle is on.
+//
+// HISTORY LOGGING PASS (earlier update): saveCurrentInvoice(),
 // addConvertedInvoice(), and deleteInvoice() each gained an optional
 // [historyProvider] param. When passed:
 //  - saveCurrentInvoice / addConvertedInvoice log a `created` event
@@ -544,6 +579,9 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // TAX/DISCOUNT NAMING PASS: taxName/discountName added alongside
+  // taxRate/discountRate — same thin pass-through to copyWith. Backs the
+  // "Tax Name"/"Discount Name" fields on the Create Invoice sheet.
   void updateInvoiceDetails({
     String? invoiceNumber,
     String? issueDate,
@@ -552,6 +590,8 @@ class InvoiceProvider extends ChangeNotifier {
     String? currency,
     double? taxRate,
     double? discountRate,
+    String? taxName,
+    String? discountName,
   }) {
     _invoiceData = _invoiceData.copyWith(
       invoiceNumber: invoiceNumber,
@@ -561,6 +601,8 @@ class InvoiceProvider extends ChangeNotifier {
       currency:      currency,
       taxRate:       taxRate,
       discountRate:  discountRate,
+      taxName:       taxName,
+      discountName:  discountName,
     );
     notifyListeners();
   }
@@ -627,10 +669,36 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  double _fontSize = 14.0;
-  double get fontSize => _fontSize;
+  // SIGNATURE SIZER PASS: writes the typed-name signature's font size,
+  // driven by the "Size" slider that appears beneath the Signature
+  // toggle row on the Customise step (step_customise.dart), only while
+  // that toggle is on. Mirrors updateFontFamily/updateBusinessLogoSize's
+  // shape — a thin pass-through to InvoiceData.copyWith.
+  void updateSignatureFontSize(double size) {
+    _invoiceData = _invoiceData.copyWith(signatureFontSize: size);
+    notifyListeners();
+  }
+
+  // SIGNATURE FONT FAMILY PASS: writes the typed-name signature's script
+  // font family (one of kSignatureFonts — Dancing Script/Great Vibes/
+  // Sacramento/Pacifico/Alex Brush/Caveat — see
+  // executive_invoice_payment_terms_signature.dart), driven by the new
+  // font-chip row beneath the Signature toggle's Size slider on the
+  // Customise step. Mirrors updateSignatureFontSize's exact shape.
+  void updateSignatureFontFamily(String family) {
+    _invoiceData = _invoiceData.copyWith(signatureFontFamily: family);
+    notifyListeners();
+  }
+
+  // TEXT SIZE WIRING FIX: fontSize now reads/writes straight through to
+  // InvoiceData.fontSize (via copyWith) instead of a local, unsaved
+  // `_fontSize` field. The getter/method signatures are unchanged so no
+  // call site (step_customise.dart's _SizeSection) needs updating —
+  // moving the slider now actually persists with the invoice and reaches
+  // every renderer that reads data.fontSize.
+  double get fontSize => _invoiceData.fontSize;
   void updateFontSize(double size) {
-    _fontSize = size;
+    _invoiceData = _invoiceData.copyWith(fontSize: size);
     notifyListeners();
   }
 

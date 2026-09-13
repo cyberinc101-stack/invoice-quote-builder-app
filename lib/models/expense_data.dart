@@ -1,7 +1,26 @@
 // expense_data.dart
 // lib/models/expense_data.dart
 //
-// REFERENCE NUMBER PASS: added referenceNumber — a plain, user-typed
+// INPUT TAX CREDIT PASS (this update): added taxEnabled/taxRatePercent —
+// shaped like LineItem's own taxEnabled/itemTaxRate fields
+// (invoice_data.dart) so the vocabulary reads the same across the app,
+// but named taxRatePercent (matching ReportsPrefs.taxRatePercent) since
+// that's the more natural name outside a line-item context. Feeds the
+// new "Tax Payable" card on Reports (reports_screen.dart/
+// reports_widgets.dart) as the input-tax-credit side of output tax minus
+// input tax, gated behind ReportsPrefs.includeInputCreditsInTaxPayable.
+//
+// Deliberately modelled as tax-INCLUSIVE, not tax-exclusive like invoice
+// line items: `amount` is treated as the total actually paid — the way a
+// real expense receipt is priced — so taxAmount below is the tax CONTENT
+// already sitting inside that total, not tax added on top of it:
+//   taxAmount = amount - (amount / (1 + taxRatePercent / 100))
+// e.g. a $115 receipt with a 15% rate embedded gives taxAmount == $15,
+// not $17.25. Both fields default to false/0.0, so every persisted
+// expense loads and totals exactly as before this pass — no migration
+// needed.
+//
+// REFERENCE NUMBER PASS (earlier): added referenceNumber — a plain, user-typed
 // string (no database, no external lookup) used two ways:
 //   1. Manual search/filter on ExpenseScreen and the Home screen's "My
 //      Expenses" section (vendor OR reference number).
@@ -41,8 +60,9 @@
 //
 // All new fields fall back to sensible defaults when missing from
 // persisted JSON (null logoPath, zero offset, scale 1.0, 'roundedSquare'
-// shape, null folderName, null referenceNumber), so existing persisted
-// expenses from before this pass load correctly with no migration step.
+// shape, null folderName, null referenceNumber, taxEnabled false,
+// taxRatePercent 0.0), so existing persisted expenses from before this
+// pass load correctly with no migration step.
 
 class ExpenseEntry {
   final String id;
@@ -73,6 +93,13 @@ class ExpenseEntry {
   // ExpenseProvider (findByReferenceNumber).
   final String? referenceNumber;
 
+  // INPUT TAX CREDIT PASS: whether this expense had tax (GST/VAT/sales
+  // tax) included in its amount, and at what rate — see the file header
+  // comment above for the tax-inclusive extraction formula used by
+  // taxAmount below.
+  final bool taxEnabled;
+  final double taxRatePercent;
+
   const ExpenseEntry({
     required this.id,
     required this.vendor,
@@ -91,7 +118,21 @@ class ExpenseEntry {
     this.logoShape = 'roundedSquare',
     this.folderName,
     this.referenceNumber,
+    this.taxEnabled = false,
+    this.taxRatePercent = 0.0,
   });
+
+  // INPUT TAX CREDIT PASS: the tax CONTENT of `amount`, treating amount
+  // as tax-inclusive (the total actually paid) rather than tax-exclusive
+  // — see file header comment. Guards against a rate at or below -100%
+  // (which would divide by zero or flip the sign) by returning 0.0
+  // rather than propagating NaN/Infinity into Reports totals.
+  double get taxAmount {
+    if (!taxEnabled) return 0.0;
+    final divisor = 1 + (taxRatePercent / 100);
+    if (divisor <= 0) return 0.0;
+    return amount - (amount / divisor);
+  }
 
   ExpenseEntry copyWith({
     String? vendor,
@@ -112,6 +153,8 @@ class ExpenseEntry {
     bool clearFolder = false,
     String? referenceNumber,
     bool clearReferenceNumber = false,
+    bool? taxEnabled,
+    double? taxRatePercent,
   }) {
     return ExpenseEntry(
       id: id,
@@ -131,6 +174,8 @@ class ExpenseEntry {
       logoShape: logoShape ?? this.logoShape,
       folderName: clearFolder ? null : (folderName ?? this.folderName),
       referenceNumber: clearReferenceNumber ? null : (referenceNumber ?? this.referenceNumber),
+      taxEnabled: taxEnabled ?? this.taxEnabled,
+      taxRatePercent: taxRatePercent ?? this.taxRatePercent,
     );
   }
 
@@ -152,6 +197,8 @@ class ExpenseEntry {
         'logoShape': logoShape,
         'folderName': folderName,
         'referenceNumber': referenceNumber,
+        'taxEnabled': taxEnabled,
+        'taxRatePercent': taxRatePercent,
       };
 
   factory ExpenseEntry.fromJson(Map<String, dynamic> j) {
@@ -179,6 +226,8 @@ class ExpenseEntry {
       logoShape: j['logoShape'] as String? ?? 'roundedSquare',
       folderName: j['folderName'] as String?,
       referenceNumber: j['referenceNumber'] as String?,
+      taxEnabled: j['taxEnabled'] as bool? ?? false,
+      taxRatePercent: (j['taxRatePercent'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

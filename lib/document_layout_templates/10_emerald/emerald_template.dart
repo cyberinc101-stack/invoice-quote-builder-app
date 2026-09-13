@@ -1,92 +1,81 @@
 // emerald_template.dart
 // lib/document_layout_templates/10_emerald/emerald_template.dart
 //
-// FIELD ORDER / COMPACTNESS PASS (this update): in the field stack
-// (_EmeraldFieldStack), "Doc No." previously trailed at the very bottom
-// of the column, after Billed To and both date fields. Moved to lead the
-// stack instead — Doc No. now shows first, above Billed To — per
-// request. Issue Date and Due Date (metaLabel1/metaLabel2) were also two
-// separate stacked fields, each on its own line; they're now placed side
-// by side in a single Row (each in an Expanded half) for compactness, so
-// the column takes up one less line's worth of vertical space. Nothing
-// else in the field stack (labels, bold treatment on the client name,
-// address/email plain lines) changed.
+// ITEMS-HEADER-ROW PASS (this update): _emeraldFullHeader and
+// _emeraldContinuationHeader no longer call _emeraldLineItemsHeaderRow()
+// themselves — that custom accent row is now supplied via
+// buildLineItemsHeaderRow on every Preview class below, and A4Paginator
+// decides per page whether to actually show it. See a4_paginator.dart's
+// header comment for the bug this fixes.
 //
-// TEN-TEMPLATE UNIQUENESS PASS (earlier): reworked as a compact
-// single-column FORM — every field (business, client, dates, status) a
-// stacked label-above-value pair in one narrow column, logo centered
-// above the business name, doc type as a small corner tag rather than a
-// masthead heading. This header shape is unique in the set of 10 — no
-// other template uses a single-column stacked-field pattern — and is
-// KEPT UNCHANGED below, on purpose (see next note).
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_line_items.dart removed.
 //
-// REFERENCE-IMAGE TABLE/TOTALS PASS (earlier): asked to match a reference
-// invoice image already used for Editorial (colored item-table header,
-// striped rows, a colored Grand Total bar, a colored footer strip).
-// Copying that reference wholesale — including its header — would have
-// made Emerald render identically to Editorial, since color always comes
-// from the document's own accent rather than a fixed per-template hue.
-// Split the difference instead: Emerald's single-column form header (its
-// one genuinely distinct feature) is UNCHANGED — identity and client/meta
-// fields only, no totals data mixed in; only the item table, totals
-// block, and footer below the header use the reference's colored-header/
-// striped-rows/colored-bar treatment, via the same optional
-// buildLineItemRow/buildTotalsSection/buildFooterContent hooks Editorial
-// and Pastel Soft already use on TemplateDocument (see the PER-TEMPLATE
-// OVERRIDES PASS note in shared_doc_widgets.dart).
+// PAYMENT/TERMS/SIGNATURE PARITY PASS (earlier): _emeraldTotalsSection
+// calls the same three shared panel functions every other template uses.
 //
-// HEADER-DATA-IN-HEADER PASS (earlier): an earlier version of this pass
-// added a "TOTAL DUE" callout under the field stack to mirror the
-// reference more closely, but that put totals data inside the header —
-// a mismatch with what the header is for. Removed; the total appears
-// exactly once, in the totals block after the table.
-//
-// BILLED-TO-IN-HEADER PASS (earlier): the client/meta field stack
-// (Billed To, Issue Date, Doc No.) was sitting in its own single narrow
-// column BELOW the business identity block. Moved up into the same top
-// row as the business name/address instead — identity left, field stack
-// right — so all header-level data (business AND client/doc info) reads
-// together at the top of the page rather than being split across two
-// vertically stacked sections. The field stack itself (_EmeraldFieldStack)
-// is unchanged — same label-over-value pattern, same fields — just
-// repositioned.
-//
-// COMPACT HEADER PASS (earlier): with three stacked meta fields
-// (Billed To block, Issue Date, Due Date, Doc No.) now living in the
-// right-hand column, that column ran taller than the business-identity
-// column beside it, and the Row's shared inter-section spacing (22/22/20)
-// was sized for the old single, shorter layout — together this made the
-// whole header noticeably tall with dead white space under the left
-// column. Tightened the inter-section spacing (14/16/14 instead of
-// 22/22/20) and the field stack's own internal rhythm (7px between field
-// groups instead of 12px, 1px instead of 2-3px around each label/value
-// pair) so the header reads as a compact block instead of a tall one,
-// without dropping any field.
-// Column order (Description / Unit Price / Qty / Total) matches the
-// reference and MUST stay in sync between _emeraldLineItemsHeaderRow and
-// _emeraldLineItemRow, since they're two halves of the same table.
-//
-// Class names and signatures (EmeraldInvoicePreview/EmeraldQuotePreview/
-// EmeraldReceiptPreview) are unchanged, so preview_registry.dart files
-// need no changes.
+// SHARED/EXECUTIVE PARITY PASS — PHASE 2 (earlier): Emerald keeps its
+// own single-column field-stack header AND its colored item-table look
+// entirely, with the underlying data matching Executive's real logic.
 
 import 'package:flutter/material.dart';
-import '../../models/invoice_data.dart' show InvoiceData, LineItem;
+import '../../models/invoice_data.dart' show InvoiceData, LineItem, unitDisplayLabel;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/doc_totals.dart';
+import '../document_template_layout_data/template_document.dart';
 
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
 
-// ─────────────────────────────────────────────────────────────────────────
-// Header design — UNCHANGED single-column form (see note above): doc type
-// is a small corner tag, logo centered above the business name, every
-// field below a tight label-over-value stack in one column. Only new
-// addition is the "TOTAL DUE" callout at the end, ahead of the table.
-// ─────────────────────────────────────────────────────────────────────────
+String _qtyWithUnit(LineItem item) {
+  final qty = _fmtQty(item.quantity);
+  final unit = item.unit.trim();
+  if (unit.isEmpty) return qty;
+  return '$qty ${unitDisplayLabel(item.unit, customUnitLabel: item.customUnitLabel)}';
+}
 
+const Color _kTaxChipBg  = Color(0xFFE3F2FD);
+const Color _kTaxChipFg  = Color(0xFF1565C0);
+const Color _kDiscChipBg = Color(0xFFFFF3E0);
+const Color _kDiscChipFg = Color(0xFFEF6C00);
+
+Widget _itemBadgeChip(String label, {required Color bg, required Color fg, required String ff}) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+  child: Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w600, color: fg, fontFamily: ff)),
+);
+
+Widget _itemBadges(LineItem item, String ff) {
+  if (!item.taxEnabled && !item.discountEnabled) return const SizedBox.shrink();
+
+  String taxLabel = '';
+  if (item.taxEnabled) {
+    final sign = item.itemTaxIsAddition ? '' : '-';
+    final rateText = '$sign${item.itemTaxRate.toStringAsFixed(item.itemTaxRate % 1 == 0 ? 0 : 1)}%';
+    final name = item.itemTaxName.trim();
+    taxLabel = name.isEmpty ? 'Tax $rateText' : '${abbreviateRateName(name)} $rateText';
+  }
+  String discLabel = '';
+  if (item.discountEnabled) {
+    final rateText = '-${item.itemDiscountRate.toStringAsFixed(item.itemDiscountRate % 1 == 0 ? 0 : 1)}%';
+    final name = item.itemDiscountName.trim();
+    discLabel = name.isEmpty ? rateText : '${abbreviateRateName(name)} $rateText';
+  }
+
+  return Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Wrap(spacing: 6, runSpacing: 4, children: [
+      if (item.taxEnabled) _itemBadgeChip(taxLabel, bg: _kTaxChipBg, fg: _kTaxChipFg, ff: ff),
+      if (item.discountEnabled) _itemBadgeChip(discLabel, bg: _kDiscChipBg, fg: _kDiscChipFg, ff: ff),
+    ]),
+  );
+}
+
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// _emeraldLineItemsHeaderRow(...) — supplied via this file's Preview
+// classes instead.
 Widget _emeraldFullHeader(DocTemplateAdapter a) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,8 +107,6 @@ Widget _emeraldFullHeader(DocTemplateAdapter a) {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo centered above the name, not beside it — a form's
-                // letterhead mark rather than a masthead row.
                 buildSharedLogo(a, size: 26.0),
                 const SizedBox(height: 8),
                 Text(
@@ -147,12 +134,13 @@ Widget _emeraldFullHeader(DocTemplateAdapter a) {
       ),
       const SizedBox(height: 16),
       Container(height: 1, color: kRule),
-      const SizedBox(height: 14),
-      _emeraldLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],
   );
 }
 
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// _emeraldLineItemsHeaderRow(...) — supplied via this file's Preview
+// classes instead.
 Widget _emeraldContinuationHeader(DocTemplateAdapter a) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,20 +157,10 @@ Widget _emeraldContinuationHeader(DocTemplateAdapter a) {
       ),
       const SizedBox(height: 12),
       Container(height: 1, color: kRule),
-      const SizedBox(height: 16),
-      _emeraldLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],
   );
 }
 
-// Every field as its own tight label-above-value block, stacked in one
-// column — a plain filled-in form rather than a two-column layout.
-//
-// FIELD ORDER PASS (this update): doc number now leads the stack (above
-// Billed To) instead of trailing at the bottom, per request. Issue Date
-// and Due Date (metaLabel1/metaLabel2) are now placed side by side in a
-// single Row instead of two separate stacked fields, for compactness —
-// each takes half the column width via Expanded.
 class _EmeraldFieldStack extends StatelessWidget {
   final DocTemplateAdapter a;
   const _EmeraldFieldStack({required this.a});
@@ -233,17 +211,12 @@ class _EmeraldFieldStack extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Colored item-table header row — Description / Unit Price / Qty / Total,
-// solid accent background, white labels, matching the reference image.
-// MUST stay in sync with _emeraldLineItemRow below.
-// ─────────────────────────────────────────────────────────────────────────
-Widget _emeraldLineItemsHeaderRow({required Color accent, required String ff}) {
+Widget _emeraldLineItemsHeaderRow(DocTemplateAdapter a) {
   final hdr = TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
-      color: Colors.white, letterSpacing: 0.8, fontFamily: ff);
+      color: Colors.white, letterSpacing: 0.8, fontFamily: a.fontFamily);
   return Container(
     padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 10),
-    color: accent,
+    color: a.accent,
     child: Row(children: [
       Expanded(flex: 5, child: Text('ITEM DESCRIPTION', style: hdr)),
       Expanded(flex: 2, child: Text('UNIT PRICE', textAlign: TextAlign.right, style: hdr)),
@@ -253,12 +226,6 @@ Widget _emeraldLineItemsHeaderRow({required Color accent, required String ff}) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Striped item row (index.isEven = white, odd = a faint tint), same
-// Description / Unit Price / Qty / Total order as the header row above.
-// Passed to TemplateDocument as buildLineItemRow — see the PER-TEMPLATE
-// OVERRIDES PASS note in shared_doc_widgets.dart.
-// ─────────────────────────────────────────────────────────────────────────
 Widget _emeraldLineItemRow({
   required LineItem item,
   required DocTemplateAdapter adapter,
@@ -266,19 +233,35 @@ Widget _emeraldLineItemRow({
   required int index,
 }) {
   final bg = index.isEven ? Colors.white : kPanelBg;
+
+  final itemDiscountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+  final itemTaxAmt      = item.taxEnabled      ? item.total * item.itemTaxRate      / 100 : 0.0;
+  final signedTaxAmt = item.taxEnabled
+      ? (item.itemTaxIsAddition ? itemTaxAmt : -itemTaxAmt)
+      : 0.0;
+  final netTotal = item.total - itemDiscountAmt + signedTaxAmt;
+
   return Container(
     color: bg,
     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(flex: 5, child: Text(
-          item.description.isEmpty ? 'Item description' : item.description,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: kInk, height: 1.4, fontFamily: ff),
-          softWrap: true, overflow: TextOverflow.visible)),
+      Expanded(flex: 5, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+              item.description.isEmpty ? 'Item description' : item.description,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: kInk, height: 1.4, fontFamily: ff),
+              softWrap: true, overflow: TextOverflow.visible),
+          _itemBadges(item, ff),
+        ],
+      )),
       Expanded(flex: 2, child: Text(adapter.fmtMoney(item.unitPrice), textAlign: TextAlign.right,
           style: TextStyle(fontSize: 10, color: kGrey, fontFamily: ff))),
-      Expanded(flex: 1, child: Text(_fmtQty(item.quantity), textAlign: TextAlign.center,
+      Expanded(flex: 1, child: Text(_qtyWithUnit(item), textAlign: TextAlign.center,
+          maxLines: 1, overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 10, color: kGrey, fontFamily: ff))),
-      Expanded(flex: 2, child: Text(adapter.fmtMoney(item.total), textAlign: TextAlign.right,
+      Expanded(flex: 2, child: Text(adapter.fmtMoney(netTotal), textAlign: TextAlign.right,
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kInk, fontFamily: ff))),
     ]),
   );
@@ -286,9 +269,9 @@ Widget _emeraldLineItemRow({
 
 // ─────────────────────────────────────────────────────────────────────────
 // Totals block — plain Subtotal/Discount/Tax rows, then a Grand Total row
-// on a solid accent bar with white text, matching the reference. Notes
-// panel (if any) kept so that data isn't silently dropped for this
-// template.
+// on a solid accent bar with white text, then the NOTES panel. Payment
+// Details / Terms & Conditions / Signature appended via the same shared
+// functions every other template calls.
 // ─────────────────────────────────────────────────────────────────────────
 Widget _emeraldTotalsSection(DocTemplateAdapter a) {
   Widget plainRow(String label, double v, {bool negative = false}) => Padding(
@@ -319,6 +302,14 @@ Widget _emeraldTotalsSection(DocTemplateAdapter a) {
               if (a.taxRate > 0) plainRow('Tax (${a.taxRate.toStringAsFixed(1)}%)', a.taxAmount),
               if (a.discountRate > 0)
                 plainRow('Discount (${a.discountRate.toStringAsFixed(0)}%)', a.discountAmount, negative: true),
+              for (final entry in a.itemDiscountExtraByName.entries)
+                if (entry.value > 0)
+                  plainRow(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})',
+                      entry.value, negative: true),
+              for (final entry in a.itemTaxExtraByName.entries)
+                if (entry.value != 0)
+                  plainRow(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})',
+                      entry.value.abs(), negative: entry.value < 0),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
@@ -351,17 +342,14 @@ Widget _emeraldTotalsSection(DocTemplateAdapter a) {
             ]),
           ),
         ],
+        buildSharedPaymentInfoPanel(a),
+        buildSharedTermsPanel(a),
+        buildSharedSignatureBlock(a),
       ],
     ),
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Footer strip — solid accent bar, contact line (or thankYouLabel as a
-// fallback if no business contact fields are set) on the left, logo +
-// business name repeated on the right, matching the reference's bottom
-// "contact details / logo" band.
-// ─────────────────────────────────────────────────────────────────────────
 Widget _emeraldFooterContent(DocTemplateAdapter a) {
   final contact = [a.businessPhone, a.businessEmail, a.businessAddress]
       .where((s) => s.isNotEmpty)
@@ -390,11 +378,6 @@ Widget _emeraldFooterContent(DocTemplateAdapter a) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Preview wrappers — unchanged signatures, so preview_registry.dart files
-// (invoice / quote / receipt) need no changes.
-// ─────────────────────────────────────────────────────────────────────────
-
 class EmeraldInvoicePreview extends StatelessWidget {
   final InvoiceData data;
   final void Function(int pageCount)? onPageCount;
@@ -405,6 +388,7 @@ class EmeraldInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _emeraldFullHeader,
         buildContinuationHeader: _emeraldContinuationHeader,
+        buildLineItemsHeaderRow: _emeraldLineItemsHeaderRow,
         buildLineItemRow: _emeraldLineItemRow,
         buildTotalsSection: _emeraldTotalsSection,
         buildFooterContent: _emeraldFooterContent,
@@ -422,6 +406,7 @@ class EmeraldQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _emeraldFullHeader,
         buildContinuationHeader: _emeraldContinuationHeader,
+        buildLineItemsHeaderRow: _emeraldLineItemsHeaderRow,
         buildLineItemRow: _emeraldLineItemRow,
         buildTotalsSection: _emeraldTotalsSection,
         buildFooterContent: _emeraldFooterContent,
@@ -439,6 +424,7 @@ class EmeraldReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _emeraldFullHeader,
         buildContinuationHeader: _emeraldContinuationHeader,
+        buildLineItemsHeaderRow: _emeraldLineItemsHeaderRow,
         buildLineItemRow: _emeraldLineItemRow,
         buildTotalsSection: _emeraldTotalsSection,
         buildFooterContent: _emeraldFooterContent,

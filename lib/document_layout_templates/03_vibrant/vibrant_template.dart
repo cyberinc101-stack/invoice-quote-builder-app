@@ -1,36 +1,36 @@
 // vibrant_template.dart
 // lib/document_layout_templates/03_vibrant/vibrant_template.dart
 //
+// ITEMS-HEADER-ROW PASS (this update): _vibrantFullHeader and
+// _vibrantContinuationHeader no longer call buildSharedLineItemsHeaderRow()
+// themselves — supplied instead via buildLineItemsHeaderRow on every
+// Preview class below. See a4_paginator.dart's header comment for the
+// bug this fixes.
+//
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_totals.dart removed.
+//
 // Vibrant: bold accent-color panel behind the identity block - business
 // name and address sit in reversed (white-on-accent) type inside a solid
 // color panel, with doc type/number right-aligned in the same panel.
-// Everything below the header (line items, totals, notes, footer) comes
-// from shared_doc_widgets.dart unchanged.
 //
-// This follows the same pattern as nordic_template.dart: one file, one
-// design, driven entirely by DocTemplateAdapter so it renders correctly
-// for invoice, quote, and receipt alike.
-//
-// LOGO PASS (this update): added the business logo inside the accent
-// panel, left of the business name, via the shared buildSharedLogo()
-// widget (shared_doc_widgets.dart). Because this header sits on a solid
-// accent-colored background, the no-logo fallback mark is told to render
-// white-on-transparent (fallbackMarkColor: Colors.white) with the accent
-// color as the initial letter (fallbackMarkTextColor: a.accent) instead
-// of buildSharedLogo()'s default accent-on-white — matching how the rest
-// of this header already flips to reversed/white type against the panel.
-// A real uploaded logo renders via SharedLogoThumbnail exactly as set by
-// the user regardless of background, same as every other template.
+// LOGO PASS (earlier): business logo added inside the accent panel via
+// buildSharedLogo() with white-on-transparent fallback styling.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/doc_line_items.dart';
+import '../document_template_layout_data/template_document.dart';
 
 // -----------------------------------------------------------------------
 // Header design
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// buildSharedLineItemsHeaderRow(adapter: a) — supplied via this file's
+// Preview classes instead.
 // -----------------------------------------------------------------------
 
 Widget _vibrantFullHeader(DocTemplateAdapter a) {
@@ -92,35 +92,25 @@ Widget _vibrantFullHeader(DocTemplateAdapter a) {
       ),
       const SizedBox(height: 24),
       _VibrantMetaRow(a: a),
-      const SizedBox(height: 24),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],
   );
 }
 
 Widget _vibrantContinuationHeader(DocTemplateAdapter a) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(color: a.accent, borderRadius: BorderRadius.circular(6)),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
-                    color: Colors.white, fontFamily: a.fontFamily)),
-            Text('${a.docTypeLabel} #${a.docNumber.isEmpty ? '-' : a.docNumber} ${a.continuationSuffix}',
-                style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.85), fontFamily: a.fontFamily)),
-          ],
-        ),
-      ),
-      const SizedBox(height: 16),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
-    ],
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(color: a.accent, borderRadius: BorderRadius.circular(6)),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(a.businessName.isEmpty ? 'Your Business' : a.businessName,
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                color: Colors.white, fontFamily: a.fontFamily)),
+        Text('${a.docTypeLabel} #${a.docNumber.isEmpty ? '-' : a.docNumber} ${a.continuationSuffix}',
+            style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.85), fontFamily: a.fontFamily)),
+      ],
+    ),
   );
 }
 
@@ -195,9 +185,7 @@ class _VibrantMetaRow extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------
-// Preview wrappers - one per doc type, each ~5 lines: convert to the
-// adapter, hand off to TemplateDocument. These are what preview_registry
-// files (invoice / quote / receipt) import and wire into their id switch.
+// Preview wrappers.
 // -----------------------------------------------------------------------
 
 class VibrantInvoicePreview extends StatelessWidget {
@@ -210,6 +198,7 @@ class VibrantInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _vibrantFullHeader,
         buildContinuationHeader: _vibrantContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -224,6 +213,7 @@ class VibrantQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _vibrantFullHeader,
         buildContinuationHeader: _vibrantContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -238,6 +228,7 @@ class VibrantReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _vibrantFullHeader,
         buildContinuationHeader: _vibrantContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }

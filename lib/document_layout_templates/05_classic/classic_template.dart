@@ -1,39 +1,47 @@
 // classic_template.dart
 // lib/document_layout_templates/05_classic/classic_template.dart
 //
-// TEN-TEMPLATE UNIQUENESS PASS (this update): Classic previously shared
-// the exact same Row(logo | business identity | doc-type+number, right-
-// aligned) → rule → two-column meta row skeleton as Vibrant, Tech Dark,
-// and Gradient Modern — the only thing distinguishing it from those three
-// was the absence of a colored panel. Rebuilt around a genuinely
-// different device instead: a CENTERED FORMAL LETTERHEAD (business name
-// and contact info centered at the top of the page, like a traditional
-// printed letterhead) with a thin double rule beneath, and — where every
-// other template uses a borderless label/value meta row — a real BOXED
-// MINI-TABLE (bordered box, its own header strip for doc type + number,
-// divided rows for the two meta fields and status) sitting to the right
-// of the client block. No other template in the set uses a bordered box
-// as its meta device or centers its identity block.
+// ITEMS-HEADER-ROW PASS (this update): _classicFullHeader and
+// _classicContinuationHeader no longer wrap buildSharedLineItemsHeaderRow
+// in the light-grey Container themselves — that whole styled row
+// (Container + buildSharedLineItemsHeaderRow) is now supplied via
+// buildLineItemsHeaderRow on every Preview class below, preserving
+// Classic's shaded-row look exactly while letting A4Paginator decide,
+// per page, whether to actually show it. See a4_paginator.dart's header
+// comment for the bug this fixes.
 //
-// The shaded grey line-items header row (buildSharedLineItemsHeaderRow
-// wrapped in a light grey Container) is unchanged from before this pass
-// — still the one template using that treatment.
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_totals.dart removed.
 //
-// Everything below the header (line items, totals, notes, footer) comes
-// from shared_doc_widgets.dart unchanged.
+// TEN-TEMPLATE UNIQUENESS PASS (earlier): centered formal letterhead
+// with a thin double rule, and a real bordered mini-table box (doc
+// type/number header strip, meta rows, status) instead of a borderless
+// meta row.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/doc_line_items.dart';
+import '../document_template_layout_data/template_document.dart';
+
+// Classic's shaded-row treatment for the item-table header — kept as its
+// own function so it can be passed straight into buildLineItemsHeaderRow
+// without duplicating the Container styling in three places.
+Widget _classicLineItemsHeaderRow(DocTemplateAdapter a) => Container(
+      color: const Color(0xFFF3F4F6),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: buildSharedLineItemsHeaderRow(adapter: a),
+    );
 
 // ─────────────────────────────────────────────────────────────────────────
 // Header design — centered business identity block, thin double rule,
 // then a client block on the left paired with a bordered mini-table box
-// on the right (doc type/number header strip, two meta rows, a status
-// row) — the box is the device this template is now built around.
+// on the right.
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with the shaded item-table
+// header row — supplied via this file's Preview classes instead.
 // ─────────────────────────────────────────────────────────────────────────
 
 Widget _classicFullHeader(DocTemplateAdapter a) {
@@ -102,12 +110,6 @@ Widget _classicFullHeader(DocTemplateAdapter a) {
           Expanded(flex: 3, child: _ClassicMetaBox(a: a)),
         ],
       ),
-      const SizedBox(height: 24),
-      Container(
-        color: const Color(0xFFF3F4F6),
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
-      ),
     ],
   );
 }
@@ -129,20 +131,11 @@ Widget _classicContinuationHeader(DocTemplateAdapter a) {
       ),
       const SizedBox(height: 8),
       Container(height: 1, color: a.accent),
-      const SizedBox(height: 16),
-      Container(
-        color: const Color(0xFFF3F4F6),
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
-      ),
     ],
   );
 }
 
 // Bordered mini-table box — the device this template is built around.
-// Header strip (doc type + number on a light accent tint), two divided
-// meta rows, and a status row — a real bordered box rather than the
-// borderless label/value meta row every other template uses.
 class _ClassicMetaBox extends StatelessWidget {
   final DocTemplateAdapter a;
   const _ClassicMetaBox({required this.a});
@@ -208,9 +201,7 @@ class _ClassicMetaBox extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------
-// Preview wrappers - one per doc type, each ~5 lines: convert to the
-// adapter, hand off to TemplateDocument. These are what preview_registry
-// files (invoice / quote / receipt) import and wire into their id switch.
+// Preview wrappers.
 // -----------------------------------------------------------------------
 
 class ClassicInvoicePreview extends StatelessWidget {
@@ -223,6 +214,7 @@ class ClassicInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _classicFullHeader,
         buildContinuationHeader: _classicContinuationHeader,
+        buildLineItemsHeaderRow: _classicLineItemsHeaderRow,
         onPageCount: onPageCount,
       );
 }
@@ -237,6 +229,7 @@ class ClassicQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _classicFullHeader,
         buildContinuationHeader: _classicContinuationHeader,
+        buildLineItemsHeaderRow: _classicLineItemsHeaderRow,
         onPageCount: onPageCount,
       );
 }
@@ -251,6 +244,7 @@ class ClassicReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _classicFullHeader,
         buildContinuationHeader: _classicContinuationHeader,
+        buildLineItemsHeaderRow: _classicLineItemsHeaderRow,
         onPageCount: onPageCount,
       );
 }

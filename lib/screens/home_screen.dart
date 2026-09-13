@@ -171,30 +171,55 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Column(
+        child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                  ),
-                  child: const Text(
-                    'Professional documents in minutes',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                // VERTICAL-ALIGN SHARE ICON PASS: the share button used to
+                // be a Positioned(top: 4) floating over this Column,
+                // independent of the badge pill's own height — so it sat
+                // higher than the pill's actual vertical center rather
+                // than looking anchored to it. Now the pill and the share
+                // button are laid out together in one Row with
+                // CrossAxisAlignment.center, so the button is always
+                // vertically centered against the pill regardless of its
+                // rendered height. The leading SizedBox is the same width
+                // as the share button, so the pill still lands exactly
+                // horizontally centered in the banner (same as before)
+                // instead of drifting left to fill the leftover space.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 34),
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                          ),
+                          child: const Text(
+                            'Professional documents in minutes',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            softWrap: true,
+                          ),
+                        ),
+                      ),
                     ),
-                    softWrap: true,
-                  ),
+                    _ShareIconButton(
+                      onShare: () => Share.share(
+                        'Check out Invoice, Quote & Receipt Maker Pro — create '
+                        'professional invoices, quotes and receipts in minutes!',
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 const Text(
@@ -293,20 +318,6 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ),
-            // Standalone share affordance -- replaces the old _MiniDocCluster
-            // illustration. No card artwork anymore, just the tappable icon.
-            Positioned(
-              right: 4,
-              top: 4,
-              child: _ShareIconButton(
-                onShare: () => Share.share(
-                  'Check out Invoice, Quote & Receipt Maker Pro — create '
-                  'professional invoices, quotes and receipts in minutes!',
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

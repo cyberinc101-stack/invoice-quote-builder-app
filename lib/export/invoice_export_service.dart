@@ -1,26 +1,48 @@
 // lib/export/invoice_export_service.dart
 //
-// Generates and exports invoices as XLSX and CSV — single-document and bulk.
+// PARITY FIX (this update): brings the single-document XLSX/CSV export
+// up to the same data-correctness level the PDF/preview rendering
+// already has (see shared_doc_widgets.dart / invoice_pdf_service.dart's
+// own earlier fixes for the identical bug in those pipelines). Three
+// changes, both builders (_buildSingleXlsxBytes and
+// _buildSingleCsvString):
+//   1. The line-item table's Total column now uses item.lineNetTotal
+//      (this row's own discount/tax applied) instead of the plain
+//      item.total (qty x price) figure — same LINE ITEM TOTAL FIX
+//      already made to the PDF export and Flutter preview. Two extra
+//      columns (Discount, Tax) show each row's own rate label/amount
+//      when it has one, so the exported sheet doesn't just show a
+//      total that mysteriously differs from qty x price with no
+//      explanation.
+//   2. The whole-invoice Tax/Discount rows now also gate on
+//      d.taxEnabled/d.discountEnabled — previously only checked
+//      d.taxRate/d.discountRate > 0, so a disabled tax with a leftover
+//      nonzero rate would still print a Tax row here even though it's
+//      switched off and contributing nothing to the total.
+//   3. Added "Item Tax"/"Item Discounts" breakdown rows — one per
+//      distinct itemTaxName/itemDiscountName in use, sourced from
+//      InvoiceData.itemTaxExtraByName/itemDiscountExtraByName (the same
+//      getters the PDF/preview totals sections already read). Without
+//      these, Subtotal + Tax - Discount never actually summed to the
+//      TOTAL row whenever a line item had its own tax/discount rate —
+//      TOTAL itself was always correct (it reads d.grandTotal directly),
+//      but the visible breakdown above it didn't reconcile.
+// The bulk sheet's TOTAL column was already correct (reads d.grandTotal
+// directly per invoice), but its Tax/Discount columns had the same
+// reconciliation gap — added two more columns, "Item Tax Extra" and
+// "Item Discount Extra" (flat totals, not grouped by name — a summary
+// sheet has one row per invoice, so a per-name breakdown doesn't fit a
+// fixed column layout the way it does on the single-document sheet),
+// so Subtotal + Tax - Discount + Item Tax Extra - Item Discount Extra
+// now reconciles to Total on every row.
 //
-// HISTORY LOGGING PASS: every public share/download method now takes an
-// optional `historyProvider` param. When passed, the exported file gets
-// logged to HistoryProvider (copied into persistent app storage so
-// "send again" from the History screen works later) right after it's
-// written. Omitting it keeps the old behavior exactly — nothing else
-// changed below this comment block.
+// HISTORY LOGGING PASS (earlier): every public share/download method
+// takes an optional `historyProvider` param.
 //
-// Built to match invoice_pdf_service.dart's existing conventions exactly:
-//  - "download" methods write to the same Downloads directory helper
-//    (Android: /storage/emulated/0/Download, else: app documents dir)
-//  - "share" methods write to getTemporaryDirectory() and call
-//    Share.shareXFiles(...), same as generateAndSharePDF()
-//  - Filenames follow the same Invoice_<number-with-non-word-chars-stripped>
-//    pattern used for PDFs.
+// Built to match invoice_pdf_service.dart's existing conventions.
 //
-// NEW DEPENDENCY: this file needs the `excel` package for XLSX generation.
-// Add one line to pubspec.yaml under dependencies:
-//   excel: ^4.0.6
-// CSV needs no package — it's built with plain string joining below.
+// NEW DEPENDENCY: this file needs the `excel` package for XLSX
+// generation (excel: ^4.0.6 in pubspec.yaml). CSV needs no package.
 
 import 'dart:io';
 
@@ -35,7 +57,6 @@ import '../providers/history_provider.dart';
 class InvoiceExportService {
   // ── Public API: single document ─────────────────────────────────────────
 
-  /// Writes a single invoice as an .xlsx file to Downloads and returns the path.
   Future<String> exportSingleXlsxToDownloads(
     SavedInvoice invoice, {
     HistoryProvider? historyProvider,
@@ -48,7 +69,6 @@ class InvoiceExportService {
     return file.path;
   }
 
-  /// Writes a single invoice as an .xlsx file to a temp dir and shares it.
   Future<void> shareSingleXlsx(
     SavedInvoice invoice, {
     HistoryProvider? historyProvider,
@@ -66,7 +86,6 @@ class InvoiceExportService {
     await _logSingle(invoice, HistoryEventType.shared, file, historyProvider);
   }
 
-  /// Writes a single invoice as a .csv file to Downloads and returns the path.
   Future<String> exportSingleCsvToDownloads(
     SavedInvoice invoice, {
     HistoryProvider? historyProvider,
@@ -79,7 +98,6 @@ class InvoiceExportService {
     return file.path;
   }
 
-  /// Writes a single invoice as a .csv file to a temp dir and shares it.
   Future<void> shareSingleCsv(
     SavedInvoice invoice, {
     HistoryProvider? historyProvider,
@@ -97,8 +115,6 @@ class InvoiceExportService {
 
   // ── Public API: bulk export ─────────────────────────────────────────────
 
-  /// Writes one row per invoice (summary totals, no line-item breakdown)
-  /// as an .xlsx file to Downloads and returns the path.
   Future<String> exportBulkXlsxToDownloads(
     List<SavedInvoice> invoices, {
     HistoryProvider? historyProvider,
@@ -227,13 +243,22 @@ class InvoiceExportService {
     header('Currency', d.currency);
     r++;
 
-    const cols = ['Description', 'Quantity', 'Unit Price', 'Total'];
+    // PARITY FIX: two extra columns (Discount, Tax) show each row's own
+    // rate label/amount when set — Total now uses lineNetTotal, so these
+    // columns explain why a row's Total differs from qty x Unit Price.
+    const cols = ['Description', 'Quantity', 'Unit Price', 'Discount', 'Tax', 'Total'];
     for (int c = 0; c < cols.length; c++) {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
           .value = xls.TextCellValue(cols[c]);
     }
     r++;
     for (final item in d.lineItems) {
+      final discountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+      final taxAmt = item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0;
+      final signedTaxAmt = item.taxEnabled
+          ? (item.itemTaxIsAddition ? taxAmt : -taxAmt)
+          : 0.0;
+
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: r))
           .value = xls.TextCellValue(item.description);
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: r))
@@ -241,23 +266,50 @@ class InvoiceExportService {
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: r))
           .value = xls.DoubleCellValue(item.unitPrice);
       sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r))
-          .value = xls.DoubleCellValue(item.total);
+          .value = item.discountEnabled
+              ? xls.TextCellValue(
+                  '-${discountAmt.toStringAsFixed(2)}${item.itemDiscountName.trim().isEmpty ? '' : ' (${item.itemDiscountName.trim()})'}')
+              : xls.TextCellValue('');
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: r))
+          .value = item.taxEnabled
+              ? xls.TextCellValue(
+                  '${signedTaxAmt < 0 ? '-' : ''}${signedTaxAmt.abs().toStringAsFixed(2)}${item.itemTaxName.trim().isEmpty ? '' : ' (${item.itemTaxName.trim()})'}')
+              : xls.TextCellValue('');
+      // PARITY FIX: lineNetTotal instead of the plain qty x price total.
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: r))
+          .value = xls.DoubleCellValue(item.lineNetTotal);
       r++;
     }
     r++;
 
     void totalRow(String label, double value) {
-      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: r))
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: r))
           .value = xls.TextCellValue(label);
-      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r))
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: r))
           .value = xls.DoubleCellValue(value);
       r++;
     }
 
     totalRow('Subtotal', d.subtotal);
-    if (d.taxRate > 0) totalRow('Tax (${d.taxRate}%)', d.taxAmount);
-    if (d.discountRate > 0) {
-      totalRow('Discount (${d.discountRate}%)', -d.discountAmount);
+    // PARITY FIX: gated on taxEnabled/discountEnabled, not just rate > 0.
+    if (d.taxEnabled && d.taxRate > 0) {
+      totalRow('${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${d.taxRate}%)', d.taxAmount);
+    }
+    if (d.discountEnabled && d.discountRate > 0) {
+      totalRow('${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${d.discountRate}%)', -d.discountAmount);
+    }
+    // PARITY FIX: grouped-by-name per-item breakdown rows — without
+    // these, Subtotal + Tax - Discount never actually summed to TOTAL
+    // whenever a line item used its own discount/tax rate.
+    for (final entry in d.itemDiscountExtraByName.entries) {
+      if (entry.value > 0) {
+        totalRow(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})', -entry.value);
+      }
+    }
+    for (final entry in d.itemTaxExtraByName.entries) {
+      if (entry.value != 0) {
+        totalRow(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})', entry.value);
+      }
     }
     totalRow('TOTAL', d.grandTotal);
 
@@ -281,6 +333,13 @@ class InvoiceExportService {
       workbook.delete('Sheet1');
     }
 
+    // PARITY FIX: added "Item Tax Extra"/"Item Discount Extra" flat
+    // columns (not grouped by name — a summary row per invoice doesn't
+    // fit a per-name breakdown into a fixed column layout the way the
+    // single-document sheet does) so Subtotal + Tax - Discount +
+    // Item Tax Extra - Item Discount Extra reconciles to Total on every
+    // row. Total itself was already correct (reads d.grandTotal
+    // directly), so no change to that column.
     const cols = [
       'Invoice Number',
       'Issue Date',
@@ -291,6 +350,8 @@ class InvoiceExportService {
       'Subtotal',
       'Tax',
       'Discount',
+      'Item Tax Extra',
+      'Item Discount Extra',
       'Total',
     ];
     for (int c = 0; c < cols.length; c++) {
@@ -311,6 +372,8 @@ class InvoiceExportService {
         xls.DoubleCellValue(d.subtotal),
         xls.DoubleCellValue(d.taxAmount),
         xls.DoubleCellValue(d.discountAmount),
+        xls.DoubleCellValue(d.itemTaxExtra),
+        xls.DoubleCellValue(d.itemDiscountExtra),
         xls.DoubleCellValue(d.grandTotal),
       ];
       for (int c = 0; c < values.length; c++) {
@@ -350,19 +413,47 @@ class InvoiceExportService {
     kv('Currency', d.currency);
     buf.writeln();
 
-    buf.writeln('Description,Quantity,Unit Price,Total');
+    // PARITY FIX: Discount/Tax columns added; Total column now uses
+    // lineNetTotal instead of the plain qty x price total.
+    buf.writeln('Description,Quantity,Unit Price,Discount,Tax,Total');
     for (final item in d.lineItems) {
+      final discountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+      final taxAmt = item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0;
+      final signedTaxAmt = item.taxEnabled
+          ? (item.itemTaxIsAddition ? taxAmt : -taxAmt)
+          : 0.0;
+      final discountCell = item.discountEnabled
+          ? '-${discountAmt.toStringAsFixed(2)}${item.itemDiscountName.trim().isEmpty ? '' : ' (${item.itemDiscountName.trim()})'}'
+          : '';
+      final taxCell = item.taxEnabled
+          ? '${signedTaxAmt < 0 ? '-' : ''}${signedTaxAmt.abs().toStringAsFixed(2)}${item.itemTaxName.trim().isEmpty ? '' : ' (${item.itemTaxName.trim()})'}'
+          : '';
       buf.writeln(
-          '${_csv(item.description)},${item.quantity},${item.unitPrice},${item.total}');
+          '${_csv(item.description)},${item.quantity},${item.unitPrice},${_csv(discountCell)},${_csv(taxCell)},${item.lineNetTotal}');
     }
     buf.writeln();
 
-    buf.writeln(',,Subtotal,${d.subtotal}');
-    if (d.taxRate > 0) buf.writeln(',,Tax (${d.taxRate}%),${d.taxAmount}');
-    if (d.discountRate > 0) {
-      buf.writeln(',,Discount (${d.discountRate}%),-${d.discountAmount}');
+    buf.writeln(',,,,Subtotal,${d.subtotal}');
+    // PARITY FIX: gated on taxEnabled/discountEnabled, not just rate > 0;
+    // uses taxName/discountName when set.
+    if (d.taxEnabled && d.taxRate > 0) {
+      buf.writeln(',,,,${_csv('${d.taxName.trim().isEmpty ? 'Tax' : d.taxName.trim()} (${d.taxRate}%)')},${d.taxAmount}');
     }
-    buf.writeln(',,TOTAL,${d.grandTotal}');
+    if (d.discountEnabled && d.discountRate > 0) {
+      buf.writeln(',,,,${_csv('${d.discountName.trim().isEmpty ? 'Discount' : d.discountName.trim()} (${d.discountRate}%)')},-${d.discountAmount}');
+    }
+    // PARITY FIX: grouped-by-name per-item breakdown rows.
+    for (final entry in d.itemDiscountExtraByName.entries) {
+      if (entry.value > 0) {
+        buf.writeln(',,,,${_csv(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})')},-${entry.value}');
+      }
+    }
+    for (final entry in d.itemTaxExtraByName.entries) {
+      if (entry.value != 0) {
+        buf.writeln(',,,,${_csv(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})')},${entry.value}');
+      }
+    }
+    buf.writeln(',,,,TOTAL,${d.grandTotal}');
 
     if (d.notes.isNotEmpty) {
       buf.writeln();
@@ -374,8 +465,10 @@ class InvoiceExportService {
 
   String _buildBulkCsvString(List<SavedInvoice> invoices) {
     final buf = StringBuffer();
+    // PARITY FIX: added Item Tax Extra/Item Discount Extra columns —
+    // same reconciliation fix as the bulk XLSX sheet above.
     buf.writeln(
-        'Invoice Number,Issue Date,Due Date,Client Name,Client Email,Currency,Subtotal,Tax,Discount,Total');
+        'Invoice Number,Issue Date,Due Date,Client Name,Client Email,Currency,Subtotal,Tax,Discount,Item Tax Extra,Item Discount Extra,Total');
     for (final inv in invoices) {
       final d = inv.data;
       buf.writeln([
@@ -388,6 +481,8 @@ class InvoiceExportService {
         d.subtotal,
         d.taxAmount,
         d.discountAmount,
+        d.itemTaxExtra,
+        d.itemDiscountExtra,
         d.grandTotal,
       ].join(','));
     }

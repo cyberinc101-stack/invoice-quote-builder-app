@@ -1,6 +1,30 @@
 // lib/screens/invoice_create_section/editor_screen.dart
 //
-// STEP-TAP BYPASS FIX (this update): the step bar's tab onTap used to
+// HEADER BACK BUTTON FIX (this update): _buildHeader()'s top-left back
+// arrow called `Navigator.pop(context)` directly, completely bypassing
+// _currentStep — so tapping it on ANY step (Template, Create Invoice,
+// Customise) exited the entire invoice flow immediately instead of
+// stepping back one screen at a time, unlike Quote/Receipt's editors
+// (quote_editor_screen.dart / create_receipt_screen.dart), whose header
+// back buttons route through their onBack callback into _prevStep()/
+// _goPrev() — decrement the step, and only pop the whole flow once
+// already on step 0. _goPrev() here already had that exact correct
+// logic; the header button just never called it. Fixed by pointing the
+// header's onTap at _goPrev() instead of Navigator.pop directly — no
+// other behavior changed.
+//
+// TOAST PARITY FIX (earlier): the step bar's forward-jump-refused
+// SnackBar ("Finish "X" before jumping ahead") was still setting
+// `behavior: SnackBarBehavior.floating` — a rounded, margined bar that
+// floats and overlaps the content above it. The quote/receipt editors'
+// equivalent step-bar guard never sets `behavior` at all, which
+// defaults to SnackBarBehavior.fixed — a full-width bar docked
+// directly above the bottom nav bar, matching the "Select or create an
+// X to continue." toast's own look on every step. Removed the
+// `behavior: SnackBarBehavior.floating` line here so this toast now
+// docks the same way.
+//
+// STEP-TAP BYPASS FIX (earlier): the step bar's tab onTap used to
 // jump straight to any step regardless of whether earlier steps were
 // actually completed — e.g. tapping "Customise" with no template
 // selected, or with a blank invoice number, skipped the validation
@@ -214,7 +238,14 @@ class _EditorScreenState extends State<EditorScreen> {
           child: Row(
             children: [
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                // HEADER BACK BUTTON FIX: was `Navigator.pop(context)`
+                // directly — always exited the whole invoice flow no
+                // matter which step was showing. Now routes through the
+                // same _goPrev() every step widget's own onBack already
+                // uses: steps back one at a time, and only pops the
+                // flow once already on step 0 (Customer) — matching
+                // Quote's/Receipt's header back button behavior.
+                onTap: _goPrev,
                 child: Container(
                   width: 38,
                   height: 38,
@@ -303,13 +334,21 @@ class _EditorScreenState extends State<EditorScreen> {
                 // invoice number / customer name / line items) haven't
                 // been validated yet. Backward taps and taps within
                 // already-reached territory are unaffected.
+                //
+                // TOAST PARITY FIX: no `behavior:` set here — leaving it
+                // at the SnackBar default of SnackBarBehavior.fixed, a
+                // full-width bar docked directly above the bottom nav
+                // bar, matching the "Select or create an invoice to
+                // continue." toast's own look (and Quote/Receipt's
+                // equivalent step-bar guard) instead of the rounded,
+                // margined, overlapping look SnackBarBehavior.floating
+                // produced.
                 if (i > _maxReachedStep) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
                         'Finish "${_stepMeta[_currentStep].label}" before jumping ahead',
                       ),
-                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                   return;

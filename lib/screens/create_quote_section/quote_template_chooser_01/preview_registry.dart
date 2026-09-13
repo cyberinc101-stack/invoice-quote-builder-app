@@ -1,43 +1,24 @@
 // preview_registry.dart
 // lib/screens/create_quote_section/quote_template_chooser_01/preview_registry.dart
 //
-// METADATA SYNC PASS (this update): descriptions + swatches brought in
-// line with the invoice registry (and with the templates' actual current
-// designs, not earlier design eras):
-//   - Executive: description unified to the invoice registry's wording
-//     (more specific — names the diamond-logo mark).
-//   - Nordic: was "Monochrome minimal, thin double rule..." — the real
-//     header has no rule at all; it's a side-by-side Row (wordmark left,
-//     client/meta right). Rewritten.
-//   - Tech Dark: was still describing the retired terminal-chrome header
-//     (dots, monospace "> label value" lines). Rewritten to the current
-//     two-tone diagonal ribbon banner; swatch updated from the old
-//     terminal blue (0xFF58A6FF) to the ribbon red (0xFFD62839).
-//   - Gradient Modern: was vague/stale ("soft diagonal gradient band").
-//     Rewritten to the current two-column + dark-to-accent curved banner
-//     layout. Swatch unchanged (already matched invoice).
-//   - Pastel Soft: was still describing the retired lavender chip-badge
-//     era. Rewritten to the current accent-bar + dark item-table-header
-//     design.
-//   - Brutalist: was still describing the retired raw-border/thick-rule
-//     design. Rewritten to the current angular dark ribbon block; swatch
-//     updated from the old yellow (0xFFFFE500) to navy (0xFF1E3A5F).
-//   - Emerald: was describing a hairline-rule design that doesn't match
-//     the current compact corner-tag + centered-logo field stack.
-//     Rewritten; tag left as 'Elegant' (already matched receipt).
-// Vibrant, Classic, Editorial were already correct and already agreed
-// across all three registries — left unchanged.
+// MERGE PASS (this update): the EXECUTIVE PREVIEW ROUTING FIX workaround
+// (hiding ExecutiveQuotePreview from executive_template.dart and
+// reimporting a "real" one from executive_quote_logic_data.dart) is
+// REMOVED — see invoice_template_previews/preview_registry.dart's
+// identical note for the full reasoning. executive_template.dart's
+// ExecutiveQuotePreview now renders Terms & Conditions and the
+// Signature block itself (via shared_doc_widgets.dart's
+// buildSharedTotalsAndNotesSection), and the file this workaround used
+// to reach into (executive_quote_logic_data.dart) no longer exists.
 //
-// Nordic (id 2) is built via the shared DocTemplateAdapter pattern
-// (lib/document_layout_templates/) — the same Nordic design file used by
-// the invoice registry, just converted through quoteToAdapter() instead
-// of invoiceToAdapter() inside NordicQuotePreview. Everything from
-// Vibrant onward follows the same pattern.
+// Everything else (metadata, sample data, switch statement) is
+// UNCHANGED from the previous version of this file.
 
 import 'package:flutter/material.dart';
 import '../../../models/quote_data.dart';
 import '../../../models/invoice_data.dart' show LineItem;
-import '../../../document_layout_templates/01_executive/executive_template.dart';
+import '../../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveQuotePreview;
 import '../../../document_layout_templates/02_nordic/nordic_template.dart' show NordicQuotePreview;
 import '../../../document_layout_templates/03_vibrant/vibrant_template.dart' show VibrantQuotePreview;
 import '../../../document_layout_templates/04_tech_dark/tech_dark_template.dart' show TechDarkQuotePreview;

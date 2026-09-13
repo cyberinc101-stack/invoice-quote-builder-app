@@ -1,72 +1,32 @@
 // quote_provider.dart
 // lib/providers/quote_provider.dart
 //
-// HISTORY LOGGING PASS (this update): saveCurrentQuote() and
-// deleteQuote() each gained an optional [historyProvider] param, mirroring
-// InvoiceProvider's identical pass — see that file's header comment for
-// the full rationale. saveCurrentQuote logs `created`; deleteQuote logs
-// `deleted` using the quote's data captured BEFORE removal. Omitted
-// (null) is a no-op on both, so every existing call site behaves exactly
-// as before this pass. Quotes have no addConverted* method (nothing in
-// this app converts INTO a quote — only invoice/receipt are conversion
-// targets), so this is the only creation path that needs wiring here.
+// PAYMENT INFO + TERMS PASS (this update): added updateBankName(),
+// updateAccountName(), updateAccountNumber(),
+// updateOtherPaymentDetails(), updateTermsAndConditions() — thin
+// pass-throughs to QuoteData.copyWith's new fields (quote_data.dart's
+// own PAYMENT INFO + TERMS PASS), mirroring updateSignatureMode's exact
+// shape. Also added applyPaymentAndTermsFromTemplate() — a single
+// bundled call meant for the still-missing template-select sync step
+// (the Quote equivalent of Invoice's
+// StepCreateInvoice._syncSelectedToProvider()) to call once that sync
+// point is identified; until then nothing calls these new methods.
 //
-// FONT SIZE PASS (earlier update): added updateFontSize(), mirroring
-// updateFontFamily()'s shape exactly — a thin pass-through to
-// QuoteData.copyWith's new fontSize field. Called from the new Text Size
-// slider on quote_step_customise.dart via quote_editor_screen.dart's
-// _syncToProvider().
+// SIGNATURE PASS (earlier): added updateSignatureMode(),
+// updateSignatureName(), updateSignatureImagePath(),
+// updateSignatureFontSize(), updateSignatureFontFamily() — thin
+// pass-throughs to QuoteData.copyWith's new signature fields, mirroring
+// InvoiceProvider's updateSignatureFontSize/updateSignatureFontFamily
+// shape exactly. Backs the new Signature section on
+// quote_step_customise.dart's Fields section.
 //
-// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (earlier): updateBusinessInfo()
-// and updateClientInfo() each gained a source*Id param plus a matching
-// clearSource*Id flag (same explicit-clear pattern clearBusinessLogo
-// already uses) — passes straight through to QuoteData.copyWith's new
-// sourceTemplateId/sourceClientId fields. See quote_data.dart's doc
-// comment for the full rationale. quote_editor_screen.dart's
-// _syncToProvider() now passes _selectedTemplate?.id /
-// _selectedClient?.id alongside the existing business/client fields on
-// every sync, with the matching clear flag set whenever nothing is
-// selected — so deselecting a template/client actually clears the
-// stored id instead of leaving a stale one behind.
+// HISTORY LOGGING PASS (earlier): saveCurrentQuote() and
+// deleteQuote() each gained an optional [historyProvider] param.
 //
-// TEMPLATE FIELD VISIBILITY PASS (earlier): added
-// updateEnabledFields(), mirroring updateBusinessInfo()/
-// updateClientInfo()'s shape — writes straight onto QuoteData.
-// enabledFields via copyWith. Called from the new "Template" step in
-// quote_editor_screen.dart's _syncToProvider().
-//
-// CURRENCY DISPLAY PASS (earlier): updateQuoteDetails() gained
-// optional currencySymbol/currencyDisplayMode params, passed straight
-// through to QuoteData.copyWith (same as the plain currency field
-// already there). Written from quote_editor_screen.dart's new free-text
-// currency code/symbol fields + Code/Symbol/Both selector on the
-// Client & Details step, replacing the old fixed-list dropdown.
-//
-// ALERTPREFS PUSH WIRING (earlier pass): added applyExpiringAlertsEnabled()
-// and applyDraftAlertsEnabled() — mirrors InvoiceProvider's own version;
-// see that file's header comment for the full rationale. Called from
-// alert_type_toggles.dart's "Expiring Quotes"/"Drafts" switches and
-// settings_screen.dart's master Alerts switch.
-//
-// NO-DUPLICATE-PUSH FIX (earlier pass): _resyncDocumentAlerts(),
-// updateSavedQuote(), and renameQuote() now pass
-// allowImmediateFire: false to syncQuoteExpiringAlert() — same fix as
-// InvoiceProvider's, for the same reason: a quote already inside its
-// expiring-soon window was re-pushing a duplicate notification on every
-// app launch and every unrelated edit. See document_alert_scheduler.dart
-// for the actual fix.
-//
-// TEMPLATE + LOGO SIZER PASS (earlier update): updateBusinessInfo() gained
-// optional businessLogoOffsetDx/Dy/Scale/Shape params (all pass straight
-// through to QuoteData.copyWith, same as the plain fields already there),
-// and a new updateLayoutTemplateId() mirrors InvoiceProvider's own
-// version. See quote_data.dart for the new fields these write to.
-//
-// PUSH ALERTS (earlier pass): same treatment as InvoiceProvider — every
-// mutation that can change whether a quote is expiring-eligible or a
-// draft now calls into DocumentAlertScheduler right after persisting.
-// See invoice_provider.dart's header comment for the full rationale; the
-// pattern here is identical, just for quotes.
+// FONT SIZE PASS, TEMPLATE/CLIENT RESTORE-ON-EDIT PASS, TEMPLATE FIELD
+// VISIBILITY PASS, CURRENCY DISPLAY PASS, ALERTPREFS PUSH WIRING,
+// NO-DUPLICATE-PUSH FIX, TEMPLATE + LOGO SIZER PASS, PUSH ALERTS (all
+// earlier) — see prior header comments; unaffected by this update.
 
 import 'dart:async';
 import 'dart:convert';
@@ -119,9 +79,6 @@ class QuoteProvider extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
-      // Re-arms every saved quote's expiring/draft push notifications
-      // against the OS scheduler on every launch — same safety net
-      // InvoiceProvider._resyncDocumentAlerts() / ReminderProvider use.
       unawaited(_resyncDocumentAlerts());
     }
   }
@@ -129,14 +86,9 @@ class QuoteProvider extends ChangeNotifier {
   Future<void> _resyncDocumentAlerts() async {
     for (final q in _savedQuotes) {
       try {
-        // allowImmediateFire: false — this runs on every app launch, so a
-        // quote already inside its expiring-soon window must NOT re-fire
-        // a fresh "notify now" push every single time the app opens.
         await DocumentAlertScheduler.instance.syncQuoteExpiringAlert(q, allowImmediateFire: false);
         await DocumentAlertScheduler.instance.syncQuoteDraftNudge(q);
-      } catch (_) {
-        // Best-effort — one bad quote shouldn't stop the rest resyncing.
-      }
+      } catch (_) {}
     }
   }
 
@@ -151,11 +103,6 @@ class QuoteProvider extends ChangeNotifier {
   }
 
   // ── AlertPrefs push wiring ─────────────────────────────────────────────────
-  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
-  // EFFECTIVE enabled state for a category (alertsEnabled && the per-type
-  // flag) changes. Mirrors InvoiceProvider.applyOverdueAlertsEnabled /
-  // applyDraftAlertsEnabled — see that file's comment for the full
-  // rationale.
 
   Future<void> applyExpiringAlertsEnabled(bool enabled) async {
     for (final q in _savedQuotes) {
@@ -165,9 +112,7 @@ class QuoteProvider extends ChangeNotifier {
         } else {
           await DocumentAlertScheduler.instance.cancelQuoteExpiringAlert(q.id);
         }
-      } catch (_) {
-        // Best-effort — one bad quote shouldn't stop the rest applying.
-      }
+      } catch (_) {}
     }
   }
 
@@ -179,9 +124,7 @@ class QuoteProvider extends ChangeNotifier {
         } else {
           await DocumentAlertScheduler.instance.cancelQuoteDraftNudge(q.id);
         }
-      } catch (_) {
-        // Best-effort — one bad quote shouldn't stop the rest applying.
-      }
+      } catch (_) {}
     }
   }
 
@@ -207,10 +150,6 @@ class QuoteProvider extends ChangeNotifier {
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
-  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
-  // call site keeps working unchanged. Pass
-  // historyProvider: context.read<HistoryProvider>() from a normal
-  // "create new quote" save flow to log a `created` History event.
   SavedQuote saveCurrentQuote({
     required String title,
     required String templateName,
@@ -230,9 +169,6 @@ class QuoteProvider extends ChangeNotifier {
     _activeQuoteId = quote.id;
     _persist();
     notifyListeners();
-    // First save of this quote — a genuine new-transition moment, so an
-    // already-past expiring window is still allowed to fire almost
-    // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(quote));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(quote));
     if (historyProvider != null) {
@@ -259,9 +195,6 @@ class QuoteProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     final updated = _savedQuotes[index];
-    // Routine content edit, not a fresh transition — allowImmediateFire:
-    // false so editing an already-expiring-soon quote doesn't re-push a
-    // duplicate notification.
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
@@ -274,18 +207,11 @@ class QuoteProvider extends ChangeNotifier {
     _savedQuotes[index] = _savedQuotes[index].copyWith(title: trimmed);
     _persist();
     notifyListeners();
-    // Title changed -> re-sync so a pending notification's body text
-    // (which embeds the title) doesn't go stale. Not a fresh transition —
-    // allowImmediateFire: false, same reasoning as updateSavedQuote.
     final updated = _savedQuotes[index];
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncQuoteDraftNudge(updated));
   }
 
-  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
-  // `deleted` event using the quote's data captured BEFORE removal.
-  // Omitted (null) is a no-op, so every existing call site behaves
-  // exactly as before.
   void deleteQuote(String id, {HistoryProvider? historyProvider}) {
     final deleted = getQuoteById(id);
     _savedQuotes.removeWhere((q) => q.id == id);
@@ -312,9 +238,6 @@ class QuoteProvider extends ChangeNotifier {
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
-  // Powers the tappable status chip in saved_document_detail_screen.dart.
-  // Updates the SAVED entry's status directly (not the active draft), same
-  // pattern as ReceiptProvider.updateSavedReceiptStatus.
 
   void updateSavedQuoteStatus(String id, QuoteStatus status) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
@@ -325,18 +248,10 @@ class QuoteProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
-    // A status flip is exactly the case that most needs a resync — e.g.
-    // moving to accepted/declined must cancel a pending expiring-soon push
-    // immediately, and moving to sent is what makes one eligible at all.
-    // It's also a genuine new transition, so this keeps the default
-    // allowImmediateFire: true.
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(_savedQuotes[index]));
   }
 
   // ── Folder ─────────────────────────────────────────────────────────────────
-  // Assigns or clears the organizational folder for a saved quote.
-  // Pass null to remove it from whatever folder it's currently in. Updates
-  // the SAVED entry directly, same pattern as updateSavedQuoteStatus.
 
   void updateQuoteFolder(String id, String? folderName) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
@@ -351,7 +266,6 @@ class QuoteProvider extends ChangeNotifier {
   }
 
   // ── Reports exclusion ─────────────────────────────────────────────────────
-  // Same pattern as InvoiceProvider.updateInvoiceExcludeFromReports.
 
   void updateQuoteExcludeFromReports(String id, bool exclude) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
@@ -371,17 +285,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // businessLogoOffsetDx/Dy/Scale/Shape are optional so every existing
-  // call site (which only passes the plain business fields) keeps working
-  // unchanged; pass them together when updating from a SharedLogoPicker
-  // onChanged callback.
-  //
-  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: sourceTemplateId/
-  // clearSourceTemplateId are new — same explicit-clear pattern as
-  // clearBusinessLogo. Pass sourceTemplateId when a template is selected;
-  // pass clearSourceTemplateId: true (instead of just omitting
-  // sourceTemplateId) when nothing is selected, since a plain omitted/
-  // null value would leave whatever id was already stored untouched.
   void updateBusinessInfo({
     String? businessName,
     String? businessEmail,
@@ -415,9 +318,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: sourceClientId/
-  // clearSourceClientId are new — same shape/reasoning as
-  // updateBusinessInfo's sourceTemplateId/clearSourceTemplateId above.
   void updateClientInfo({
     String? clientName,
     String? clientEmail,
@@ -437,11 +337,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // currencySymbol/currencyDisplayMode are new (CURRENCY DISPLAY PASS) —
-  // optional so any older call site passing only `currency` keeps
-  // working unchanged. quote_editor_screen.dart's Client & Details step
-  // now passes all three from its free-text fields + Code/Symbol/Both
-  // selector.
   void updateQuoteDetails({
     String? quoteNumber,
     String? issueDate,
@@ -467,9 +362,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // TEMPLATE FIELD VISIBILITY PASS: writes the Template step's toggle
-  // selections onto QuoteData.enabledFields. Mirrors updateBusinessInfo/
-  // updateClientInfo's shape — a thin pass-through to copyWith.
   void updateEnabledFields(Map<String, bool> enabledFields) {
     _quoteData = _quoteData.copyWith(
       enabledFields: Map<String, bool>.from(enabledFields),
@@ -512,18 +404,105 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // FONT SIZE PASS: mirrors updateFontFamily() exactly. Called from the
-  // new Text Size slider on quote_step_customise.dart.
   void updateFontSize(double size) {
     _quoteData = _quoteData.copyWith(fontSize: size);
     notifyListeners();
   }
 
-  // Which visual design (Executive/Nordic/Vibrant/etc — see the quote
-  // preview_registry.dart) this quote renders with. Set once from
-  // QuoteTemplateChooserScreen's selection (via QuoteEditorScreen).
   void updateLayoutTemplateId(int id) {
     _quoteData = _quoteData.copyWith(layoutTemplateId: id);
+    notifyListeners();
+  }
+
+  // SIGNATURE PASS: mirrors InvoiceProvider's updateSignatureFontSize/
+  // updateSignatureFontFamily shape exactly, plus mode/name/imagePath
+  // pass-throughs the same way Quote's own step_templates signature UI
+  // (quote_step_template_signature.dart) already writes to
+  // QuoteTemplate — these instead write onto the live QuoteData via
+  // copyWith, driven by the Signature section on
+  // quote_step_customise.dart's Fields section.
+  void updateSignatureMode(String mode) {
+    _quoteData = _quoteData.copyWith(signatureMode: mode);
+    notifyListeners();
+  }
+
+  void updateSignatureName(String name) {
+    _quoteData = _quoteData.copyWith(signatureName: name);
+    notifyListeners();
+  }
+
+  void updateSignatureImagePath(String? path) {
+    _quoteData = _quoteData.copyWith(
+      signatureImagePath: path,
+      clearSignatureImage: path == null,
+    );
+    notifyListeners();
+  }
+
+  void updateSignatureFontSize(double size) {
+    _quoteData = _quoteData.copyWith(signatureFontSize: size);
+    notifyListeners();
+  }
+
+  void updateSignatureFontFamily(String family) {
+    _quoteData = _quoteData.copyWith(signatureFontFamily: family);
+    notifyListeners();
+  }
+
+  // PAYMENT INFO + TERMS PASS: thin pass-throughs to QuoteData.copyWith,
+  // same shape as updateSignatureMode/etc just above. Nothing calls
+  // these yet in the app — see this file's header comment for the
+  // still-missing template -> QuoteData sync step that would actually
+  // drive them with real values from a selected QuoteTemplate.
+  void updateBankName(String v) {
+    _quoteData = _quoteData.copyWith(bankName: v);
+    notifyListeners();
+  }
+
+  void updateAccountName(String v) {
+    _quoteData = _quoteData.copyWith(accountName: v);
+    notifyListeners();
+  }
+
+  void updateAccountNumber(String v) {
+    _quoteData = _quoteData.copyWith(accountNumber: v);
+    notifyListeners();
+  }
+
+  void updateOtherPaymentDetails(String v) {
+    _quoteData = _quoteData.copyWith(otherPaymentDetails: v);
+    notifyListeners();
+  }
+
+  void updateTermsAndConditions(String v) {
+    _quoteData = _quoteData.copyWith(termsAndConditions: v);
+    notifyListeners();
+  }
+
+  // Bundles all of the above plus signature into one call — the shape a
+  // future template-select sync step should call once it exists,
+  // rather than firing eight separate notifyListeners() rebuilds.
+  void applyPaymentAndTermsFromTemplate({
+    required String bankName,
+    required String accountName,
+    required String accountNumber,
+    required String otherPaymentDetails,
+    required String termsAndConditions,
+    required String signatureMode,
+    required String signatureName,
+    String? signatureImagePath,
+  }) {
+    _quoteData = _quoteData.copyWith(
+      bankName: bankName,
+      accountName: accountName,
+      accountNumber: accountNumber,
+      otherPaymentDetails: otherPaymentDetails,
+      termsAndConditions: termsAndConditions,
+      signatureMode: signatureMode,
+      signatureName: signatureName,
+      signatureImagePath: signatureImagePath,
+      clearSignatureImage: signatureImagePath == null,
+    );
     notifyListeners();
   }
 

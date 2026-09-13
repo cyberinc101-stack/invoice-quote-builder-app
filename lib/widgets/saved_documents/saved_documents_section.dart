@@ -244,6 +244,17 @@ class _DocEntry {
   final int percent;
   final Color accentColor;
   final String statusLabel;
+
+  // STATUS DOT COLOR PASS: color the small status dot next to the title
+  // should render in — sourced from _paymentStatusInfo/_quoteStatusInfo/
+  // _receiptStatusInfo's own .color at construction time (the same lookup
+  // that already drives the status chip's color), so the dot always
+  // matches whichever status is actually selected instead of a fixed
+  // green shown only for "positive" statuses (Paid/Accepted/Issued).
+  // Expenses have no status concept, so they're given their accent color
+  // as a neutral fallback (see expenseDocEntries below).
+  final Color statusColor;
+
   final VoidCallback onTap;
   final VoidCallback onShowMenu;
   final bool isPositiveStatus;
@@ -285,6 +296,7 @@ class _DocEntry {
     required this.percent,
     required this.accentColor,
     required this.statusLabel,
+    required this.statusColor,
     required this.onTap,
     required this.onShowMenu,
     required this.isPositiveStatus,
@@ -316,11 +328,36 @@ class SavedDocumentsSection extends StatefulWidget {
 class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
   DocTypeFilter    _selectedType           = DocTypeFilter.all;
   PaymentStatus?   _selectedPaymentStatus;
+  // INVOICE/RECEIPT DRAFT FILTER PASS: independent of
+  // _selectedPaymentStatus above -- true means "show only invoices where
+  // completionPercent < 100" (see invoiceIsDraft() in filter_logic.dart,
+  // the same rule the existing Drafts quick-filter chip already uses).
+  // This isn't a real PaymentStatus value, so it can't live inside
+  // _selectedPaymentStatus itself. Reset back to false alongside
+  // _selectedPaymentStatus whenever the type pill changes, same as that
+  // field.
+  bool             _invoiceDraftSelected   = false;
   QuoteStatus?     _selectedQuoteStatus;
   ReceiptStatus?   _selectedReceiptStatus;
+  // INVOICE/RECEIPT DRAFT FILTER PASS: same pairing as
+  // _invoiceDraftSelected above, for receipts (receiptIsDraft() in
+  // filter_logic.dart).
+  bool             _receiptDraftSelected   = false;
   QuickFilter      _selectedQuickFilter    = QuickFilter.none;
 
-  DocLayoutMode    _selectedLayout         = DocLayoutMode.list;
+  // DEFAULT LAYOUT PASS (this update): was DocLayoutMode.list -- Jesse
+  // wants the Saved Documents section to open on the Kanban board by
+  // default. DocLayoutMode.kanban is a LOCAL-only choice (see
+  // saved_layout_prefs.dart's header comment / _toShared's null case for
+  // kanban above) — it never touches the shared SavedLayoutPrefs
+  // preference Reports also reads, so this only changes what Home's own
+  // Saved Documents section opens on; Reports' "Documents in this
+  // period" section is unaffected and keeps showing whichever of
+  // List/Grid/Compact Grid/Compact was last chosen on either screen.
+  // Picking any of those four from the layout dropdown still works
+  // exactly as before (handleLayoutChange() already flips _selectedLayout
+  // back off kanban whenever a shared layout is chosen).
+  DocLayoutMode    _selectedLayout         = DocLayoutMode.kanban;
   // DEFAULT GROUP-BY PASS: was _KanbanGroupBy.status -- Jesse wants the
   // Kanban board to default to grouping by Client rather than Status
   // whenever Kanban is selected as the layout. This only changes the
@@ -1085,6 +1122,31 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             provider.updateSavedInvoiceStatusHidden(inv.id, true);
           },
         ),
+        // INVOICE/RECEIPT DRAFT STATUS-MENU PASS: "Draft" here isn't a
+        // real PaymentStatus value that can be manually assigned like
+        // Unpaid/Partial/Paid/Overdue/None above -- it's automatically
+        // true whenever completionPercent < 100 (see invoiceIsDraft() in
+        // filter_logic.dart, the same rule the Drafts quick-filter chip
+        // and the Filters sheet's new Invoice Status "draft" option both
+        // use). It's shown here as a read-only indicator -- selected
+        // lights up on its own once the invoice is actually incomplete --
+        // rather than a tappable state change, since tapping it can't
+        // force a document to become "more complete". onSelect closes
+        // the sheet and explains this instead of silently doing nothing.
+        StatusOption(
+          label: 'Draft',
+          color: const Color(0xFF00ACC1),
+          selected: invoiceIsDraft(inv),
+          onSelect: () {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(this.context).showSnackBar(
+              const SnackBar(
+                content: Text('Draft is automatic based on how complete this invoice is'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        ),
       ],
       onRename: () => _showRenameDialogFor(type: 'invoice', id: inv.id, currentTitle: inv.title),
       onMoveToFolder: () => _openFolderSheet(
@@ -1128,18 +1190,39 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
       context,
       title: r.title,
       accent: const Color(0xFF2E7D32),
-      statusOptions: ReceiptStatus.values.map((s) {
-        final info = _receiptStatusInfo(s);
-        return StatusOption(
-          label: info.label,
-          color: info.color,
-          selected: r.data.status == s,
+      statusOptions: [
+        ...ReceiptStatus.values.map((s) {
+          final info = _receiptStatusInfo(s);
+          return StatusOption(
+            label: info.label,
+            color: info.color,
+            selected: r.data.status == s,
+            onSelect: () {
+              Navigator.pop(context);
+              provider.updateSavedReceiptStatus(r.id, s);
+            },
+          );
+        }),
+        // INVOICE/RECEIPT DRAFT STATUS-MENU PASS: same treatment as the
+        // invoice status menu above -- "Draft" is a read-only indicator
+        // (completionPercent < 100, see receiptIsDraft() in
+        // filter_logic.dart), not a real ReceiptStatus value, so it isn't
+        // manually selectable -- see that comment for the full rationale.
+        StatusOption(
+          label: 'Draft',
+          color: const Color(0xFF00ACC1),
+          selected: receiptIsDraft(r),
           onSelect: () {
             Navigator.pop(context);
-            provider.updateSavedReceiptStatus(r.id, s);
+            ScaffoldMessenger.of(this.context).showSnackBar(
+              const SnackBar(
+                content: Text('Draft is automatic based on how complete this receipt is'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
           },
-        );
-      }).toList(),
+        ),
+      ],
       onRename: () => _showRenameDialogFor(type: 'receipt', id: r.id, currentTitle: r.title),
       onMoveToFolder: () => _openFolderSheet(
         availableFolders: folders,
@@ -1586,6 +1669,18 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
               .where((inv) => inv.data.paymentStatus == _selectedPaymentStatus)
               .toList();
         }
+        // INVOICE/RECEIPT DRAFT FILTER PASS: separate from the
+        // _selectedPaymentStatus branch above -- "draft" in the Invoice
+        // Status dropdown means completionPercent < 100
+        // (invoiceIsDraft()), which isn't a PaymentStatus value at all,
+        // so it can't be folded into that equality check above.
+        // document_filter_bar.dart guarantees _selectedPaymentStatus and
+        // _invoiceDraftSelected are never both "active" at once (see its
+        // dropdown's onChanged), so these two filters never combine or
+        // conflict.
+        if (_invoiceDraftSelected) {
+          filteredInvoices = filteredInvoices.where(invoiceIsDraft).toList();
+        }
         if (_selectedQuoteStatus != null) {
           filteredQuotes = filteredQuotes
               .where((q) => q.data.quoteStatus == _selectedQuoteStatus)
@@ -1595,6 +1690,11 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
           filteredReceipts = filteredReceipts
               .where((r) => r.data.status == _selectedReceiptStatus)
               .toList();
+        }
+        // INVOICE/RECEIPT DRAFT FILTER PASS: same pairing as
+        // _invoiceDraftSelected above, for receipts (receiptIsDraft()).
+        if (_receiptDraftSelected) {
+          filteredReceipts = filteredReceipts.where(receiptIsDraft).toList();
         }
 
         filteredInvoices = applyQuickFilterToInvoices(filteredInvoices, _selectedQuickFilter);
@@ -1636,7 +1736,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
             filteredExpenses.isNotEmpty;
 
         final invoiceEntries = filteredInvoices
-            .map((inv) => _DocEntry(
+            .map((inv) {
+              final info = _paymentStatusInfo(inv.data.paymentStatus);
+              return _DocEntry(
                   key: 'invoice:${inv.id}',
                   title: inv.title,
                   subtitle: inv.templateName,
@@ -1650,7 +1752,11 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                       : (inv.data.dueDate.isEmpty ? '—' : inv.data.dueDate),
                   percent: inv.completionPercent,
                   accentColor: const Color(0xFF1565C0),
-                  statusLabel: inv.data.paymentStatus.name,
+                  statusLabel: info.label,
+                  // STATUS DOT COLOR PASS: dot now matches whichever
+                  // status is actually selected (info.color), not a
+                  // fixed green.
+                  statusColor: info.color,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -1671,11 +1777,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   itemCount: inv.data.lineItems.length,
                   totalAmount: inv.data.grandTotal,
                   statusHidden: inv.data.statusHidden,
-                ))
+                );
+            })
             .toList();
 
         final quoteEntries = filteredQuotes
-            .map((q) => _DocEntry(
+            .map((q) {
+              final info = _quoteStatusInfo(q.data.quoteStatus);
+              return _DocEntry(
                   key: 'quote:${q.id}',
                   title: q.title,
                   subtitle: q.templateName,
@@ -1685,7 +1794,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                       q.data.expiryDate.isEmpty ? '—' : q.data.expiryDate,
                   percent: q.completionPercent,
                   accentColor: const Color(0xFF7B1FA2),
-                  statusLabel: q.data.quoteStatus.name,
+                  statusLabel: info.label,
+                  // STATUS DOT COLOR PASS: see invoiceEntries above.
+                  statusColor: info.color,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -1705,11 +1816,14 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   createdLabel: _formatShortDate(q.createdAt),
                   itemCount: q.data.lineItems.length,
                   totalAmount: q.data.grandTotal,
-                ))
+                );
+            })
             .toList();
 
         final receiptEntries = filteredReceipts
-            .map((r) => _DocEntry(
+            .map((r) {
+              final info = _receiptStatusInfo(r.data.status);
+              return _DocEntry(
                   key: 'receipt:${r.id}',
                   title: r.title,
                   subtitle: r.templateName,
@@ -1719,7 +1833,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                       r.data.paymentDate.isEmpty ? '—' : r.data.paymentDate,
                   percent: r.completionPercent,
                   accentColor: const Color(0xFF2E7D32),
-                  statusLabel: r.data.status.name,
+                  statusLabel: info.label,
+                  // STATUS DOT COLOR PASS: see invoiceEntries above.
+                  statusColor: info.color,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -1739,7 +1855,8 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   createdLabel: _formatShortDate(r.createdAt),
                   itemCount: r.data.lineItems.length,
                   totalAmount: r.data.amountPaid,
-                ))
+                );
+            })
             .toList();
 
         final expenseDocEntries = filteredExpenses
@@ -1753,6 +1870,11 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   percent: 0,
                   accentColor: kExpenseAccent,
                   statusLabel: categories.byId(e.categoryId).name,
+                  // STATUS DOT COLOR PASS: expenses have no status
+                  // concept -- fall back to their own accent color so the
+                  // dot (shown for every non-statusHidden entry) doesn't
+                  // render as an arbitrary/misleading color.
+                  statusColor: kExpenseAccent,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => ExpenseDetailScreen(expenseId: e.id)),
@@ -1925,19 +2047,27 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   } else {
                     _selectedType          = t;
                     _selectedPaymentStatus = null;
+                    _invoiceDraftSelected  = false;
                     _selectedQuoteStatus   = null;
                     _selectedReceiptStatus = null;
+                    _receiptDraftSelected  = false;
                   }
                 }),
                 selectedPaymentStatus: _selectedPaymentStatus,
                 onPaymentStatusChanged: (s) =>
                     setState(() => _selectedPaymentStatus = s),
+                invoiceDraftSelected: _invoiceDraftSelected,
+                onInvoiceDraftChanged: (v) =>
+                    setState(() => _invoiceDraftSelected = v),
                 selectedQuoteStatus: _selectedQuoteStatus,
                 onQuoteStatusChanged: (s) =>
                     setState(() => _selectedQuoteStatus = s),
                 selectedReceiptStatus: _selectedReceiptStatus,
                 onReceiptStatusChanged: (s) =>
                     setState(() => _selectedReceiptStatus = s),
+                receiptDraftSelected: _receiptDraftSelected,
+                onReceiptDraftChanged: (v) =>
+                    setState(() => _receiptDraftSelected = v),
                 invoiceCount: _browsingFolders ? invoiceFolderNames.length : allInvoices.length,
                 quoteCount:   _browsingFolders ? quoteFolderNames.length : allQuotes.length,
                 receiptCount: _browsingFolders ? receiptFolderNames.length : allReceipts.length,

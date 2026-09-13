@@ -56,6 +56,7 @@ flutter:
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Playfair/static/
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Raleway/static/
     - assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Space_Grotesk/static/
+    - assets/signature_fonts/
 
   fonts:
     - family: Roboto
@@ -88,7 +89,13 @@ flutter:
         - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Open_Sans/static/OpenSans-Regular.ttf
           weight: 400
 
-    - family: Playfair
+    # FONT FAMILY NAME FIX: was "Playfair" — didn't match the font
+    # picker's "Playfair Display" string in step_customise.dart, so
+    # selecting it in the UI resolved to no registered font and
+    # silently fell back to the platform default. Renamed to match the
+    # font's real name and the picker's existing label. Asset path is
+    # unchanged (folder is still named "Playfair" on disk).
+    - family: Playfair Display
       fonts:
         - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Playfair/static/Playfair_9pt-Regular.ttf
           weight: 400
@@ -102,3 +109,36 @@ flutter:
       fonts:
         - asset: assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc/Space_Grotesk/static/SpaceGrotesk-Regular.ttf
           weight: 400
+
+    # SIGNATURE FONT FAMILY PASS: these six were previously resolved at
+    # runtime via GoogleFonts.getFont()/PdfGoogleFonts, which does
+    # nothing when GoogleFonts.config.allowRuntimeFetching is false
+    # (set in main.dart) and there's no local asset to fall back on —
+    # this was the "signature font chips don't do anything" bug. Now
+    # bundled locally exactly like the body fonts above, so both the
+    # live preview (plain TextStyle(fontFamily: ...)) and the exported
+    # PDF (pw.Font.ttf() via rootBundle) resolve them with zero network
+    # dependency.
+    - family: Dancing Script
+      fonts:
+        - asset: assets/signature_fonts/DancingScript-Regular.ttf
+
+    - family: Great Vibes
+      fonts:
+        - asset: assets/signature_fonts/GreatVibes-Regular.ttf
+
+    - family: Sacramento
+      fonts:
+        - asset: assets/signature_fonts/Sacramento-Regular.ttf
+
+    - family: Pacifico
+      fonts:
+        - asset: assets/signature_fonts/Pacifico-Regular.ttf
+
+    - family: Alex Brush
+      fonts:
+        - asset: assets/signature_fonts/AlexBrush-Regular.ttf
+
+    - family: Caveat
+      fonts:
+        - asset: assets/signature_fonts/Caveat-Regular.ttf

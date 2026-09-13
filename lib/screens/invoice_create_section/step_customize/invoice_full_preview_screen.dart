@@ -1,17 +1,28 @@
 // invoice_full_preview_screen.dart
 // lib/screens/invoice_create_section/step_customize/invoice_full_preview_screen.dart
 //
-// SAVE-FROM-CUSTOMISE PASS (this update): removed the "Save" AppBar
-// action, _handleSaveInvoice(), and the Save Invoice dialog
-// (_SaveInvoiceDialogResult) entirely. Saving an invoice now happens
-// directly from step_customise.dart's "Save Invoice" bottom-bar button
-// (see that file's own SAVE-FROM-CUSTOMISE PASS comment), matching how
-// QuoteFullPreviewScreen has no save affordance of its own either — the
-// wizard's Save action lives on the Customise step, this screen is pure
-// preview/export/share. The optional "Business Name" field that used to
-// live in that dialog is gone with it; business name is set via the
-// selected Template (step_templates.dart) same as before, and can still
-// be edited there.
+// PREVIEW SCREEN PARITY PASS (this update): brings this screen back into
+// full alignment with receipt_full_preview_screen.dart, which is now the
+// reference layout both Invoice and Quote match:
+//   - Restored the "Save" AppBar action (with its own save-name dialog),
+//     reversing the earlier SAVE-FROM-CUSTOMISE PASS that removed it —
+//     Save now lives in BOTH places, same as Receipt: the Customise
+//     step's bottom-bar "Save Invoice" button (step_customise.dart,
+//     unchanged by this pass) AND this screen's AppBar action. Tapping
+//     either saves the current draft via InvoiceProvider.
+//     saveCurrentInvoice() and jumps straight to
+//     SavedDocumentDetailScreen.invoice(saved) — identical flow to
+//     receipt_full_preview_screen.dart's _handleSaveReceipt(), just
+//     backed by InvoiceProvider instead of ReceiptProvider (which
+//     already returns the real SavedInvoice directly, so there's no
+//     need for receipt's extra "look it back up in savedReceipts" step).
+//   - Added _handlePrint(), routed through InvoicePdfService.
+//     printInvoice() (OS print dialog) — mirrors receipt's _handlePrint
+//     exactly. Invoice has no thermal/paper-format concept, so no format
+//     branching is needed the way receipt's print handler has.
+//   - InvoicePreviewBottomBar now receives onPrint, rendering the third
+//     Print button alongside Save PDF / Share (see that file's own
+//     PRINT BUTTON PASS).
 //
 // TEMPLATE PASS (earlier): the body no longer hardcodes
 // ExecutiveInvoicePreview — it now dispatches on
@@ -40,11 +51,13 @@ import 'package:provider/provider.dart';
 import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
 import '../../../services/invoice_pdf_service.dart';
-import '../../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
-import '../../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
+import '../../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveInvoicePreview;
+import '../../../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW;
 import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_template_previews/preview_registry.dart' show buildInvoicePreview;
+import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'invoice_preview_bottom_bar.dart';
 
 class InvoiceFullPreviewScreen extends StatefulWidget {
@@ -57,10 +70,11 @@ class InvoiceFullPreviewScreen extends StatefulWidget {
 class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
   final _pdfService = InvoicePdfService();
   bool _isLoading = false;
+  bool _isSaving = false;
 
   // Wraps the live draft as a SavedInvoice so it can go through the same
-  // PDF path as a saved one, without actually persisting it. Used only
-  // for the Download/Share actions below.
+  // PDF path as a saved one, without actually persisting it. Used for
+  // Download/Share/Print.
   SavedInvoice _wrapAsSavedInvoice(InvoiceData data) {
     final now = DateTime.now();
     return SavedInvoice(
@@ -111,6 +125,123 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
     }
   }
 
+  // PREVIEW SCREEN PARITY PASS: new — mirrors receipt_full_preview_
+  // screen.dart's _handlePrint() exactly, routed through
+  // InvoicePdfService.printInvoice() (OS print dialog). No paper-format
+  // branching needed — Invoice is always A4.
+  Future<void> _handlePrint() async {
+    final data = context.read<InvoiceProvider>().invoiceData;
+    setState(() => _isLoading = true);
+    try {
+      await _pdfService.printInvoice(
+        _wrapAsSavedInvoice(data),
+        layoutTemplateId: data.layoutTemplateId,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to print: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // PREVIEW SCREEN PARITY PASS: new — mirrors receipt_full_preview_
+  // screen.dart's _handleSaveReceipt() exactly: asks for a name via a
+  // small dialog, saves the ACTUAL current draft through
+  // InvoiceProvider.saveCurrentInvoice() (not the preview-only wrapper
+  // above), then replaces the nav stack with the new saved invoice's
+  // detail screen. InvoiceProvider.saveCurrentInvoice() already returns
+  // the real SavedInvoice directly, so — unlike Receipt — there's no
+  // need to look it back up in the provider's saved list afterwards.
+  Future<void> _handleSaveInvoice() async {
+    final provider = context.read<InvoiceProvider>();
+    final data = provider.invoiceData;
+
+    final suggestedTitle = data.clientName.isNotEmpty
+        ? '${data.clientName} — ${data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice'}'
+        : (data.invoiceNumber.isNotEmpty ? data.invoiceNumber : 'Invoice');
+
+    final controller = TextEditingController(text: suggestedTitle);
+    final formKey = GlobalKey<FormState>();
+
+    final title = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Save Invoice',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 60,
+            textCapitalization: TextCapitalization.words,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
+            decoration: InputDecoration(
+              hintText: 'Enter a name for this invoice',
+              filled: true,
+              fillColor: const Color(0xFFF8F9FC),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, controller.text.trim());
+              }
+            },
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (title == null) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final saved = provider.saveCurrentInvoice(
+        title: title,
+        templateName: 'Executive',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Invoice "${saved.title}" saved'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => SavedDocumentDetailScreen.invoice(saved),
+        ),
+        (route) => route.isFirst,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Couldn\'t save invoice: $e'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   static Color _accentFromScheme(InvoiceColor scheme) {
     const map = {
       InvoiceColor.blue:   Color(0xFF1565C0),
@@ -151,6 +282,28 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0.5,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _isSaving
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    ),
+                  )
+                : TextButton.icon(
+                    onPressed: _handleSaveInvoice,
+                    icon: Icon(Icons.save_rounded, size: 18, color: accent),
+                    label: Text(
+                      'Save',
+                      style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -167,6 +320,7 @@ class _InvoiceFullPreviewScreenState extends State<InvoiceFullPreviewScreen> {
         isLoading: _isLoading,
         onExport: _handleDownload,
         onShare: _handleShare,
+        onPrint: _handlePrint,
       ),
     );
   }

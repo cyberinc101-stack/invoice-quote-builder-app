@@ -1,38 +1,32 @@
 // preview_registry.dart
 // lib/screens/invoice_create_section/invoice_template_previews/preview_registry.dart
 //
-// METADATA SYNC PASS (this update): Nordic (2), Pastel Soft (8), and
-// Emerald (10) descriptions rewritten to match their actual current
-// headers instead of stale/earlier-era wording — Nordic is now a
-// side-by-side Row with no rule (was described as stacked/no-side-by-side,
-// the opposite of the real layout); Pastel Soft is now an accent-bar +
-// dark item-table-header design (was still describing the old lavender
-// chip-badge era); Emerald is now a compact corner-tag + centered-logo
-// single-column field stack (was describing a three-column bill-to/from
-// row that no longer exists). Emerald's tag also changed Formal -> Elegant
-// to match quote/receipt (2 of 3 registries already used Elegant).
-// These same three fixes + the swatch updates below were also applied to
-// the quote and receipt registries so all three agree with each other.
+// MERGE PASS (this update): the EXECUTIVE PREVIEW ROUTING FIX workaround
+// (hiding ExecutiveInvoicePreview from executive_template.dart and
+// reimporting a "real" one from executive_invoice_logic_data.dart) is
+// REMOVED. That workaround existed because the old executive_template.dart
+// was a stub, consolidated preview with no Payment Info/Terms &
+// Conditions/Signature/Due-Date-bar rendering at all — a second, more
+// complete implementation lived in executive_invoice_logic_data.dart +
+// executive_invoice_stationary_layout.dart, and this file had to reach
+// past the stub to get it.
 //
-// Earlier update: Tech Dark (id 4) and Gradient Modern (id 6)
-// descriptions/swatch updated to match their redesigned headers — Tech
-// Dark moved from the old terminal-chrome look to a two-tone diagonal
-// ribbon banner (accent swatch updated from the old terminal blue to a
-// red matching the new ribbon), and Gradient Modern moved from the
-// stat-card dashboard row to a two-column layout with a dark-to-accent
-// curved banner. Both are still built via the shared DocTemplateAdapter
-// pattern — only the gallery metadata below changed, not how they're
-// wired into the switch.
+// That's no longer true. executive_template.dart's ExecutiveInvoicePreview
+// now renders through buildSharedHeaderIdentity/buildSharedMetaRow/
+// buildSharedTotalsAndNotesSection (shared_doc_widgets.dart), which
+// include Payment Info, Terms & Conditions, Signature, and the Due Date/
+// Amount Due bar — full parity with what the old "real" file did. The
+// old "real" file (executive_invoice_logic_data.dart) no longer exists.
+// So this file now just imports ExecutiveInvoicePreview normally, like
+// every other template on this list already does.
 //
-// Everything else unchanged: Nordic (id 2) is built via the shared
-// DocTemplateAdapter pattern (lib/document_layout_templates/) rather than
-// a hand-copied invoice-only file. Everything from Vibrant onward follows
-// the same pattern: one file under lib/document_layout_templates/0N_<name>/,
-// exporting <Name>InvoicePreview / <Name>QuotePreview / <Name>ReceiptPreview.
+// Everything else (metadata, sample data, switch statement) is
+// UNCHANGED from the previous version of this file.
 
 import 'package:flutter/material.dart';
 import '../../../models/invoice_data.dart';
-import '../../../document_layout_templates/01_executive/executive_template.dart';
+import '../../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveInvoicePreview;
 import '../../../document_layout_templates/02_nordic/nordic_template.dart' show NordicInvoicePreview;
 import '../../../document_layout_templates/03_vibrant/vibrant_template.dart' show VibrantInvoicePreview;
 import '../../../document_layout_templates/04_tech_dark/tech_dark_template.dart' show TechDarkInvoicePreview;

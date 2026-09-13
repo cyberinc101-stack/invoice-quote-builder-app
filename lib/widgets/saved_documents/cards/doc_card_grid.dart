@@ -119,7 +119,13 @@ class _DocGridCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (entry.isPositiveStatus) positiveStatusDot(),
+                        // STATUS DOT COLOR PASS: was
+                        // `if (entry.isPositiveStatus) positiveStatusDot()`
+                        // — fixed green, only for Paid/Accepted/Issued. Now
+                        // matches entry.statusColor so every status gets
+                        // its own dot color, same change as the other
+                        // card layouts (list, logo banner, kanban).
+                        if (!entry.statusHidden) statusDot(entry.statusColor),
                       ],
                     ),
                     const SizedBox(height: 2),

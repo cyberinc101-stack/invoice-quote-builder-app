@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/receipt_provider.dart';
-import '../create_receipt/receipt_template_chooser_screen.dart';
+import '../screens/create_receipt_section/receipt_template_chooser_screen.dart';
 
 class CreateReceiptButton extends StatelessWidget {
   const CreateReceiptButton({super.key});

@@ -1,8 +1,69 @@
 // lib/services/invoice_pdf_service.dart
 //
-// Generates and exports invoice PDFs.
+// PRINT ACTION PASS (this update): added printInvoice(), mirroring
+// ReceiptPdfService.printReceipt() exactly — builds the same PDF bytes
+// _buildPdf() already produces for Download/Share, then hands them to
+// Printing.layoutPdf() so the OS print dialog opens directly (a
+// connected office/POS printer can be used without going through
+// Download -> open file -> print). Always PdfPageFormat.a4 — Invoice
+// has no thermal/paper-format concept the way Receipt does, so there's
+// no format branch here. Optional [historyProvider] logs a `printed`
+// History event on success, same pattern as generateAndSharePDF's
+// [historyProvider] param elsewhere in this file. Wired up by
+// invoice_full_preview_screen.dart's new Print button
+// (invoice_preview_bottom_bar.dart), matching Receipt's identical
+// button.
 //
-// LINE ITEM TOTAL + GST/TAX BREAKDOWN PDF FIX (this update): this file
+// BODY FONT FAMILY PDF PASS (earlier): _buildExecutivePdf() never
+// referenced InvoiceData.fontFamily anywhere — every pw.TextStyle in
+// this file was built with no `font:` parameter at all, so the
+// exported PDF always ignored the Customise step's "Font Family"
+// selection, even for a plain body font like Roboto or Lato that
+// resolves correctly in the live Flutter preview
+// (executive_invoice_stationary_layout.dart). Root cause is the same
+// shape as the earlier SIGNATURE FONT FAMILY PASS fix: the pdf/widgets
+// package doesn't know about Flutter's pubspec.yaml-registered fonts at
+// all — it needs its own pw.Font loaded explicitly.
+//
+// Fix: _pdfBodyFont() maps d.fontFamily to the SAME local .ttf asset
+// pubspec.yaml already bundles for the Flutter side (no new assets
+// needed — these were already shipped for the live preview/other body
+// text), loaded via rootBundle + pw.Font.ttf(). The loaded font is set
+// as the PDF's default theme (pw.ThemeData.withFont(base: ..., bold:
+// ...)) when building the pw.Document, so every pw.Text in the tree
+// below picks it up automatically without touching each individual
+// TextStyle call site. 'Default' (the sentinel that deliberately
+// matches no registered family) and any unrecognized string return
+// null, leaving the pdf package's own built-in default font — same
+// "empty/unrecognized means unchanged" rule the signature font fix
+// uses.
+//
+// NOTE: the bundled body fonts only include a Regular weight (no bold
+// .ttf shipped in pubspec.yaml) — pdf/widgets can't synthesize bold the
+// way Flutter's Text widget can, so bold text (headings, totals, table
+// header) will render in the chosen family but not visibly bolder.
+// That's a font-file limitation, not a bug; if true bold weights are
+// wanted later, bundle a matching *-Bold.ttf per family and load it as
+// the theme's `bold:` font instead of reusing the regular one.
+//
+// This fix only covers the Executive layout (id 1, this file). The
+// other 9 template styles route through pdf_templates.dart via
+// styled.buildStyledDocument() — a separate file not covered here.
+//
+// STRUCTURED ADDRESS PDF RENDER PASS (earlier): the header's business
+// address block and the Bill To panel's client address block now render
+// InvoiceData.businessAddressInfo/clientAddressInfo (the six-field
+// AddressInfo, see invoice_data.dart's STRUCTURED ADDRESS PASS and
+// address_info.dart's formattedLines getter) as one pw.Text per postal
+// line, instead of the single flat businessAddress/clientAddress string
+// wrapping as one paragraph. New _addressLines() helper builds the list
+// of pw.Text widgets for either block, falling back to the flat string
+// when the structured AddressInfo is empty (a template/customer saved
+// before this pass existed and never had its AddressInfo populated) so
+// older data still exports something sensible. Nothing else in either
+// block changed.
+//
+// LINE ITEM TOTAL + GST/TAX BREAKDOWN PDF FIX (earlier): this file
 // is a separate pw.Widget implementation from the Flutter preview
 // (executive_invoice_stationary_layout.dart) — Material widgets can't be
 // handed to the pdf/printing packages — so the earlier LINE NET TOTAL
@@ -105,12 +166,15 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/invoice_data.dart';
+import '../models/address_info.dart';
 import '../models/history_event.dart' show HistoryDocType;
 import '../providers/history_provider.dart';
 import 'pdf_doc_adapter.dart';
@@ -184,6 +248,37 @@ class InvoicePdfService {
     return _buildPdf(invoice, layoutTemplateId: layoutTemplateId);
   }
 
+  // PRINT ACTION PASS: builds the same bytes Download/Share already use
+  // and hands them straight to the OS print dialog via
+  // Printing.layoutPdf() — mirrors ReceiptPdfService.printReceipt()
+  // exactly, minus the paper-format branch (Invoice is always A4).
+  // [historyProvider], when passed, logs a `printed` History event on
+  // success, same shape as generateAndSharePDF's logShared call above.
+  Future<void> printInvoice(
+    SavedInvoice invoice, {
+    int? layoutTemplateId,
+    HistoryProvider? historyProvider,
+  }) async {
+    final bytes = await _buildPdf(invoice, layoutTemplateId: layoutTemplateId);
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name:
+          'Invoice_${invoice.data.invoiceNumber.replaceAll(RegExp(r'[^\w]'), '_')}.pdf',
+      format: PdfPageFormat.a4,
+    );
+    if (historyProvider != null) {
+      final d = invoice.data;
+      unawaited(historyProvider.logPrinted(
+        docType: HistoryDocType.invoice,
+        docId: invoice.id,
+        docNumber: d.invoiceNumber,
+        clientName: d.clientName.isEmpty ? null : d.clientName,
+        amount: d.grandTotal,
+        currency: d.currency,
+      ));
+    }
+  }
+
   // ── Layout dispatcher ───────────────────────────────────────────────────────
   //
   // Add a case here + a new _buildXxxPdf() method for each future layout.
@@ -207,12 +302,74 @@ class InvoicePdfService {
   // field existed.
   static bool _on(InvoiceData d, String key) => d.enabledFields[key] ?? true;
 
+  // BODY FONT FAMILY PDF PASS: maps InvoiceData.fontFamily (one of
+  // step_customise.dart's _kFonts) to the SAME local .ttf asset already
+  // bundled in pubspec.yaml for the Flutter side — no new assets, just
+  // loading the existing file via rootBundle for pdf/widgets' own
+  // pw.Font. Returns null for 'Default' (deliberately unmatched
+  // sentinel) or any unrecognized name, so the caller falls back to the
+  // pdf package's own built-in font — same "unset/unrecognized means
+  // unchanged" rule the signature font fix in
+  // invoice_pdf_extra_sections.dart already follows.
+  static Future<pw.Font?> _pdfBodyFont(String family) async {
+    const base = 'assets/Lato,Lora,Montserrat,Nunito,Open_Sans,etc';
+    const assetMap = {
+      'Roboto':           '$base/Roboto/static/Roboto-Regular.ttf',
+      'Lato':             '$base/Lato/Lato-Regular.ttf',
+      'Lora':             '$base/Lora/static/Lora-Regular.ttf',
+      'Montserrat':       '$base/Montserrat/static/Montserrat-Regular.ttf',
+      'Nunito':           '$base/Nunito/static/Nunito-Regular.ttf',
+      'Open Sans':        '$base/Open_Sans/static/OpenSans-Regular.ttf',
+      'Playfair Display': '$base/Playfair/static/Playfair_9pt-Regular.ttf',
+      'Raleway':          '$base/Raleway/static/Raleway-Regular.ttf',
+      'Space Grotesk':    '$base/Space_Grotesk/static/SpaceGrotesk-Regular.ttf',
+    };
+    final path = assetMap[family.trim()];
+    if (path == null) return null;
+    final data = await rootBundle.load(path);
+    return pw.Font.ttf(data);
+  }
+
+  // STRUCTURED ADDRESS PDF RENDER PASS: builds one pw.Text per postal
+  // line from an AddressInfo (via its formattedLines getter), falling
+  // back to a single pw.Text of the legacy flat string when the
+  // structured value is empty — mirrors the Flutter preview's
+  // _addressBlock() helper in executive_invoice_stationary_layout.dart.
+  // Returns an empty list when there's nothing to show at all, so call
+  // sites can spread this straight into a pw.Column's children without
+  // an extra null/empty check.
+  static List<pw.Widget> _addressLines(
+    AddressInfo info,
+    String legacyFlat,
+    pw.TextStyle style,
+  ) {
+    if (info.isNotEmpty) {
+      return [
+        for (final line in info.formattedLines) pw.Text(line, style: style),
+      ];
+    }
+    if (legacyFlat.trim().isNotEmpty) {
+      return [pw.Text(legacyFlat, style: style)];
+    }
+    return const [];
+  }
+
   // ── PDF builder: Executive (layout id 1) ────────────────────────────────────
 
   Future<Uint8List> _buildExecutivePdf(SavedInvoice invoice) async {
-    final pdf   = pw.Document();
     final d     = invoice.data;
     final color = _pdfColor(d.colorScheme);
+
+    // BODY FONT FAMILY PDF PASS: loaded up front (before pw.Document is
+    // constructed) since the font must be passed into the document's
+    // theme at construction time. null (Default / unrecognized) leaves
+    // pdf/widgets' own built-in font in place — nothing else changes.
+    final bodyFont = await _pdfBodyFont(d.fontFamily);
+    final pdf = pw.Document(
+      theme: bodyFont != null
+          ? pw.ThemeData.withFont(base: bodyFont, bold: bodyFont)
+          : null,
+    );
 
     final subtotal      = d.subtotal;
     final discountAmount = d.discountAmount;
@@ -248,10 +405,30 @@ class InvoicePdfService {
     final showDiscount = _on(d, 'discount');
     final showNotes = _on(d, 'notes');
 
+    // STRUCTURED ADDRESS PDF RENDER PASS: "does this invoice actually have
+    // a business/client address to show" now also checks the structured
+    // AddressInfo (not just the legacy flat string), so a customer/
+    // template whose address was only ever entered via the six-field
+    // form (and never had a flat string set) still counts.
+    final businessAddressLines = showBusinessAddress
+        ? _addressLines(
+            d.businessAddressInfo,
+            d.businessAddress,
+            const pw.TextStyle(fontSize: 10, color: PdfColors.white),
+          )
+        : const <pw.Widget>[];
+    final clientAddressLines = showClientAddress
+        ? _addressLines(
+            d.clientAddressInfo,
+            d.clientAddress,
+            const pw.TextStyle(fontSize: 10),
+          )
+        : const <pw.Widget>[];
+
     final hasCustomer = (showClientName && d.clientName.isNotEmpty) ||
         (showClientEmail && d.clientEmail.isNotEmpty) ||
         (showClientPhone && d.clientPhone.isNotEmpty) ||
-        (showClientAddress && d.clientAddress.isNotEmpty);
+        clientAddressLines.isNotEmpty;
 
     // PAYMENT INFO / TERMS & SIGNATURE PDF RENDER PASS: built up front
     // (signature needs an awaited disk read for 'image' mode) since a
@@ -298,10 +475,11 @@ class InvoicePdfService {
                         pw.Text(d.businessPhone,
                             style: const pw.TextStyle(
                                 fontSize: 10, color: PdfColors.white)),
-                      if (showBusinessAddress && d.businessAddress.isNotEmpty)
-                        pw.Text(d.businessAddress,
-                            style: const pw.TextStyle(
-                                fontSize: 10, color: PdfColors.white)),
+                      // STRUCTURED ADDRESS PDF RENDER PASS: one pw.Text
+                      // per postal line (Line 1 / Line 2 / City, State
+                      // ZIP / Country) instead of the single flat
+                      // businessAddress string wrapping as one paragraph.
+                      ...businessAddressLines,
                     ],
                   ),
                 ),
@@ -366,9 +544,10 @@ class InvoicePdfService {
                   if (showClientPhone && d.clientPhone.isNotEmpty)
                     pw.Text(d.clientPhone,
                         style: const pw.TextStyle(fontSize: 10)),
-                  if (showClientAddress && d.clientAddress.isNotEmpty)
-                    pw.Text(d.clientAddress,
-                        style: const pw.TextStyle(fontSize: 10)),
+                  // STRUCTURED ADDRESS PDF RENDER PASS: one pw.Text per
+                  // postal line instead of the single flat clientAddress
+                  // string.
+                  ...clientAddressLines,
                 ],
               ),
             ),

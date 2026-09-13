@@ -1,30 +1,23 @@
 // lib/screens/saved_invoice_details_section/invoice_editable_canvas_screen.dart
 //
-// CRASH SAFETY PASS (this update): _loadStackTrace was captured in
-// _loadData()'s catch block but never read anywhere — it only ever went
-// to debugPrint (console-only, invisible outside a dev machine). The
-// error screen showed just the exception message with no way to see
-// what actually failed. _buildErrorScreen now includes a collapsible
-// "Technical details" section (ExpansionTile) that renders the full
-// stack trace via SelectableText, so a real load failure in production
-// is actually diagnosable — the user can expand it, select the text, and
-// paste it into a bug report — instead of the trace being silently
-// discarded. Mirrors the identical fix applied to quote_editable_canvas_
-// screen.dart and receipt_editable_canvas_screen.dart.
+// MERGE PASS (this update): builds a generic DocEditBundle (shared/
+// doc_edit_bundle.dart) instead of the now-deleted InvoiceEditBundle,
+// and renders the new ExecutiveInvoiceEditor (executive_template.dart)
+// instead of the old per-type editor. Every field this screen edits —
+// business/client text, doc number, dates, notes, tax/discount rate,
+// line items, logo — is unchanged in BEHAVIOR; only the plumbing that
+// carries those edits into the rendered page changed shape. Field-name
+// mapping used below (see doc_edit_bundle.dart's own header comment for
+// the full table):
+//   invoiceNumberCtrl -> docNumberCtrl, onInvoiceNumberChanged -> onDocNumberChanged
+//   onTapIssueDate -> onTapMetaDate1, onTapDueDate -> onTapMetaDate2
+//   itemDescCtrls/itemQtyCtrls/itemPriceCtrls (3 parallel lists)
+//     -> itemCtrls (one List<DocLineItemControllers>)
 //
-// REWRITE (earlier): previously this was a bespoke card UI (colored header
-// band, tap-to-edit text fields, no A4 page geometry at all) — visually
-// different from what Preview/PDF actually show. This version renders the
-// real ExecutiveInvoiceEditor (same template as ExecutiveInvoicePreview
-// and the PDF export, via executive_invoice_stationary_layout.dart +
-// executive_invoice_logic_data.dart) with an InvoiceEditBundle wired to
-// InvoiceProvider — tapping any text on the page edits it in place, and
-// the page paginates for real via A4Paginator if line items overflow one
-// A4 page, instead of shrinking.
-//
-// Load/save/discard mechanics (deferred post-frame load, _loading/_loadError
-// guards, resetInvoiceData() on discard) are unchanged from the previous
-// pass — only the body/rendering changed.
+// All load/save/discard mechanics (deferred post-frame load, _loading/
+// _loadError guards, resetInvoiceData() on discard, the crash-safety
+// stack-trace panel) are UNCHANGED from the previous pass — only the
+// edit-bundle construction and the rendered widget changed.
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -32,9 +25,10 @@ import 'package:provider/provider.dart';
 
 import '../../providers/invoice_provider.dart';
 import '../../models/invoice_data.dart';
-import '../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
-import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
-    show kPageW, InvoiceEditBundle;
+import '../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveInvoiceEditor;
+import '../../document_layout_templates/document_template_layout_data/doc_edit_bundle.dart';
+import '../../document_layout_templates/document_template_layout_data/doc_header.dart' show kPageW;
 import '../../document_layout_templates/pagination/scaled_page_stack.dart';
 
 const _kDateFmt = 'd MMM yyyy';
@@ -99,9 +93,9 @@ class _InvoiceEditableCanvasScreenState
   late DateTime _dueDate;
 
   late List<LineItem> _items;
-  final List<TextEditingController> _descCtrl = [];
-  final List<TextEditingController> _qtyCtrl = [];
-  final List<TextEditingController> _priceCtrl = [];
+  // MERGE PASS: one list of grouped controllers instead of three
+  // parallel lists (desc/qty/price) staying in lockstep by convention.
+  final List<DocLineItemControllers> _itemCtrls = [];
 
   int _pageCount = 1;
   bool _saved = false;
@@ -141,11 +135,11 @@ class _InvoiceEditableCanvasScreenState
       _items = data.lineItems.map((i) => i.copyWith()).toList();
       if (_items.isEmpty) _items.add(LineItem());
       for (final item in _items) {
-        _descCtrl.add(TextEditingController(text: item.description));
-        _qtyCtrl.add(TextEditingController(
-            text: item.quantity == 1.0 ? '1' : '${item.quantity}'));
-        _priceCtrl.add(TextEditingController(
-            text: item.unitPrice == 0.0 ? '0' : '${item.unitPrice}'));
+        _itemCtrls.add(DocLineItemControllers(
+          descCtrl: TextEditingController(text: item.description),
+          qtyCtrl: TextEditingController(text: item.quantity == 1.0 ? '1' : '${item.quantity}'),
+          priceCtrl: TextEditingController(text: item.unitPrice == 0.0 ? '0' : '${item.unitPrice}'),
+        ));
       }
 
       _initialized = true;
@@ -167,8 +161,10 @@ class _InvoiceEditableCanvasScreenState
       ]) {
         c.dispose();
       }
-      for (final cList in [_descCtrl, _qtyCtrl, _priceCtrl]) {
-        for (final c in cList) c.dispose();
+      for (final c in _itemCtrls) {
+        c.descCtrl.dispose();
+        c.qtyCtrl.dispose();
+        c.priceCtrl.dispose();
       }
     }
     super.dispose();
@@ -177,19 +173,22 @@ class _InvoiceEditableCanvasScreenState
   InvoiceProvider get _provider => context.read<InvoiceProvider>();
 
   void _onItemFieldChanged(int index) {
+    final c = _itemCtrls[index];
     _items[index]
-      ..description = _descCtrl[index].text
-      ..quantity = double.tryParse(_qtyCtrl[index].text) ?? 1
-      ..unitPrice = double.tryParse(_priceCtrl[index].text) ?? 0;
+      ..description = c.descCtrl.text
+      ..quantity = double.tryParse(c.qtyCtrl.text) ?? 1
+      ..unitPrice = double.tryParse(c.priceCtrl.text) ?? 0;
     _provider.updateLineItem(index, _items[index]);
   }
 
   void _addItem() {
     setState(() {
       _items.add(LineItem());
-      _descCtrl.add(TextEditingController());
-      _qtyCtrl.add(TextEditingController(text: '1'));
-      _priceCtrl.add(TextEditingController(text: '0'));
+      _itemCtrls.add(DocLineItemControllers(
+        descCtrl: TextEditingController(),
+        qtyCtrl: TextEditingController(text: '1'),
+        priceCtrl: TextEditingController(text: '0'),
+      ));
     });
     _provider.addLineItem(_items.last);
   }
@@ -198,12 +197,10 @@ class _InvoiceEditableCanvasScreenState
     if (_items.length <= 1) return;
     setState(() {
       _items.removeAt(index);
-      _descCtrl[index].dispose();
-      _qtyCtrl[index].dispose();
-      _priceCtrl[index].dispose();
-      _descCtrl.removeAt(index);
-      _qtyCtrl.removeAt(index);
-      _priceCtrl.removeAt(index);
+      final removed = _itemCtrls.removeAt(index);
+      removed.descCtrl.dispose();
+      removed.qtyCtrl.dispose();
+      removed.priceCtrl.dispose();
     });
     _provider.removeLineItem(index);
   }
@@ -295,11 +292,6 @@ class _InvoiceEditableCanvasScreenState
               const SizedBox(height: 10),
               SelectableText('$_loadError',
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-              // Captured in _loadData()'s catch block — previously discarded
-              // after debugPrint. Collapsed by default so the common case
-              // (a normal user hitting this) still just sees the message
-              // above; expanding it gives a copy-pasteable trace for a bug
-              // report or for debugging during development.
               if (_loadStackTrace != null) ...[
                 const SizedBox(height: 12),
                 Theme(
@@ -350,38 +342,37 @@ class _InvoiceEditableCanvasScreenState
     final screenW = MediaQuery.of(context).size.width;
     final targetWidth = (screenW - 40).clamp(200.0, kPageW);
 
-    final editBundle = InvoiceEditBundle(
+    // MERGE PASS: generic DocEditBundle instead of InvoiceEditBundle.
+    final editBundle = DocEditBundle(
       businessNameCtrl: _businessNameCtrl,
       businessEmailCtrl: _businessEmailCtrl,
       businessPhoneCtrl: _businessPhoneCtrl,
       businessAddressCtrl: _businessAddressCtrl,
-      invoiceNumberCtrl: _invoiceNumberCtrl,
-      clientNameCtrl: _clientNameCtrl,
-      clientEmailCtrl: _clientEmailCtrl,
-      clientPhoneCtrl: _clientPhoneCtrl,
-      clientAddressCtrl: _clientAddressCtrl,
-      notesCtrl: _notesCtrl,
-      taxRateCtrl: _taxCtrl,
-      discountRateCtrl: _discountCtrl,
-      itemDescCtrls: _descCtrl,
-      itemQtyCtrls: _qtyCtrl,
-      itemPriceCtrls: _priceCtrl,
       onBusinessNameChanged: (v) => _provider.updateBusinessInfo(businessName: v),
       onBusinessEmailChanged: (v) => _provider.updateBusinessInfo(businessEmail: v),
       onBusinessPhoneChanged: (v) => _provider.updateBusinessInfo(businessPhone: v),
       onBusinessAddressChanged: (v) => _provider.updateBusinessInfo(businessAddress: v),
       onLogoChanged: (path) => _provider.updateBusinessInfo(businessLogoPath: path ?? ''),
-      onInvoiceNumberChanged: (v) => _provider.updateInvoiceDetails(invoiceNumber: v),
+      docNumberCtrl: _invoiceNumberCtrl,
+      onDocNumberChanged: (v) => _provider.updateInvoiceDetails(invoiceNumber: v),
+      clientNameCtrl: _clientNameCtrl,
+      clientEmailCtrl: _clientEmailCtrl,
+      clientPhoneCtrl: _clientPhoneCtrl,
+      clientAddressCtrl: _clientAddressCtrl,
       onClientNameChanged: (v) => _provider.updateClientInfo(clientName: v),
       onClientEmailChanged: (v) => _provider.updateClientInfo(clientEmail: v),
       onClientPhoneChanged: (v) => _provider.updateClientInfo(clientPhone: v),
       onClientAddressChanged: (v) => _provider.updateClientInfo(clientAddress: v),
+      onTapMetaDate1: () => _pickDate(false),
+      onTapMetaDate2: () => _pickDate(true),
+      notesCtrl: _notesCtrl,
+      taxRateCtrl: _taxCtrl,
+      discountRateCtrl: _discountCtrl,
       onNotesChanged: (v) => _provider.updateInvoiceDetails(notes: v),
       onTaxRateChanged: (v) => _provider.updateInvoiceDetails(taxRate: double.tryParse(v) ?? 0),
       onDiscountRateChanged: (v) =>
           _provider.updateInvoiceDetails(discountRate: double.tryParse(v) ?? 0),
-      onTapIssueDate: () => _pickDate(false),
-      onTapDueDate: () => _pickDate(true),
+      itemCtrls: _itemCtrls,
       onItemFieldChanged: _onItemFieldChanged,
       onRemoveItem: _removeItem,
     );

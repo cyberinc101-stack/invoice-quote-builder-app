@@ -1,6 +1,12 @@
 // invoice_step_template_chooser_registry.dart
 // lib/screens/invoice_create_section/invoice_step_template_chooser_registry.dart
 //
+// MERGE PASS (this update): kPageW/kPageH now come from
+// shared_doc_widgets.dart instead of the deleted
+// executive_invoice_stationary_layout.dart. No other change — the
+// PAGE-HEIGHT OVERFLOW FIX and FILL-CONTAINER PASS logic below is
+// UNCHANGED.
+//
 // Scales the real invoice layout widget down to fit a grid card, using the
 // same OverflowBox + Transform.scale technique as the CV app's
 // StepChooserScaledPreview — except here it scales the actual
@@ -8,7 +14,7 @@
 // mini-illustration widget, since invoice layouts are already single-page
 // and cheap to render at design size.
 //
-// PAGE-HEIGHT OVERFLOW FIX (this update): previously wrapped `content` in
+// PAGE-HEIGHT OVERFLOW FIX (earlier): previously wrapped `content` in
 // a SizedBox(width: kPageW, height: kPageH) — a TIGHT height constraint of
 // exactly one A4 page, forced directly onto the A4Paginator tree inside
 // it. A4Paginator's own outer Column (mainAxisSize: MainAxisSize.min)
@@ -62,7 +68,7 @@
 // shrunk to cover the card.
 
 import 'package:flutter/material.dart';
-import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
+import '../../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW, kPageH;
 import 'invoice_template_previews/preview_registry.dart';
 

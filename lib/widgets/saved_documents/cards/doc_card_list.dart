@@ -163,7 +163,16 @@ class _StandardDocCard extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis),
                               ),
-                              if (entry.isPositiveStatus) positiveStatusDot(),
+                              // STATUS DOT COLOR PASS: was
+                              // `if (entry.isPositiveStatus) positiveStatusDot()`
+                              // — a fixed green dot that only ever appeared
+                              // for Paid/Accepted/Issued. Now always shows
+                              // (unless the status chip itself is hidden)
+                              // colored to match entry.statusColor, so
+                              // Unpaid/Overdue/Partial/etc. each get their
+                              // own matching dot instead of only Paid
+                              // getting one.
+                              if (!entry.statusHidden) statusDot(entry.statusColor),
                             ],
                           ),
                           const SizedBox(height: 3),
@@ -422,7 +431,10 @@ class _LogoBannerDocCard extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis),
                                 ),
-                                if (entry.isPositiveStatus) positiveStatusDot(),
+                                // STATUS DOT COLOR PASS: see the matching
+                                // comment in _StandardDocCard above — same
+                                // change here.
+                                if (!entry.statusHidden) statusDot(entry.statusColor),
                               ],
                             ),
                           ),

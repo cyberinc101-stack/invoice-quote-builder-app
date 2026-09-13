@@ -1,6 +1,10 @@
 // template_full_preview_modal.dart
 // lib/widgets/template_full_preview_modal.dart
 //
+// MERGE PASS (this update): kPageW/kPageH now come from
+// shared_doc_widgets.dart instead of the deleted
+// executive_invoice_stationary_layout.dart. No other change.
+//
 // Generic version of invoice_template_previews/template_full_preview_modal.
 // dart — that file is hardcoded to InvoiceTemplateInfo/buildInvoicePreview/
 // sampleInvoiceData, so it can't be reused by the quote or receipt
@@ -9,7 +13,7 @@
 // directly, so invoice/quote/receipt choosers can each pass their own
 // buildXxxPreview(id, sampleXxxData()) result straight in.
 //
-// A4-SCALE + SQUARE EDGES PASS (this update): mirrors the identical fix
+// A4-SCALE + SQUARE EDGES PASS (earlier): mirrors the identical fix
 // applied to invoice_template_previews/template_full_preview_modal.dart.
 // The previous version rendered the preview widget at real document scale
 // (every template's page is a fixed-size SizedBox at kPageW=595px
@@ -27,7 +31,7 @@
 // height assumption (kPageH) is safe here.
 
 import 'package:flutter/material.dart';
-import '../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
+import '../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW, kPageH;
 import '../helpers/lang_helper.dart';
 

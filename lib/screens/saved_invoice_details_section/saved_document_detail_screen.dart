@@ -177,13 +177,13 @@ import 'quote_editable_canvas_screen.dart';
 import 'receipt_editable_canvas_screen.dart';
 import '../invoice_create_section/editor_screen.dart';
 import '../quote_editor_screen.dart';
-import '../../create_receipt/create_receipt_screen.dart';
+import '../create_receipt_section/create_receipt_screen.dart';
 import 'detail/document_detail_header.dart';
 import 'detail/document_detail_status_card.dart';
 import '../invoice_template_chooser_screen.dart';
 import '../quote_template_chooser_screen.dart';
-import '../../create_receipt/receipt_template_chooser_screen.dart';
-import '../../create_receipt/receipt_paper_format.dart';
+import '../create_receipt_section/receipt_template_chooser_screen.dart';
+import '../create_receipt_section/receipt_paper_format.dart';
 
 // -----------------------------------------------------------------------------
 // Small per-type status mapping (duplicated intentionally from

@@ -42,7 +42,7 @@
 // same way EditorScreen/QuoteEditorScreen do.
 
 import 'package:flutter/material.dart';
-import '../create_receipt/create_receipt_screen.dart';
+import 'create_receipt_section/create_receipt_screen.dart';
 import 'invoice_create_section/editor_screen.dart';
 import 'invoice_create_section/invoice_step_template_chooser_registry.dart'
     show InvoiceStepChooserScaledPreview;

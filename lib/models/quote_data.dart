@@ -1,83 +1,77 @@
 // quote_data.dart
 // lib/models/quote_data.dart
 //
-// QUOTE DRAFT LIBRARY PASS (this update): added SavedQuoteDraft — a
-// named, editable quote-in-progress, saved from the Create Quote step's
-// new library screen (create_quote_section/step_create_quote.dart) and
-// reopened via CreateQuoteBottomSheet
-// (create_quote_section/create_quote_bottom_sheet.dart) to keep editing
-// it. Mirrors SavedInvoiceDraft (invoice_data.dart) exactly — see that
-// file's INVOICE DRAFT LIBRARY PASS note for the full rationale. Also
-// added SavedQuoteLineItemSet — a Quote-only mirror of
-// SavedLineItemSet (invoice_data.dart), kept as a separate class/library
-// (own SharedPreferences key) so Quote's saved item-set bundles never
-// mix with Invoice's, backing the new
-// create_quote_section/quote_saved_items_widgets.dart panel.
+// PAYMENT INFO + TERMS PASS (this update): QuoteData gains
+// bankName/accountName/accountNumber/otherPaymentDetails (Payment Info)
+// and termsAndConditions — the two blocks Invoice's own
+// buildPaymentInfoPanel()/buildTermsPanel()
+// (executive_invoice_payment_terms_signature.dart) already know how to
+// render, now ported into executive_quote_stationary_layout.dart's own
+// buildPaymentInfoPanel()/buildTermsPanel() and wired into
+// buildFooterSection() there. Matching 'bankName', 'accountName',
+// 'accountNumber', 'otherPaymentDetails', 'termsAndConditions' keys were
+// added to defaultQuoteEnabledFields() so each has its own show/hide
+// toggle, same as every other field. All new fields default to '' so
+// every persisted quote loads exactly as before this pass.
 //
-// FONT SIZE PASS (earlier): added fontSize (double, default 12.0) —
-// Quote had a fontFamily field but no numeric size field at all, unlike
-// InvoiceData's own font size support (see step_customise.dart's
-// _SizeSection / InvoiceProvider.fontSize). Added so Quote's Customise
-// step can finally show a Text Size slider matching Invoice's, via the
-// new quote_step_customise.dart. Default (12.0) preserves existing
-// render behaviour for every persisted quote, no migration needed.
+// NOT YET WIRED: these fields (like signatureMode/signatureName before
+// them) still need a sync step wherever a QuoteTemplate is applied to
+// QuoteProvider on template selection — that's the piece copying
+// QuoteTemplate.bankName/termsAndConditions/etc onto live QuoteData.
+// Until that sync exists, these fields can only be set by directly
+// calling QuoteData.copyWith with real values (e.g. eventually via a
+// provider method mirroring updateSignatureMode's shape).
 //
-// TEMPLATE/CLIENT RESTORE-ON-EDIT PASS (earlier): added
-// sourceTemplateId and sourceClientId — the id of whichever QuoteTemplate
-// (quote_template_library.dart) / QuoteClient (quote_client_library.dart)
-// was selected when this quote was last saved. Previously QuoteData only
-// stored the raw business/client strings COPIED FROM a template/client at
-// save time, with no record of which saved entry they came from — so
-// re-opening a saved quote to edit it always showed "Select or add a
-// template/client" even though one had already been chosen, forcing a
-// reselect every time. quote_editor_screen.dart now reads these two ids
-// in initState and passes them to QuoteTemplateLibrarySection /
-// QuoteClientLibrarySection as initialSelectedId so the right card is
-// highlighted and the status strip shows "Using X" on open, without
-// re-cascading that template's CURRENT business info/logo/fields over
-// the quote's own already-loaded (and possibly since-diverged) values —
-// see _restoreTemplate()/_restoreClient() there, kept deliberately
-// separate from _applyTemplate()/_applyClient()'s full cascade. Both
-// fields are nullable and default to null, so every existing persisted
-// quote loads exactly as before (falls back to the pre-existing "must
-// reselect" behaviour — nothing regresses).
+// Deliberately NOT adding a Sender/Contact block (senderName/
+// senderEmail/senderPhone/senderPosition/senderAddress/senderWebsite)
+// in this pass — Invoice's own InvoiceData has no equivalent fields
+// either (only its InvoiceTemplate/BusinessInfo model does), and there
+// is no confirmed render site for sender fields in Invoice's own
+// stationary layout to port from. Adding them here without a render
+// target would be dead model weight. Revisit once Invoice's own
+// sender-field render site (if one exists) is available for parity.
 //
-// TEMPLATE FIELD VISIBILITY PASS (earlier): added enabledFields — a
-// Map<String, bool> mirroring InvoiceData's own field (see that file's
-// TEMPLATE FIELD VISIBILITY PASS for the full rationale). Quote had no
-// equivalent of InvoiceTemplate's Invoice Fields/Customer Fields toggle
-// sheet at all — this adds the same capability via a new "Template" step
-// in QuoteEditorScreen (quote_editor_screen.dart), synced through
-// QuoteProvider.updateEnabledFields(), read by quoteToAdapter() in
-// doc_template_adapter.dart, and gated in executive_template.dart (which
-// already reads DocTemplateAdapter.enabledFields generically — no changes
-// needed there). Defaults to defaultQuoteEnabledFields() (everything
-// shown), so every existing persisted quote renders exactly as before.
+// SIGNATURE PASS (earlier): QuoteData gains a three-mode Signature
+// block, mirroring InvoiceData's own signature fields exactly:
+//   - signatureMode ('typed' | 'image' | 'blank' | '' deselected)
+//   - signatureName (typed caption, used when signatureMode == 'typed')
+//   - signatureImagePath (used when signatureMode == 'image')
+//   - signatureFontSize (double, default 22.0)
+//   - signatureFontFamily (String, default '' — one of the six
+//     locally-bundled script families in
+//     executive_invoice_payment_terms_signature.dart's kSignatureFonts,
+//     or '' to render in the default italic body-font look)
+// All new fields default to '' / 'blank' / null / 22.0 / '' so every
+// persisted quote loads exactly as before this pass. A new 'signature'
+// key was added to defaultQuoteEnabledFields() so the Signature row has
+// its own show/hide toggle on the Customise step, same as every other
+// field. Rendered by executive_quote_stationary_layout.dart's
+// buildFooterSection via a new buildSignatureBlock() call (mirrors
+// Invoice's identical call into
+// executive_invoice_payment_terms_signature.dart) and exported by
+// quote_pdf_service.dart's Executive PDF builder.
 //
-// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
-// (bool, default true) and businessLogoInitialLetter (String, default
-// '') — mirrors InvoiceData's own new fields. See invoice_data.dart's
-// doc comment for the full rationale. Defaults preserve existing render
-// behaviour for every persisted quote, no migration needed.
+// PER-ITEM TOTALS PARITY FIX (earlier): QuoteData was missing
+// itemTaxExtra / itemDiscountExtra / itemTaxExtraByName /
+// itemDiscountExtraByName — the four getters InvoiceData uses to fold
+// each LineItem's own discountEnabled/taxEnabled rate into the
+// document's grand total and into the footer's grouped-by-name "Item
+// Tax (GST)" / "Item Discounts (Trade)" rows.
 //
-// TEMPLATE + LOGO SIZER PASS (earlier): added layoutTemplateId (which
-// visual design — Executive/Nordic/Vibrant/etc, see the quote
-// preview_registry.dart — this quote actually renders with) and
-// businessLogoOffsetDx/Dy/Scale/Shape (mirrors InvoiceData's own new
-// fields, driven by the same SharedLogoPicker widget). Previously the
-// quote always rendered as Executive regardless of what was picked in
-// QuoteTemplateChooserScreen, and had no logo reposition/zoom/shape data
-// at all. All new fields fall back to sensible defaults when missing from
-// persisted JSON (layoutTemplateId 1 = Executive, zero offset, scale 1.0,
-// 'roundedSquare' shape), so existing persisted quotes load correctly
-// with no migration step.
+// grandTotal now mirrors InvoiceData.grandTotal's formula exactly:
+//   subtotal - discountAmount + taxAmount - itemDiscountExtra + itemTaxExtra
 //
-// CURRENCY DISPLAY PASS (earlier): added currencySymbol and
-// currencyDisplayMode, mirroring InvoiceData's own fields — see that
-// file's doc comment for the full rationale (free text, no hardcoded
-// currency list, defaults preserve existing render behaviour).
+// CREATE-QUOTE PARITY PASS (earlier): brought QuoteData up to the
+// same per-invoice field set InvoiceData already has, for exactly the
+// fields that are generic (not invoice-specific).
+//
+// FONT SIZE PASS, TEMPLATE/CLIENT RESTORE-ON-EDIT PASS, TEMPLATE FIELD
+// VISIBILITY PASS, LOGO FALLBACK MARK PASS, TEMPLATE + LOGO SIZER PASS,
+// CURRENCY DISPLAY PASS (all earlier) — see prior header comments for
+// each of these; unaffected by this update.
 
 import 'invoice_data.dart' show LineItem;
+import 'address_info.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -91,16 +85,15 @@ enum QuoteColor { blue, green, purple, orange, red, teal, black, indigo }
 // Default field-visibility map
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// TEMPLATE FIELD VISIBILITY PASS: same key set as
-// defaultInvoiceEnabledFields() (invoice_data.dart) minus the
-// invoice-only business/sender/barcode keys that have no quote toggle UI
-// yet — invoiceNumber/date/dueDate/tax/discount/notes/thankYouMessage
-// (document fields) and customerName/Email/Phone/Address (client
-// fields). These are exactly the keys executive_template.dart's
-// _executiveFullHeader / _ExecutiveMetaRow already gate on generically
-// via docFieldOn(), so a quote's Template step toggles take effect with
-// no further changes to the rendering path. Used whenever QuoteData is
-// constructed without an explicit enabledFields map.
+// PAYMENT INFO + TERMS PASS: added 'bankName', 'accountName',
+// 'accountNumber', 'otherPaymentDetails', 'termsAndConditions' — one
+// toggle key per new field/block, same as every existing field. All
+// default true so existing behaviour (nothing new to show since the
+// fields are all still empty strings) is unaffected until they're
+// actually filled in.
+//
+// SIGNATURE PASS: added 'signature' — gates the Signature block, same
+// key name InvoiceData/DocTemplateAdapter already use.
 Map<String, bool> defaultQuoteEnabledFields() => {
       'invoiceNumber': true, 'date': true, 'dueDate': true,
       'tax': true, 'discount': true,
@@ -108,6 +101,10 @@ Map<String, bool> defaultQuoteEnabledFields() => {
       'customerName': true, 'customerEmail': true, 'customerPhone': true,
       'customerAddress': true,
       'businessLogo': true,
+      'signature': true,
+      'bankName': true, 'accountName': true, 'accountNumber': true,
+      'otherPaymentDetails': true,
+      'termsAndConditions': true,
     };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,18 +118,12 @@ class QuoteData {
   String businessAddress;
   String? businessLogoPath;
 
-  // Logo reposition/zoom/shape — mirrors InvoiceData's fields, driven by
-  // the same SharedLogoPicker widget. Only meaningful when
-  // businessLogoPath is set.
   double businessLogoOffsetDx;
   double businessLogoOffsetDy;
   double businessLogoScale;
-  String businessLogoShape; // storage name from LogoShape.storageName
+  String businessLogoShape;
   double businessLogoDisplaySize;
 
-  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above / the same
-  // fields on InvoiceData. Only meaningful when businessLogoPath is NOT
-  // set.
   bool businessLogoShowInitial;
   String businessLogoInitialLetter;
 
@@ -141,59 +132,69 @@ class QuoteData {
   String clientPhone;
   String clientAddress;
 
+  AddressInfo clientAddressInfo;
+
   String quoteNumber;
   String issueDate;
   String expiryDate;
   String notes;
   String currency;
 
-  // Free-text currency symbol + display mode — see InvoiceData for the
-  // full rationale. Not gated by any hardcoded currency list.
   String currencySymbol;
-  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
+  String currencyDisplayMode;
 
   List<LineItem> lineItems;
 
   double      taxRate;
   double      discountRate;
+
+  String taxName;
+  String discountName;
+
+  bool taxEnabled;
+  bool discountEnabled;
+
   QuoteStatus quoteStatus;
   String      fontFamily;
 
-  // FONT SIZE PASS: numeric text size (points), mirrors
-  // InvoiceProvider.fontSize / InvoiceData's equivalent. Drives the new
-  // Text Size slider on quote_step_customise.dart via
-  // QuoteProvider.updateFontSize().
   double      fontSize;
 
   QuoteColor  colorScheme;
 
-  // Which visual design (see the quote preview_registry.dart's
-  // kQuoteTemplates / buildQuotePreview) this quote renders with —
-  // 1 = Executive, 2 = Nordic, etc.
   int layoutTemplateId;
 
-  // TEMPLATE FIELD VISIBILITY PASS: which template-defined fields
-  // actually render on this quote — see defaultQuoteEnabledFields()
-  // above for the key set. Populated from the new Template step in
-  // QuoteEditorScreen; read by quoteToAdapter() (doc_template_adapter.
-  // dart) via `d.enabledFields`, then by executive_template.dart's
-  // docFieldOn() helper, which defaults a missing key to true (shown) —
-  // so a persisted quote saved before this field existed still renders
-  // exactly as before.
   Map<String, bool> enabledFields;
 
-  // TEMPLATE/CLIENT RESTORE-ON-EDIT PASS: which saved QuoteTemplate /
-  // QuoteClient this quote's business/client info was last populated
-  // from — see the file-level doc comment above. Null means "no saved
-  // template/client is associated", whether that's because this quote
-  // predates this pass, no selection was ever made, or a prior selection
-  // was explicitly cleared.
   String? sourceTemplateId;
   String? sourceClientId;
 
-  // Same escape hatch as InvoiceData.excludeFromReports. See that file's
-  // doc comment for the gating rule.
   bool excludeFromReports;
+
+  // SIGNATURE PASS: three mutually exclusive modes, mirrors
+  // InvoiceData's identical fields exactly. 'typed' renders
+  // signatureName in signatureFontFamily (or the default italic look
+  // when signatureFontFamily is ''); 'image' renders signatureImagePath
+  // as-is; 'blank' renders neither, just an empty signing line; ''
+  // (deselected) renders nothing at all.
+  String signatureMode; // 'typed' | 'image' | 'blank' | ''
+  String signatureName;
+  String? signatureImagePath;
+  double signatureFontSize;
+  String signatureFontFamily;
+
+  // PAYMENT INFO PASS: bank details — bankName/accountName/
+  // accountNumber are the three named fields; otherPaymentDetails is a
+  // single freeform field for anything that doesn't fit those three
+  // (IBAN, SWIFT/BIC, routing/sort code, PayPal handle, etc), exactly
+  // mirroring InvoiceData's identical four fields.
+  String bankName;
+  String accountName;
+  String accountNumber;
+  String otherPaymentDetails;
+
+  // TERMS PASS: freeform Terms & Conditions text, mirrors
+  // InvoiceData.termsAndConditions exactly.
+  String termsAndConditions;
 
   QuoteData({
     this.businessName     = '',
@@ -212,6 +213,7 @@ class QuoteData {
     this.clientEmail      = '',
     this.clientPhone      = '',
     this.clientAddress    = '',
+    AddressInfo? clientAddressInfo,
     this.quoteNumber      = '',
     this.issueDate        = '',
     this.expiryDate       = '',
@@ -222,6 +224,10 @@ class QuoteData {
     List<LineItem>? lineItems,
     this.taxRate          = 0.0,
     this.discountRate     = 0.0,
+    this.taxName          = '',
+    this.discountName     = '',
+    this.taxEnabled       = true,
+    this.discountEnabled  = true,
     this.quoteStatus      = QuoteStatus.draft,
     this.fontFamily       = 'Roboto',
     this.fontSize         = 12.0,
@@ -231,17 +237,58 @@ class QuoteData {
     this.sourceTemplateId,
     this.sourceClientId,
     this.excludeFromReports = false,
+    this.signatureMode       = 'blank',
+    this.signatureName       = '',
+    this.signatureImagePath,
+    this.signatureFontSize   = 22.0,
+    this.signatureFontFamily = '',
+    this.bankName            = '',
+    this.accountName         = '',
+    this.accountNumber       = '',
+    this.otherPaymentDetails = '',
+    this.termsAndConditions  = '',
   }) : lineItems = lineItems ?? [],
-       enabledFields = enabledFields ?? defaultQuoteEnabledFields();
-
-  // ── Computed totals ────────────────────────────────────────────────────────
+       enabledFields = enabledFields ?? defaultQuoteEnabledFields(),
+       clientAddressInfo = clientAddressInfo ?? AddressInfo();
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
-  double get discountAmount => subtotal * (discountRate / 100);
-  double get taxAmount      => (subtotal - discountAmount) * (taxRate / 100);
-  double get grandTotal     => subtotal - discountAmount + taxAmount;
+  double get discountAmount => discountEnabled ? subtotal * (discountRate / 100) : 0.0;
+  double get taxAmount      => taxEnabled ? (subtotal - discountAmount) * (taxRate / 100) : 0.0;
 
-  // ── Serialisation ──────────────────────────────────────────────────────────
+  double get itemTaxExtra => lineItems.fold(
+      0.0,
+      (sum, i) => sum +
+          (i.taxEnabled
+              ? (i.itemTaxIsAddition ? 1 : -1) * i.total * i.itemTaxRate / 100
+              : 0.0));
+
+  double get itemDiscountExtra => lineItems.fold(0.0,
+      (sum, i) => sum + (i.discountEnabled ? i.total * i.itemDiscountRate / 100 : 0.0));
+
+  double get grandTotal =>
+      subtotal - discountAmount + taxAmount - itemDiscountExtra + itemTaxExtra;
+
+  Map<String, double> get itemTaxExtraByName {
+    final map = <String, double>{};
+    for (final i in lineItems) {
+      if (!i.taxEnabled) continue;
+      final key = i.itemTaxName.trim();
+      final amt = (i.itemTaxIsAddition ? 1 : -1) * i.total * i.itemTaxRate / 100;
+      map[key] = (map[key] ?? 0.0) + amt;
+    }
+    return map;
+  }
+
+  Map<String, double> get itemDiscountExtraByName {
+    final map = <String, double>{};
+    for (final i in lineItems) {
+      if (!i.discountEnabled) continue;
+      final key = i.itemDiscountName.trim();
+      final amt = i.total * i.itemDiscountRate / 100;
+      map[key] = (map[key] ?? 0.0) + amt;
+    }
+    return map;
+  }
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
@@ -260,6 +307,7 @@ class QuoteData {
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
         'clientAddress':    clientAddress,
+        'clientAddressInfo': clientAddressInfo.toJson(),
         'quoteNumber':      quoteNumber,
         'issueDate':        issueDate,
         'expiryDate':       expiryDate,
@@ -270,6 +318,10 @@ class QuoteData {
         'lineItems':        lineItems.map((i) => i.toJson()).toList(),
         'taxRate':          taxRate,
         'discountRate':     discountRate,
+        'taxName':          taxName,
+        'discountName':     discountName,
+        'taxEnabled':       taxEnabled,
+        'discountEnabled':  discountEnabled,
         'quoteStatus':      quoteStatus.name,
         'fontFamily':       fontFamily,
         'fontSize':         fontSize,
@@ -279,6 +331,16 @@ class QuoteData {
         'sourceTemplateId': sourceTemplateId,
         'sourceClientId':   sourceClientId,
         'excludeFromReports': excludeFromReports,
+        'signatureMode':       signatureMode,
+        'signatureName':       signatureName,
+        'signatureImagePath':  signatureImagePath,
+        'signatureFontSize':   signatureFontSize,
+        'signatureFontFamily': signatureFontFamily,
+        'bankName':            bankName,
+        'accountName':         accountName,
+        'accountNumber':       accountNumber,
+        'otherPaymentDetails': otherPaymentDetails,
+        'termsAndConditions':  termsAndConditions,
       };
 
   factory QuoteData.fromJson(Map<String, dynamic> j) => QuoteData(
@@ -298,6 +360,8 @@ class QuoteData {
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
         clientAddress:    j['clientAddress']    as String? ?? '',
+        clientAddressInfo: AddressInfo.fromJson(
+            j['clientAddressInfo'] ?? j['clientAddress']),
         quoteNumber:      j['quoteNumber']      as String? ?? '',
         issueDate:        j['issueDate']        as String? ?? '',
         expiryDate:       j['expiryDate']       as String? ?? '',
@@ -310,6 +374,10 @@ class QuoteData {
             .toList(),
         taxRate:      (j['taxRate']      as num?)?.toDouble() ?? 0.0,
         discountRate: (j['discountRate'] as num?)?.toDouble() ?? 0.0,
+        taxName:      j['taxName']      as String? ?? '',
+        discountName: j['discountName'] as String? ?? '',
+        taxEnabled:      j['taxEnabled']      as bool? ?? true,
+        discountEnabled: j['discountEnabled'] as bool? ?? true,
         quoteStatus: QuoteStatus.values.firstWhere(
           (s) => s.name == (j['quoteStatus'] as String? ?? ''),
           orElse: () => QuoteStatus.draft,
@@ -328,21 +396,17 @@ class QuoteData {
         sourceTemplateId: j['sourceTemplateId'] as String?,
         sourceClientId:   j['sourceClientId']   as String?,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
+        signatureMode:       j['signatureMode']       as String? ?? 'blank',
+        signatureName:       j['signatureName']       as String? ?? '',
+        signatureImagePath:  j['signatureImagePath']  as String?,
+        signatureFontSize:   (j['signatureFontSize']  as num?)?.toDouble() ?? 22.0,
+        signatureFontFamily: j['signatureFontFamily'] as String? ?? '',
+        bankName:            j['bankName']            as String? ?? '',
+        accountName:         j['accountName']         as String? ?? '',
+        accountNumber:       j['accountNumber']       as String? ?? '',
+        otherPaymentDetails: j['otherPaymentDetails']  as String? ?? '',
+        termsAndConditions:  j['termsAndConditions']   as String? ?? '',
       );
-
-  // ── copyWith ───────────────────────────────────────────────────────────────
-  //
-  // clearBusinessLogo: explicit clear flag, same reasoning as
-  // SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
-  // never express "set this field to null" once it already has a value.
-  // clearSourceTemplateId/clearSourceClientId follow the identical
-  // pattern, for the identical reason: a plain null passed in for either
-  // id must mean "clear it" when a template/client was deselected, not
-  // "leave whatever was already there" — see quote_provider.dart's
-  // updateBusinessInfo/updateClientInfo for how these flags get set.
-  // enabledFields is copied into a fresh Map instance either way, so
-  // callers never accidentally share a mutable Map reference between two
-  // QuoteData instances.
 
   QuoteData copyWith({
     String?         businessName,
@@ -362,6 +426,7 @@ class QuoteData {
     String?         clientEmail,
     String?         clientPhone,
     String?         clientAddress,
+    AddressInfo?    clientAddressInfo,
     String?         quoteNumber,
     String?         issueDate,
     String?         expiryDate,
@@ -372,6 +437,10 @@ class QuoteData {
     List<LineItem>? lineItems,
     double?         taxRate,
     double?         discountRate,
+    String?         taxName,
+    String?         discountName,
+    bool?           taxEnabled,
+    bool?           discountEnabled,
     QuoteStatus?    quoteStatus,
     String?         fontFamily,
     double?         fontSize,
@@ -383,6 +452,17 @@ class QuoteData {
     String?         sourceClientId,
     bool            clearSourceClientId = false,
     bool?           excludeFromReports,
+    String?         signatureMode,
+    String?         signatureName,
+    String?         signatureImagePath,
+    bool            clearSignatureImage = false,
+    double?         signatureFontSize,
+    String?         signatureFontFamily,
+    String?         bankName,
+    String?         accountName,
+    String?         accountNumber,
+    String?         otherPaymentDetails,
+    String?         termsAndConditions,
   }) =>
       QuoteData(
         businessName:     businessName     ?? this.businessName,
@@ -401,6 +481,7 @@ class QuoteData {
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
         clientAddress:    clientAddress    ?? this.clientAddress,
+        clientAddressInfo: clientAddressInfo ?? this.clientAddressInfo,
         quoteNumber:      quoteNumber      ?? this.quoteNumber,
         issueDate:        issueDate        ?? this.issueDate,
         expiryDate:       expiryDate       ?? this.expiryDate,
@@ -411,6 +492,10 @@ class QuoteData {
         lineItems:        lineItems        ?? List<LineItem>.from(this.lineItems),
         taxRate:          taxRate          ?? this.taxRate,
         discountRate:     discountRate     ?? this.discountRate,
+        taxName:          taxName          ?? this.taxName,
+        discountName:     discountName     ?? this.discountName,
+        taxEnabled:       taxEnabled       ?? this.taxEnabled,
+        discountEnabled:  discountEnabled  ?? this.discountEnabled,
         quoteStatus:      quoteStatus      ?? this.quoteStatus,
         fontFamily:       fontFamily       ?? this.fontFamily,
         fontSize:         fontSize         ?? this.fontSize,
@@ -420,11 +505,22 @@ class QuoteData {
         sourceTemplateId: clearSourceTemplateId ? null : (sourceTemplateId ?? this.sourceTemplateId),
         sourceClientId:   clearSourceClientId   ? null : (sourceClientId   ?? this.sourceClientId),
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
+        signatureMode:       signatureMode       ?? this.signatureMode,
+        signatureName:       signatureName       ?? this.signatureName,
+        signatureImagePath: clearSignatureImage ? null : (signatureImagePath ?? this.signatureImagePath),
+        signatureFontSize:   signatureFontSize   ?? this.signatureFontSize,
+        signatureFontFamily: signatureFontFamily ?? this.signatureFontFamily,
+        bankName:            bankName            ?? this.bankName,
+        accountName:         accountName         ?? this.accountName,
+        accountNumber:       accountNumber       ?? this.accountNumber,
+        otherPaymentDetails: otherPaymentDetails ?? this.otherPaymentDetails,
+        termsAndConditions:  termsAndConditions  ?? this.termsAndConditions,
       );
 
   QuoteData deepCopy() => copyWith(
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
         enabledFields: Map<String, bool>.from(enabledFields),
+        clientAddressInfo: clientAddressInfo.copyWith(),
       );
 }
 
@@ -492,7 +588,6 @@ class SavedQuote {
         folderName: j['folderName'] as String?,
       );
 
-  // folderName/clearFolderName — same pattern as SavedInvoice.copyWith.
   SavedQuote copyWith({
     String?    title,
     String?    templateName,
@@ -515,14 +610,7 @@ class SavedQuote {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SavedQuoteDraft — a named, editable quote-in-progress. Mirrors
-// SavedInvoiceDraft (invoice_data.dart) exactly — see that file's
-// INVOICE DRAFT LIBRARY PASS note for the full rationale. Stores a
-// complete QuoteData snapshot of everything editable on the Create Quote
-// step (customer override, dates, currency, line items, tax/discount,
-// notes) plus a user-facing `name` for the library card, independent of
-// any customer/quote-number text so a draft can be labelled before
-// either is filled in.
+// SavedQuoteDraft
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SavedQuoteDraft {
@@ -532,17 +620,29 @@ class SavedQuoteDraft {
   DateTime createdAt;
   DateTime lastEditedAt;
 
+  String? logoPath;
+  double logoOffsetDx;
+  double logoOffsetDy;
+  double logoScale;
+  String logoShape;
+  bool logoShowInitial;
+  String logoInitialLetter;
+
   SavedQuoteDraft({
     required this.id,
     required this.name,
     required this.data,
     required this.createdAt,
     required this.lastEditedAt,
+    this.logoPath,
+    this.logoOffsetDx = 0.0,
+    this.logoOffsetDy = 0.0,
+    this.logoScale = 1.0,
+    this.logoShape = 'roundedSquare',
+    this.logoShowInitial = true,
+    this.logoInitialLetter = '',
   });
 
-  /// What the library card shows as its title — the explicit label if one
-  /// was typed, else the client name, else the quote number, else a
-  /// generic fallback. Never blank.
   String get displayName {
     if (name.trim().isNotEmpty) return name.trim();
     if (data.clientName.trim().isNotEmpty) return data.clientName.trim();
@@ -569,6 +669,13 @@ class SavedQuoteDraft {
         'data': data.toJson(),
         'createdAt': createdAt.toIso8601String(),
         'lastEditedAt': lastEditedAt.toIso8601String(),
+        'logoPath': logoPath,
+        'logoOffsetDx': logoOffsetDx,
+        'logoOffsetDy': logoOffsetDy,
+        'logoScale': logoScale,
+        'logoShape': logoShape,
+        'logoShowInitial': logoShowInitial,
+        'logoInitialLetter': logoInitialLetter,
       };
 
   factory SavedQuoteDraft.fromJson(Map<String, dynamic> j) => SavedQuoteDraft(
@@ -577,12 +684,27 @@ class SavedQuoteDraft {
         data: QuoteData.fromJson(j['data'] as Map<String, dynamic>? ?? {}),
         createdAt: DateTime.parse(j['createdAt'] as String),
         lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+        logoPath: j['logoPath'] as String?,
+        logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        logoScale: (j['logoScale'] as num?)?.toDouble() ?? 1.0,
+        logoShape: j['logoShape'] as String? ?? 'roundedSquare',
+        logoShowInitial: j['logoShowInitial'] as bool? ?? true,
+        logoInitialLetter: j['logoInitialLetter'] as String? ?? '',
       );
 
   SavedQuoteDraft copyWith({
     String? name,
     QuoteData? data,
     DateTime? lastEditedAt,
+    String? logoPath,
+    bool clearLogoPath = false,
+    double? logoOffsetDx,
+    double? logoOffsetDy,
+    double? logoScale,
+    String? logoShape,
+    bool? logoShowInitial,
+    String? logoInitialLetter,
   }) =>
       SavedQuoteDraft(
         id: id,
@@ -590,16 +712,75 @@ class SavedQuoteDraft {
         data: data ?? this.data.deepCopy(),
         createdAt: createdAt,
         lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+        logoPath: clearLogoPath ? null : (logoPath ?? this.logoPath),
+        logoOffsetDx: logoOffsetDx ?? this.logoOffsetDx,
+        logoOffsetDy: logoOffsetDy ?? this.logoOffsetDy,
+        logoScale: logoScale ?? this.logoScale,
+        logoShape: logoShape ?? this.logoShape,
+        logoShowInitial: logoShowInitial ?? this.logoShowInitial,
+        logoInitialLetter: logoInitialLetter ?? this.logoInitialLetter,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SavedQuoteLineItemSet — a named, reusable bundle of line items for the
-// Quote flow. Mirrors SavedLineItemSet (invoice_data.dart) exactly, but
-// kept as a SEPARATE library (own SharedPreferences key, own class) so
-// Quote's saved item sets never mix with Invoice's — see
-// quote_saved_items_widgets.dart (QuoteSavedItemSets) for the UI this
-// backs.
+// SavedQuoteLineItem
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SavedQuoteLineItem {
+  String id;
+  String? name;
+  LineItem item;
+  DateTime createdAt;
+  DateTime lastEditedAt;
+
+  SavedQuoteLineItem({
+    required this.id,
+    this.name,
+    required this.item,
+    required this.createdAt,
+    required this.lastEditedAt,
+  });
+
+  String get displayName {
+    if ((name ?? '').trim().isNotEmpty) return name!.trim();
+    if (item.description.trim().isNotEmpty) return item.description.trim();
+    return 'Untitled Item';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'item': item.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+        'lastEditedAt': lastEditedAt.toIso8601String(),
+      };
+
+  factory SavedQuoteLineItem.fromJson(Map<String, dynamic> j) =>
+      SavedQuoteLineItem(
+        id: j['id'] as String,
+        name: j['name'] as String?,
+        item: LineItem.fromJson(j['item'] as Map<String, dynamic>? ?? {}),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastEditedAt: DateTime.parse(j['lastEditedAt'] as String),
+      );
+
+  SavedQuoteLineItem copyWith({
+    String? name,
+    bool clearName = false,
+    LineItem? item,
+    DateTime? lastEditedAt,
+  }) =>
+      SavedQuoteLineItem(
+        id: id,
+        name: clearName ? null : (name ?? this.name),
+        item: item ?? this.item.copyWith(),
+        createdAt: createdAt,
+        lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedQuoteLineItemSet
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SavedQuoteLineItemSet {
@@ -614,7 +795,7 @@ class SavedQuoteLineItemSet {
   });
 
   int get itemCount => items.length;
-  double get total => items.fold(0.0, (sum, i) => sum + i.total);
+  double get total => items.fold(0.0, (sum, i) => sum + i.lineNetTotal);
 
   Map<String, dynamic> toJson() => {
         'id': id,

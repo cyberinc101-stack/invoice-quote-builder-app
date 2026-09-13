@@ -1,51 +1,33 @@
 // tech_dark_template.dart
 // lib/document_layout_templates/04_tech_dark/tech_dark_template.dart
 //
-// DIAGONAL RIBBON REDESIGN PASS (this update): Tech Dark's terminal/
-// console-chrome header (title bar dots, "> LABEL value" monospace lines)
-// is replaced with a two-tone diagonal ribbon banner in the top-right
-// corner — a slanted accent-colored parallelogram carrying the doc type
-// label, with a thin near-black parallelogram offset behind it as a
-// layered "shadow" edge, echoing a red/black corner-wedge invoice design
-// without needing to touch page-level chrome. Business identity moves to
-// a plain left-aligned block (logo + name + address/contact, no bordered
-// box), and client/meta info sits in a two-column row below (recipient
-// block on the left, doc-no/date column right-aligned) instead of the old
-// "> " console lines. Reads as a clean modern business invoice rather
-// than a dev-tool skin — still structurally opposite to Vibrant/Classic/
-// Gradient Modern's Row(logo | identity | doc-type) skeleton, just via a
-// different visual language than the old terminal chrome.
+// ITEMS-HEADER-ROW PASS (this update): _techDarkFullHeader and
+// _techDarkContinuationHeader no longer call buildSharedLineItemsHeaderRow()
+// themselves — supplied instead via buildLineItemsHeaderRow on every
+// Preview class below. See a4_paginator.dart's header comment for the
+// bug this fixes.
 //
-// Only the header changes. Everything below it (line items, totals,
-// footer) still comes from shared_doc_widgets.dart / TemplateDocument
-// unchanged — this file only supplies buildFullHeader/
-// buildContinuationHeader, same contract as before.
+// UNUSED-IMPORT CLEANUP PASS (earlier): doc_totals.dart removed.
 //
-// NOTE on the reference design's page-corner wedge: that black triangle
-// sits at the physical bottom-right corner of the whole page, which is
-// outside what a per-template header can reach — A4Paginator only gives
-// each template control over header/continuation-header, not a full-page
-// background layer (that's shared across all 10 templates in
-// TemplateDocument). Reproducing it exactly would mean editing shared
-// pagination code, so instead that accent is echoed via the layered
-// ribbon in the header. If you want the literal page-corner wedge too,
-// that's a separate, deliberate change to TemplateDocument/A4Paginator —
-// happy to do it, just flagging it's a shared-file change, not a
-// Tech-Dark-only one.
+// DIAGONAL RIBBON REDESIGN PASS (earlier): Tech Dark's header uses a
+// two-tone diagonal ribbon banner in the top-right corner carrying the
+// doc type label, plain left-aligned business identity block, and a
+// two-column client/meta row below.
 
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData;
 import '../../models/quote_data.dart' show QuoteData;
 import '../../models/receipt_data.dart' show ReceiptData;
-import '../shared/doc_template_adapter.dart';
-import '../shared/shared_doc_widgets.dart';
+import '../document_template_layout_data/doc_template_adapter.dart';
+import '../document_template_layout_data/doc_header.dart';
+import '../document_template_layout_data/doc_line_items.dart';
+import '../document_template_layout_data/template_document.dart';
 
 const Color _kTechInk = Color(0xFF14171C);
 
 // -----------------------------------------------------------------------
 // Ribbon clip shape — a parallelogram that's full-width at the top and
-// cut in by `slant` px at the bottom-left, giving the "flag pointing
-// down-right" diagonal edge seen in the reference design.
+// cut in by `slant` px at the bottom-left.
 // -----------------------------------------------------------------------
 class _RibbonClipper extends CustomClipper<Path> {
   final double slant;
@@ -64,9 +46,7 @@ class _RibbonClipper extends CustomClipper<Path> {
 }
 
 // -----------------------------------------------------------------------
-// Two-tone diagonal ribbon — accent-colored banner with a thin dark
-// parallelogram offset behind it as a layered edge (the red-over-black
-// corner-wedge look from the reference, scoped to the header).
+// Two-tone diagonal ribbon.
 // -----------------------------------------------------------------------
 class _TechRibbon extends StatelessWidget {
   final String label;
@@ -86,8 +66,6 @@ class _TechRibbon extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Dark backing sliver, offset down-right so a thin strip of it
-          // shows past the accent ribbon's bottom/right edge.
           Positioned(
             left: 6,
             top: 6,
@@ -151,6 +129,10 @@ Widget _metaRow(String label, String value, String ff) => Padding(
 
 // -----------------------------------------------------------------------
 // Header design
+//
+// ITEMS-HEADER-ROW PASS: no longer ends with
+// buildSharedLineItemsHeaderRow(adapter: a) — supplied via this file's
+// Preview classes instead.
 // -----------------------------------------------------------------------
 
 Widget _techDarkFullHeader(DocTemplateAdapter a) {
@@ -260,8 +242,6 @@ Widget _techDarkFullHeader(DocTemplateAdapter a) {
           ),
         ],
       ),
-      const SizedBox(height: 22),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],
   );
 }
@@ -298,16 +278,12 @@ Widget _techDarkContinuationHeader(DocTemplateAdapter a) {
       ),
       const SizedBox(height: 14),
       Container(height: 2, color: _kTechInk),
-      const SizedBox(height: 16),
-      buildSharedLineItemsHeaderRow(accent: a.accent, ff: a.fontFamily),
     ],
   );
 }
 
 // -----------------------------------------------------------------------
-// Preview wrappers - one per doc type, each ~5 lines: convert to the
-// adapter, hand off to TemplateDocument. These are what preview_registry
-// files (invoice / quote / receipt) import and wire into their id switch.
+// Preview wrappers.
 // -----------------------------------------------------------------------
 
 class TechDarkInvoicePreview extends StatelessWidget {
@@ -320,6 +296,7 @@ class TechDarkInvoicePreview extends StatelessWidget {
         adapter: invoiceToAdapter(data),
         buildFullHeader: _techDarkFullHeader,
         buildContinuationHeader: _techDarkContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -334,6 +311,7 @@ class TechDarkQuotePreview extends StatelessWidget {
         adapter: quoteToAdapter(data),
         buildFullHeader: _techDarkFullHeader,
         buildContinuationHeader: _techDarkContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
@@ -348,6 +326,7 @@ class TechDarkReceiptPreview extends StatelessWidget {
         adapter: receiptToAdapter(data),
         buildFullHeader: _techDarkFullHeader,
         buildContinuationHeader: _techDarkContinuationHeader,
+        buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }

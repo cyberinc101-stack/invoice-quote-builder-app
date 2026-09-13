@@ -1,78 +1,33 @@
 // lib/screens/create_receipt_section/step_templates/receipt_step_template.dart
 //
-// FOLDER MOVE + INVOICE/QUOTE PARITY PASS (this update): relocated from
+// SAVED-ITEMS CAP + FILTERS PASS (this update): _kMaxReceiptTemplates
+// raised from 10 to 100, matching the cap used elsewhere in this app's
+// saved-item libraries. Since a library of up to 100 saved templates is
+// unusable without a way to narrow it down, this pass also adds the
+// same search field + Recent/A-Z/Z-A sort selector already used on the
+// Customer step and on Quote's quote_step_template.dart — new
+// _TemplateSearchField / _TemplateSortSelector widgets at the bottom of
+// this file, matching relevance against name/businessName. The "Saved
+// Templates" header/count/Hide-Show row is unchanged; the search field
+// + sort selector sit directly beneath it, above the card list.
+//
+// FOLDER MOVE + INVOICE/QUOTE PARITY PASS (earlier): relocated from
 // create_receipt_section/receipt_step_template.dart into its own
-// step_templates/ folder — matching Invoice's
-// invoice_create_section/step_templates/step_templates.dart and Quote's
-// create_quote_section/step_templates/quote_step_template.dart layout
-// exactly. This file is now a Dart part-file library root, split the
-// same way those two are:
+// step_templates/ folder — matching Invoice's/Quote's identical
+// layouts. This file is a Dart part-file library root:
 //   receipt_step_template.dart              // library root (this file)
 //   receipt_step_template_payment.dart      // part; Payment Info section
 //   receipt_step_template_terms.dart        // part; Terms & Conditions section
 //   receipt_step_template_signature.dart    // part; Signature section (4-mode)
 //
-// create_receipt_screen.dart's and any other importer's paths need
-// updating to 'step_templates/receipt_step_template.dart' to match.
+// INVOICE/QUOTE PARITY PASS (earlier): ReceiptTemplate carries the same
+// authorable fields Invoice's BusinessInfo and Quote's QuoteTemplate
+// already carry (structured address, Sender/Contact, Payment Info,
+// Terms & Conditions, Signature). See prior header comments for the
+// full history — unaffected by this pass.
 //
-// INVOICE/QUOTE PARITY PASS (this update): ReceiptTemplate gains the
-// same authorable fields Invoice's BusinessInfo and Quote's
-// QuoteTemplate already carry, for exactly the fields that are generic
-// (not invoice-specific — no PO Number; not carried over from Invoice's
-// Tax ID/GST either, since neither Quote nor Receipt ever had them):
-//   - addressInfo (AddressInfo) — structured six-field business address,
-//     replacing the old single free-text Business Address field. The
-//     legacy flat businessAddress string is kept in sync
-//     (addressInfo.singleLine) by this sheet's _save().
-//   - Sender/Contact block — senderName/senderEmail/senderPhone/
-//     senderPosition/senderAddress (legacy flat)/senderAddressInfo
-//     (structured)/senderWebsite.
-//   - Payment Info — bankName/accountName/accountNumber/
-//     otherPaymentDetails.
-//   - Terms & Conditions — termsAndConditions.
-//   - Signature — three modes (typed/image/blank) plus a fourth
-//     deselected '' state, exactly mirroring Invoice's/Quote's.
-// None of this is yet wired onto ReceiptData at template-select time —
-// same NOT YET WIRED boundary Quote's own parity pass documented; that
-// sync step (the Receipt equivalent of
-// StepCreateInvoice._syncSelectedToProvider()) still needs to be added
-// wherever a ReceiptTemplate is applied (create_receipt_screen.dart's
-// _applyTemplate()). Every new field defaults to '' / 'blank' / an empty
-// AddressInfo, so this is purely additive — no existing persisted
-// template is affected until these sections are filled in.
-//
-// CURRENCY REMOVAL PASS (this update): the Currency Code input has been
-// removed from the sheet entirely, matching Invoice's and Quote's
-// identical passes — currency is still a real model field (shown on the
-// template card badge, copied on duplicate), it's just no longer
-// editable from here. A new template still gets 'USD'; an existing
-// template keeps whatever currency it already had. _currencyCtrl is
-// gone.
-//
-// PERSISTED COLLAPSE STATE PASS (this update): every optional section
-// (Business Logo, Business Information, Sender/Contact, Thank You
-// Message, Payment Info, Terms & Conditions, Signature) now defaults to
-// COLLAPSED the first time this sheet is opened, then remembers
-// whatever expand/collapse state it's left in — via SharedPreferences,
-// keyed per section — independent of which template is being
-// created/edited. Matches Invoice's/Quote's _CollapsibleGroup exactly.
-//
-// SAFETY GUARD: Business Information holds the required Business Name
-// field. If collapsed, its field isn't mounted, so Form validation
-// silently skips it. _save() checks the Business Name controller
-// directly before validating the rest of the form; if empty, Business
-// Information is force-expanded and a snackbar explains why — matches
-// Invoice's/Quote's identical guard.
-//
-// FIELD VISIBILITY RELOCATION PASS (earlier, preserved): the "Receipt
-// Fields" / "Customer Fields" toggle switches stay OFF this sheet —
-// they live on create_receipt_screen.dart's Customise step. The eight
-// show* fields below remain on the model purely for backward
-// compatibility with templates saved before that relocation, unedited
-// from here.
-//
-// ICON CLEANUP PASS (earlier, preserved): no heart icon on Thank You
-// Message.
+// CURRENCY REMOVAL PASS / PERSISTED COLLAPSE STATE PASS / SAFETY GUARD
+// (earlier, preserved) — see prior header comments.
 
 import 'dart:convert';
 import 'dart:io';
@@ -92,7 +47,8 @@ part 'receipt_step_template_payment.dart';
 part 'receipt_step_template_terms.dart';
 part 'receipt_step_template_signature.dart';
 
-const int _kMaxReceiptTemplates = 10;
+// SAVED-ITEMS CAP + FILTERS PASS: raised 10 -> 100.
+const int _kMaxReceiptTemplates = 100;
 const String _kPrefReceiptTemplateList = 'receipt_template_list_v1';
 const _kReceiptSectionExpandedPrefPrefix =
     'receipt_template_sheet_section_expanded_';
@@ -274,9 +230,6 @@ class ReceiptTemplate {
         businessEmail: j['businessEmail'] as String? ?? '',
         businessPhone: j['businessPhone'] as String? ?? '',
         businessAddress: j['businessAddress'] as String? ?? '',
-        // INVOICE/QUOTE PARITY PASS: falls back to the legacy flat
-        // businessAddress string when no addressInfo key exists yet
-        // (every template saved before this pass).
         addressInfo:
             AddressInfo.fromJson(j['addressInfo'] ?? j['businessAddress']),
         logoPath: j['logoPath'] as String?,
@@ -358,16 +311,34 @@ class ReceiptStepTemplateSection extends StatefulWidget {
   State<ReceiptStepTemplateSection> createState() => _ReceiptStepTemplateSectionState();
 }
 
+// SAVED-ITEMS CAP + FILTERS PASS: sort modes for the saved-template
+// list, same shape as Quote's/Customer's own sort modes.
+enum _TemplateSortMode { recent, nameAsc, nameDesc }
+
 class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection> {
   bool _loading = true;
   List<ReceiptTemplate> _library = [];
   int? _selectedIndex;
   bool _showPanel = true;
 
+  // SAVED-ITEMS CAP + FILTERS PASS: search + sort state.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  _TemplateSortMode _sortMode = _TemplateSortMode.recent;
+
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() {
+      setState(() => _searchQuery = _searchCtrl.text);
+    });
     _init();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -377,6 +348,49 @@ class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection>
       _library = templates;
       _loading = false;
     });
+  }
+
+  // SAVED-ITEMS CAP + FILTERS PASS: relevance tier against name/
+  // businessName. 3 means "doesn't match" and gets filtered out.
+  int _relevance(int i, String q) {
+    final t = _library[i];
+    final name = t.name.toLowerCase();
+    final biz = t.businessName.toLowerCase();
+    if (name.startsWith(q)) return 0;
+    if (name.contains(q)) return 1;
+    if (biz.contains(q)) return 2;
+    return 3;
+  }
+
+  List<int> get _visibleIndices {
+    final q = _searchQuery.trim().toLowerCase();
+    var indices = List<int>.generate(_library.length, (i) => i);
+
+    if (q.isEmpty) {
+      switch (_sortMode) {
+        case _TemplateSortMode.nameAsc:
+          indices.sort((a, b) =>
+              _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase()));
+          break;
+        case _TemplateSortMode.nameDesc:
+          indices.sort((a, b) =>
+              _library[b].name.toLowerCase().compareTo(_library[a].name.toLowerCase()));
+          break;
+        case _TemplateSortMode.recent:
+          indices = indices.reversed.toList();
+          break;
+      }
+      return indices;
+    }
+
+    indices = indices.where((i) => _relevance(i, q) < 3).toList();
+    indices.sort((a, b) {
+      final ra = _relevance(a, q);
+      final rb = _relevance(b, q);
+      if (ra != rb) return ra.compareTo(rb);
+      return _library[a].name.toLowerCase().compareTo(_library[b].name.toLowerCase());
+    });
+    return indices;
   }
 
   void _toggle(int index) {
@@ -497,6 +511,9 @@ class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = widget.accent;
     final atMax = _library.length >= _kMaxReceiptTemplates;
+    // SAVED-ITEMS CAP + FILTERS PASS
+    final visible = _visibleIndices;
+    final isSearching = _searchQuery.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,18 +680,56 @@ class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection>
           ),
           if (_showPanel) ...[
             const SizedBox(height: 12),
-            ...List.generate(_library.length, (displayIdx) {
-              final i = _library.length - 1 - displayIdx;
-              return _ReceiptTemplateCard(
-                template: _library[i],
-                accent: accent,
-                isSelected: _selectedIndex == i,
-                onTap: () => _toggle(i),
-                onEdit: () => _showAddSheet(existing: _library[i], editIndex: i),
-                onDuplicate: () => _duplicate(i),
-                onDelete: () => _delete(i),
-              );
-            }),
+            // SAVED-ITEMS CAP + FILTERS PASS: search field + sort
+            // selector, same placement/behaviour as the Customer step.
+            _TemplateSearchField(
+              controller: _searchCtrl,
+              accent: accent,
+              onClear: () => _searchCtrl.clear(),
+            ),
+            const SizedBox(height: 10),
+            IgnorePointer(
+              ignoring: isSearching,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: isSearching ? 0.35 : 1.0,
+                child: _TemplateSortSelector(
+                  value: _sortMode,
+                  accent: accent,
+                  onChanged: (mode) => setState(() => _sortMode = mode),
+                ),
+              ),
+            ),
+            if (isSearching) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Sorted by relevance to "${_searchCtrl.text.trim()}"',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (visible.isNotEmpty)
+              ...visible.map((i) => _ReceiptTemplateCard(
+                    template: _library[i],
+                    accent: accent,
+                    isSelected: _selectedIndex == i,
+                    onTap: () => _toggle(i),
+                    onEdit: () => _showAddSheet(existing: _library[i], editIndex: i),
+                    onDuplicate: () => _duplicate(i),
+                    onDelete: () => _delete(i),
+                  ))
+            else if (isSearching)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'No templates match your search',
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+                ),
+              ),
           ],
         ] else if (!_loading && _library.isEmpty) ...[
           const SizedBox(height: 12),
@@ -684,6 +739,147 @@ class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection>
           ),
         ],
       ],
+    );
+  }
+}
+
+// =============================================================================
+// SAVED-ITEMS CAP + FILTERS PASS: search field for the saved-template
+// list. Functionally identical to Quote's/Customer's own search field,
+// duplicated here since those widgets are file-private.
+// =============================================================================
+
+class _TemplateSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final Color accent;
+  final VoidCallback onClear;
+
+  const _TemplateSearchField({
+    required this.controller,
+    required this.accent,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hasText = controller.text.isNotEmpty;
+        return TextField(
+          controller: controller,
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Search saved templates…',
+            hintStyle: TextStyle(
+                fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+            prefixIcon: Icon(Icons.search_rounded,
+                size: 20, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+            suffixIcon: hasText
+                ? GestureDetector(
+                    onTap: onClear,
+                    child: Icon(Icons.close_rounded,
+                        size: 18, color: colorScheme.onSurface.withValues(alpha: 0.4)),
+                  )
+                : null,
+            filled: true,
+            fillColor: isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                : const Color(0xFFF9F9F9),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3))),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: accent, width: 1.5)),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+// SAVED-ITEMS CAP + FILTERS PASS: sort selector (segmented chips) for
+// the saved-template list.
+// =============================================================================
+
+class _TemplateSortSelector extends StatelessWidget {
+  final _TemplateSortMode value;
+  final Color accent;
+  final ValueChanged<_TemplateSortMode> onChanged;
+
+  const _TemplateSortSelector({
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  static const _options = [
+    (_TemplateSortMode.recent, 'Recent', Icons.schedule_rounded),
+    (_TemplateSortMode.nameAsc, 'A–Z', Icons.arrow_downward_rounded),
+    (_TemplateSortMode.nameDesc, 'Z–A', Icons.arrow_upward_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _options.map((opt) {
+          final (mode, label, icon) = opt;
+          final selected = value == mode;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onChanged(mode),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? accent
+                      : (isDark
+                          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                          : const Color(0xFFF9F9F9)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: selected ? accent : colorScheme.outline.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon,
+                        size: 13,
+                        color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.5)),
+                    const SizedBox(width: 4),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -883,12 +1079,6 @@ class _CardFallbackMark extends StatelessWidget {
 
 // =============================================================================
 // Bottom Sheet – create / edit a template
-//
-// INVOICE/QUOTE PARITY PASS: rebuilt section order to match Invoice's
-// _TemplateSheet / Quote's _QuoteTemplateSheet exactly: Template Info ->
-// Business Logo -> Business Information (structured address) ->
-// Sender/Contact (structured address) -> Thank You Message -> Payment
-// Info -> Terms & Conditions -> Signature -> Save.
 // =============================================================================
 
 class _ReceiptTemplateSheet extends StatefulWidget {
@@ -937,9 +1127,6 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
   late TextEditingController _signatureNameCtrl;
   String? _signatureImagePath;
 
-  // FIELD VISIBILITY RELOCATION PASS: not editable from this sheet —
-  // carried through unedited to the saved ReceiptTemplate purely for
-  // backward compatibility.
   bool _showLogo = true;
   bool _showBusinessDetails = true;
   bool _showCustomerDetails = true;

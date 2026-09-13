@@ -1,5 +1,12 @@
 // invoice_preview_bottom_bar.dart
 // lib/screens/invoice_create_section/step_customize/invoice_preview_bottom_bar.dart
+//
+// PRINT BUTTON PASS (this update): added an optional onPrint callback,
+// matching receipt_preview_bottom_bar.dart's identical addition. When
+// provided, a third "Print" button renders alongside Save PDF / Share,
+// routing straight to the OS print dialog (InvoicePdfService.
+// printInvoice) so a connected printer can be used directly. Omitting
+// onPrint keeps the original two-button layout unchanged.
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +14,7 @@ class InvoicePreviewBottomBar extends StatelessWidget {
   final Color        accent;
   final VoidCallback onExport;
   final VoidCallback onShare;
+  final VoidCallback? onPrint;
   final bool         isLoading;
 
   const InvoicePreviewBottomBar({
@@ -14,6 +22,7 @@ class InvoicePreviewBottomBar extends StatelessWidget {
     required this.accent,
     required this.onExport,
     required this.onShare,
+    this.onPrint,
     this.isLoading = false,
   });
 
@@ -58,6 +67,12 @@ class InvoicePreviewBottomBar extends StatelessWidget {
                   child: _FilledBtn(onTap: onExport, icon: Icons.picture_as_pdf_rounded, label: 'Save PDF', accent: accent),
                 ),
                 const SizedBox(width: 10),
+                if (onPrint != null) ...[
+                  Expanded(
+                    child: _OutlineBtn(onTap: onPrint!, icon: Icons.print_rounded, label: 'Print', accent: accent),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(
                   child: _OutlineBtn(onTap: onShare, icon: Icons.ios_share_rounded, label: 'Share', accent: accent),
                 ),

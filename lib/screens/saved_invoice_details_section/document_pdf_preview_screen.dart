@@ -1,6 +1,13 @@
 // lib/screens/saved_invoice_details_section/document_pdf_preview_screen.dart
 //
-// THERMAL PREVIEW BUG FIX PASS (this update): the real-template path for
+// MERGE PASS (this update): imports redirected off the three deleted
+// executive_invoice_logic_data.dart / executive_quote_logic_data.dart /
+// executive_receipt_logic_data.dart / executive_invoice_stationary_
+// layout.dart files. ExecutiveInvoicePreview/ExecutiveQuotePreview/
+// ExecutiveReceiptPreview now all come from executive_template.dart,
+// kPageW now comes from shared_doc_widgets.dart. No other change.
+//
+// THERMAL PREVIEW BUG FIX PASS (earlier): the real-template path for
 // receipts always rendered via buildReceiptPreview() (the A4 design
 // registry) wrapped in ScaledPageStack — same bug fixed in
 // create_receipt_screen.dart's Live Preview card and
@@ -36,20 +43,24 @@ import '../../widgets/saved_documents_containers.dart'
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
-import '../../document_layout_templates/01_executive/executive_invoice_logic_data.dart';
-import '../../document_layout_templates/01_executive/executive_quote_logic_data.dart';
-import '../../document_layout_templates/01_executive/executive_receipt_logic_data.dart';
-import '../../document_layout_templates/01_executive/executive_invoice_stationary_layout.dart'
+// MERGE PASS: all three Preview classes now come from the merged
+// executive_template.dart instead of the deleted
+// executive_invoice_logic_data.dart / executive_quote_logic_data.dart /
+// executive_receipt_logic_data.dart.
+import '../../document_layout_templates/01_executive/executive_template.dart'
+    show ExecutiveInvoicePreview, ExecutiveQuotePreview, ExecutiveReceiptPreview;
+// MERGE PASS: kPageW now lives on the shared widgets file.
+import '../../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW;
 import '../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../invoice_create_section/invoice_template_previews/preview_registry.dart'
     show buildInvoicePreview;
 import '../create_quote_section/quote_template_chooser_01/preview_registry.dart'
     show buildQuotePreview;
-import '../../create_receipt/receipt_template_chooser_01/preview_registry.dart'
+import '../create_receipt_section/receipt_template_chooser_01/preview_registry.dart'
     show buildReceiptPreview;
-import '../../create_receipt/receipt_paper_format.dart';
-import '../../create_receipt/receipt_thermal_live_preview.dart';
+import '../create_receipt_section/receipt_paper_format.dart';
+import '../create_receipt_section/receipt_thermal_live_preview.dart';
 
 // -----------------------------------------------------------------------------
 // PdfPreviewLineItem — plain line item shape, no model dependency

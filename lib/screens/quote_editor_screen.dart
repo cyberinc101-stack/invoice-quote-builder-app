@@ -1,58 +1,188 @@
 // lib/screens/quote_editor_screen.dart
 //
-// QUOTE LIBRARY RESTRUCTURE PASS (this update): mirrors Invoice's own
+// PAYMENT/TERMS/SIGNATURE RESTORE-SYNC FIX (this update): unlike
+// logo/enabledFields — which have always been synced correctly on
+// template selection, so whatever's already sitting in QuoteData on a
+// later restore is trustworthy — termsAndConditions/signatureMode/
+// signatureName/signatureImagePath/bankName/accountName/accountNumber/
+// otherPaymentDetails only started being pushed onto QuoteData recently
+// (via _applyTemplate()'s call to provider.applyPaymentAndTermsFromTemplate()).
+// _restoreTemplate() — which is what actually fires every time
+// QuoteStepTemplateSection remounts and re-finds an already-selected
+// template (leaving the Template step and coming back, or reopening a
+// saved quote whose Template step hasn't been (re)visited yet this
+// session) — never called that sync at all. Effect of the bug: any
+// quote whose Template step wasn't the very last thing touched before
+// checking Live Preview/Customise stayed stuck with empty terms and a
+// blank signature forever, even though the linked template had real
+// values typed into it, because restoring a template only ever
+// refreshed this screen's own _selectedTemplate/_initialTemplateId —
+// never the live QuoteData other screens actually read from.
+//
+// Fix: _restoreTemplate() now also calls
+// provider.applyPaymentAndTermsFromTemplate(...), but only the FIRST
+// time a given template is (re-)established in this editing session —
+// gated by the new _syncedTemplateId field. Without that guard,
+// re-syncing on every single remount would silently overwrite any
+// per-quote signature customisation made afterwards via Customise's own
+// Signature section (quote_step_customise.dart calls
+// updateSignatureMode()/updateSignatureName()/updateSignatureImagePath()
+// directly on QuoteProvider, independent of the template) every time the
+// user simply flips back to the Template step without changing
+// anything. _applyTemplate() (fresh selection or template edit-save)
+// always syncs and always updates _syncedTemplateId, since an explicit
+// re-selection/edit is a deliberate signal to pull in the template's
+// current values.
+//
+// SELECTED-TEMPLATE/CLIENT STALE-ID FIX (earlier): _initialTemplateId
+// and _initialClientId were each captured exactly ONCE, in initState(),
+// from whatever QuoteProvider.quoteData.sourceTemplateId/sourceClientId
+// happened to be when this screen first opened — and never updated
+// again anywhere else in this file. QuoteStepTemplateSection (and
+// QuoteStepCustomerSection) use that id purely to restore _selectedIndex
+// when THEY re-run initState() — which happens every single time the
+// user navigates away from the Template/Customer step and back, since
+// _buildStep()'s switch statement swaps in a completely different
+// widget for other steps and rebuilds a fresh instance of these two the
+// moment the user returns.
+//
+// Effect of the bug: select a template, move forward through the
+// wizard, then come back to the Template step to edit that same
+// template (pencil icon) — the freshly-remounted
+// QuoteStepTemplateSection restores _selectedIndex using the STALE
+// _initialTemplateId (still whatever it was at screen-open time, often
+// null for a brand-new quote), so _selectedIndex comes back null even
+// though the template being edited is clearly "the" one in use. Its own
+// onSaved callback then gates the resync on
+// `if (_selectedIndex == editIndex) widget.onTemplateSelected(template)`
+// — with _selectedIndex null, that check always fails, so
+// onTemplateSelected() (and therefore _applyTemplate(), and therefore
+// provider.applyPaymentAndTermsFromTemplate()) never fires. The edited
+// template saves fine to the on-disk template library; the edit simply
+// never reaches the live QuoteData for this quote, so nothing on
+// Customise/Live Preview reflects it — a signature or terms edit looks
+// like it silently did nothing.
+//
+// Fix: _applyTemplate()/_restoreTemplate() now also write
+// template?.id into _initialTemplateId (mirrored for
+// _applyClient()/_restoreClient() -> _initialClientId, same bug class),
+// so any later remount of that step restores the correct selection and
+// the edit-sync gate passes as expected.
+//
+// SIGNATURE/PAYMENT/TERMS SYNC FIX (earlier): _applyTemplate() was
+// pushing the selected QuoteTemplate's logo and enabledFields onto
+// QuoteProvider, but never its bankName/accountName/accountNumber/
+// otherPaymentDetails/termsAndConditions/signatureMode/signatureName/
+// signatureImagePath — even though QuoteProvider already had a bundled
+// applyPaymentAndTermsFromTemplate() method built for exactly this,
+// sitting unused (see that method's own header comment in
+// quote_provider.dart, which explicitly flagged this as "the
+// still-missing template-select sync step"). Effect of the bug: typing
+// a signature name and picking "Type" on the Template sheet
+// (_QuoteSignatureSection in quote_step_template_signature.dart) wrote
+// those values onto the QuoteTemplate object only — nothing ever read
+// them back onto the live QuoteData, so the Live Preview and the saved
+// PDF always fell back to QuoteData's own signatureMode default
+// ('blank'), and any typed name/image never appeared anywhere.
+//
+// Fix: _applyTemplate() now also calls
+// provider.applyPaymentAndTermsFromTemplate(...) with the template's
+// values, in the same place and following the same "apply once, at
+// template selection" pattern already used for logoPath/enabledFields
+// just above it — not re-pushed on every _syncToProvider() step
+// transition, so it can't clobber a signature the user later
+// fine-tunes via Customise's own Size/Font controls (which only ever
+// adjust signatureFontSize/signatureFontFamily, never mode/name/image).
+// _restoreTemplate() (used when reopening an already-saved quote) is
+// deliberately left untouched for logo/enabledFields — same reasoning as
+// the pre-existing logo/enabledFields asymmetry between
+// _applyTemplate/_restoreTemplate: on restore, the provider's QuoteData
+// already holds whatever was last saved for this quote, and re-pushing
+// the template's values there would wipe out any per-quote
+// customisation made after the template was originally applied. (This
+// is exactly the assumption the PAYMENT/TERMS/SIGNATURE RESTORE-SYNC FIX
+// above had to special-case, since it doesn't hold for fields that were
+// never correctly synced in the first place.)
+//
+// CUSTOMISE OWNERSHIP PASS (earlier): QuoteStepCustomise
+// (create_quote_section/step_customise/quote_step_customise.dart) is now
+// a self-contained StatefulWidget that reads/writes QuoteProvider
+// directly — logo, accent colour, font family/size, field-visibility
+// toggles, and the quote title now all live on QuoteProvider/QuoteData
+// (or the widget's own TextEditingController for the title), not as
+// parallel copies on this screen. This fixes a real bug the old design
+// had: _syncToProvider() ran on every step transition AND on opening
+// the full preview from Customise, and it unconditionally pushed this
+// screen's own stale local _logoPath/_colorScheme/_fontFamily/_fontSize/
+// _enabledFields onto the provider — so editing the logo, accent colour,
+// font, or a field toggle on Customise, then tapping "Preview &
+// Download" or navigating via a step tab, silently reverted the edit
+// back to whatever the Template step had last set.
+//
+// Fix: _logoPath/_logoOffset/_logoScale/_logoShape/_logoSize/
+// _colorScheme/_fontFamily/_fontSize/_titleCtrl/_enabledFields are all
+// REMOVED from this screen's state entirely. Business logo and
+// enabledFields are now applied to the provider ONCE, directly inside
+// _applyTemplate() at the moment a template is selected — not
+// re-pushed on every subsequent _syncToProvider() call — so nothing
+// this screen does after that can clobber a Customise-step edit.
+// _syncToProvider() itself no longer touches logo/enabledFields/colour/
+// font at all; it only carries business name/email/phone/address
+// (template-authored, never edited on Customise) and the per-quote
+// client/details/line-item data the Create Quote step already owned.
+//
+// This also means the Customise step is no longer one page in a shared
+// scroll+bottom-nav-bar container — it supplies its own internal
+// scroll view AND its own Back/Save bottom bar (matching Invoice's
+// StepCustomise exactly), so when _step is the last step, this screen
+// hands it the full bounded Expanded space directly instead of also
+// wrapping it in a SingleChildScrollView (which would both double-
+// scroll and break the widget's own internal Expanded/bottom-bar
+// layout) or showing the shared QuoteStepNavBar underneath it (which
+// would leave two "Save" affordances on screen at once). _save()/
+// _saving are removed from this screen for the same reason — saving a
+// quote now only ever happens from inside QuoteStepCustomise's own
+// bottom bar.
+//
+// STEP CUSTOMER FOLDER MOVE PASS (earlier): quote_step_customer.dart
+// relocated from create_quote_section/ into its own
+// create_quote_section/step_customer/ subfolder — the only change in
+// that pass was the import path. No behavioural change; QuoteStepCustomerSection/QuoteClient/QuoteStepCustomerController
+// are all still the same types this screen already used.
+//
+// QUOTE LIBRARY RESTRUCTURE PASS (earlier): mirrors Invoice's own
 // library restructure. The entire _createQuoteStep() body (quote
 // number, dates, currency, client override, Saved Item Sets panel, line
 // items, tax/discount, notes) has moved out into a bottom sheet
-// (create_quote_section/create_quote_bottom_sheet.dart,
-// CreateQuoteBottomSheet), opened from a new library screen embedded at
-// this step (create_quote_section/step_create_quote.dart,
+// (create_quote_section/step_create_quote/create_quote_bottom_sheet.dart,
+// CreateQuoteBottomSheet), opened from a library screen embedded at
+// this step (create_quote_section/step_create_quote/step_create_quote.dart,
 // StepCreateQuote). Unlike Invoice's per-step StepNavBar, Quote keeps
-// its existing single shared bottomNavigationBar (QuoteStepNavBar) —
-// StepCreateQuote is an embedded widget (like QuoteStepCustomerSection/
-// QuoteStepTemplateSection), not a standalone screen with its own nav.
+// its existing single shared bottomNavigationBar (QuoteStepNavBar) for
+// steps 0-2 — StepCreateQuote is an embedded widget (like
+// QuoteStepCustomerSection/QuoteStepTemplateSection), not a standalone
+// screen with its own nav.
 //
 // New state: _selectedQuoteDraft (SavedQuoteDraft?) replaces every piece
 // of per-quote-details/line-item local state this screen used to own
-// directly (_quoteNumber, _issueDate/_expiryDate, _custNameCtrl etc.,
-// _currencyCodeCtrl/_currencySymbolCtrl/_currencyDisplayMode,
-// _descCtrls/_qtyCtrls/_priceCtrls, _taxRate/_discountRate,
-// _taxCtrl/_discountCtrl — all removed). StepCreateQuote reports the
-// selected draft via onDraftSelected(); _syncToProvider() now pulls
-// quote number/dates/currency/line items/tax/discount from
-// _selectedQuoteDraft?.data (falling back to whatever's already on the
-// provider before any draft is selected, same fallback pattern Invoice
-// uses). _stepBlockReason(2) and _validateForm() now just check that a
-// draft is selected, since the bottom sheet does its own full field
+// directly. StepCreateQuote reports the selected draft via
+// onDraftSelected(); _syncToProvider() pulls quote number/dates/
+// currency/line items/tax/discount from _selectedQuoteDraft?.data
+// (falling back to whatever's already on the provider before any draft
+// is selected). _stepBlockReason(2) and _validateForm() just check that
+// a draft is selected, since the bottom sheet does its own full field
 // validation before it will hand back a draft at all.
-//
-// Customise step's totals/currency prefix now read from _draftData
-// (getter: _selectedQuoteDraft?.data ?? current provider QuoteData)
-// instead of locally-computed getters over removed controllers.
-//
-// Everything below this point in the doc history (CUSTOMISE STEP
-// EXTRACTION + FONT PASS, CUSTOMER STEP RENAME PASS, FIELD VISIBILITY
-// POSITION PASS, STEP REORDER PASS, NO-CLIENT INLINE FIELDS PASS,
-// RESTORE-ON-EDIT PASS) is UNCHANGED and still describes the Customer/
-// Template/Customise steps exactly as before — only the Create Quote
-// step's internals changed in this pass.
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/quote_provider.dart';
-import '../providers/history_provider.dart';
-import '../models/history_event.dart';
 import '../models/quote_data.dart';
 import '../widgets/step_editor_header.dart';
-import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'create_quote_section/quote_edit_widgets.dart';
-import 'create_quote_section/quote_full_preview_screen.dart';
-import 'create_quote_section/quote_step_customer.dart';
-import 'create_quote_section/quote_step_customise.dart';
-import 'create_quote_section/quote_step_template.dart';
-import 'create_quote_section/step_create_quote.dart';
-import '../widgets/shared_logo_picker.dart';
+import 'create_quote_section/step_customer/quote_step_customer.dart';
+import 'create_quote_section/step_customise/quote_step_customise.dart';
+import 'create_quote_section/step_templates/quote_step_template.dart';
+import 'create_quote_section/step_create_quote/step_create_quote.dart';
 
 class QuoteEditorScreen extends StatefulWidget {
   final int layoutTemplateId;
@@ -81,7 +211,6 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   ];
 
   late int _step;
-  bool _saving = false;
   late int _layoutTemplateId;
 
   QuoteTemplate? _selectedTemplate;
@@ -90,39 +219,23 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   String? _initialTemplateId;
   String? _initialClientId;
 
+  // PAYMENT/TERMS/SIGNATURE RESTORE-SYNC FIX: tracks which template's
+  // payment/terms/signature fields have already been pushed onto the
+  // live QuoteData this session, so _restoreTemplate() only syncs once
+  // per template selection instead of on every remount of the Template
+  // step. See _restoreTemplate() below for why re-syncing on every
+  // remount would be wrong (it would clobber Customise-level signature
+  // overrides), and this file's header comment for the full bug this
+  // fixes.
+  String? _syncedTemplateId;
+
   // QUOTE LIBRARY RESTRUCTURE PASS: the selected draft from the Create
   // Quote step's library — carries quote number/dates/currency/client
   // override/line items/tax/discount/notes. Null until one is created or
   // selected on that step.
   SavedQuoteDraft? _selectedQuoteDraft;
 
-  late Map<String, bool> _enabledFields;
-
-  String? _logoPath;
-  Offset _logoOffset = Offset.zero;
-  double _logoScale = 1.0;
-  LogoShape _logoShape = LogoShape.roundedSquare;
-  double _logoSize = 44.0;
-
-  QuoteColor _colorScheme = QuoteColor.purple;
-  late TextEditingController _titleCtrl;
-
-  late String _fontFamily;
-  late double _fontSize;
-
-  /// The data driving totals/currency display on the Customise step —
-  /// the selected draft's data if one is selected, else whatever's
-  /// already on the provider (e.g. before any draft has been picked).
-  QuoteData get _draftData =>
-      _selectedQuoteDraft?.data ?? context.read<QuoteProvider>().quoteData;
-
-  String get _currencyPrefix {
-    final symbol = _draftData.currencySymbol.trim();
-    final code = _draftData.currency.trim().toUpperCase();
-    if (symbol.isNotEmpty) return symbol;
-    if (code.isNotEmpty) return '$code ';
-    return '';
-  }
+  bool get _isLastStep => _step == _steps.length - 1;
 
   @override
   void initState() {
@@ -130,83 +243,168 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     _step = widget.initialStep.clamp(0, _steps.length - 1);
     _layoutTemplateId = widget.layoutTemplateId;
     final q = context.read<QuoteProvider>().quoteData;
-    _logoSize = q.businessLogoDisplaySize;
-
-    _enabledFields = Map<String, bool>.from(q.enabledFields);
 
     _initialTemplateId = q.sourceTemplateId;
     _initialClientId = q.sourceClientId;
-
-    _colorScheme  = q.colorScheme;
-    _fontFamily   = q.fontFamily;
-    _fontSize     = q.fontSize;
-
-    _titleCtrl = TextEditingController(
-      text: q.clientName.isNotEmpty ? '${q.clientName} Quote' : '',
-    );
   }
 
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    super.dispose();
-  }
-
+  // SELECTED-TEMPLATE/CLIENT STALE-ID FIX: also updates _initialClientId
+  // so a later remount of QuoteStepCustomerSection (navigating away from
+  // Customer and back) restores the same client that's actually in use,
+  // instead of falling back to whatever sourceClientId existed when this
+  // screen first opened.
   void _applyClient(QuoteClient? client) {
     setState(() {
       _selectedClient = client;
-      if (client != null && _titleCtrl.text.trim().isEmpty) {
-        _titleCtrl.text = '${client.name} Quote';
-      }
+      _initialClientId = client?.id;
     });
   }
 
+  // CUSTOMISE OWNERSHIP PASS: template logo and field-visibility are now
+  // applied straight to the provider ONCE, right here, instead of being
+  // copied into this screen's own local state and re-pushed on every
+  // subsequent _syncToProvider() call — see this file's header comment
+  // for exactly why that re-push was the source of the overwrite bug.
+  // businessName/Email/Phone/Address are NOT pushed here — those are
+  // still synced in _syncToProvider() (template-first-else-current),
+  // since nothing on Customise edits them and repeatedly re-applying
+  // them on every step transition is harmless.
+  //
+  // SIGNATURE/PAYMENT/TERMS SYNC FIX: also applies the template's
+  // Payment Info / Terms & Conditions / Signature fields onto the live
+  // QuoteData, via QuoteProvider's own applyPaymentAndTermsFromTemplate()
+  // — previously nothing ever called this, so a signature typed/picked
+  // on the Template sheet (quote_step_template_signature.dart) stayed
+  // on the QuoteTemplate object and never reached QuoteData, meaning it
+  // never showed on the Live Preview or the exported PDF. Same "apply
+  // once, at template selection" placement as the logo/enabledFields
+  // calls above, for the same reason: it must not be re-pushed on every
+  // _syncToProvider() step transition, or it would clobber whatever the
+  // Customise step's Signature Size/Font controls set afterward.
+  //
+  // SELECTED-TEMPLATE/CLIENT STALE-ID FIX: also updates
+  // _initialTemplateId to template?.id. Without this, re-editing the
+  // currently-selected template after navigating away and back to the
+  // Template step silently fails to resync — see this file's header
+  // comment for the full mechanism.
+  //
+  // PAYMENT/TERMS/SIGNATURE RESTORE-SYNC FIX: also records
+  // _syncedTemplateId = template?.id, since an explicit (re-)selection
+  // or template edit-save here is always a deliberate signal to pull in
+  // that template's current payment/terms/signature values — unlike a
+  // passive remount-triggered restore (see _restoreTemplate() below).
   void _applyTemplate(QuoteTemplate? template) {
     setState(() {
       _selectedTemplate = template;
-      _logoPath = template?.logoPath;
-      _logoOffset = template?.logoOffset ?? Offset.zero;
-      _logoScale = template?.logoScale ?? 1.0;
-      _logoShape = template?.shape ?? LogoShape.roundedSquare;
-      if (template != null) {
-        _enabledFields = Map<String, bool>.from(template.enabledFields);
-        // Currency code now lives on the selected draft (see
-        // CreateQuoteBottomSheet's own template-currency prefill for new
-        // drafts) rather than a local controller here.
-      }
+      _initialTemplateId = template?.id;
+      _syncedTemplateId = template?.id;
+    });
+    if (template == null) return;
+    final provider = context.read<QuoteProvider>();
+    provider.updateBusinessInfo(
+      businessLogoPath: template.logoPath,
+      clearBusinessLogo: template.logoPath == null,
+      businessLogoOffsetDx: template.logoOffsetDx,
+      businessLogoOffsetDy: template.logoOffsetDy,
+      businessLogoScale: template.logoScale,
+      businessLogoShape: template.logoShape,
+    );
+    provider.updateEnabledFields(template.enabledFields);
+    // SIGNATURE/PAYMENT/TERMS SYNC FIX: the missing sync step every
+    // prior pass note in quote_provider.dart/quote_step_template.dart
+    // flagged as pending. Without this call, template.signatureMode/
+    // signatureName/signatureImagePath (and bankName/accountName/
+    // accountNumber/otherPaymentDetails/termsAndConditions) never leave
+    // the QuoteTemplate object.
+    provider.applyPaymentAndTermsFromTemplate(
+      bankName: template.bankName,
+      accountName: template.accountName,
+      accountNumber: template.accountNumber,
+      otherPaymentDetails: template.otherPaymentDetails,
+      termsAndConditions: template.termsAndConditions,
+      signatureMode: template.signatureMode,
+      signatureName: template.signatureName,
+      signatureImagePath: template.signatureImagePath,
+    );
+    // Currency code lives on the selected draft (see
+    // CreateQuoteBottomSheet's own template-currency prefill for new
+    // drafts) rather than being pushed from here.
+  }
+
+  // SELECTED-TEMPLATE/CLIENT STALE-ID FIX: also updates
+  // _initialTemplateId, same reasoning as _applyTemplate() above —
+  // _restoreTemplate() runs when QuoteStepTemplateSection reports back
+  // the template it found via the (possibly stale) initialSelectedId it
+  // was constructed with; recording that id here keeps this screen's
+  // own copy fresh for the NEXT time that step remounts.
+  //
+  // PAYMENT/TERMS/SIGNATURE RESTORE-SYNC FIX (this update): also syncs
+  // the template's payment/terms/signature fields onto the live
+  // QuoteData — but ONLY the first time this particular template is
+  // (re-)established in this editing session, guarded by
+  // _syncedTemplateId. Unlike logo/enabledFields (which have always
+  // been synced correctly, so whatever's already in QuoteData on
+  // restore is trustworthy), these fields only started being synced
+  // recently via _applyTemplate()'s call to
+  // applyPaymentAndTermsFromTemplate() — so a quote whose Template step
+  // was never (re)visited after that sync was added (a previously-saved
+  // quote reopened straight to Customise, or one whose Template step
+  // simply hasn't remounted yet this session) was stuck with empty
+  // terms and a blank signature forever, even though the linked
+  // template had real values. Without the _syncedTemplateId guard,
+  // re-syncing on every subsequent remount would silently overwrite any
+  // per-quote signature customisation made afterwards via Customise's
+  // own Signature section (quote_step_customise.dart calls
+  // updateSignatureMode()/updateSignatureName()/
+  // updateSignatureImagePath() directly on QuoteProvider, independent
+  // of the template) every time the user simply flips back to the
+  // Template step without changing anything.
+  void _restoreTemplate(QuoteTemplate? template) {
+    setState(() {
+      _selectedTemplate = template;
+      _initialTemplateId = template?.id;
+    });
+    if (template == null) return;
+    if (_syncedTemplateId == template.id) return;
+    context.read<QuoteProvider>().applyPaymentAndTermsFromTemplate(
+      bankName: template.bankName,
+      accountName: template.accountName,
+      accountNumber: template.accountNumber,
+      otherPaymentDetails: template.otherPaymentDetails,
+      termsAndConditions: template.termsAndConditions,
+      signatureMode: template.signatureMode,
+      signatureName: template.signatureName,
+      signatureImagePath: template.signatureImagePath,
+    );
+    _syncedTemplateId = template.id;
+  }
+
+  // SELECTED-TEMPLATE/CLIENT STALE-ID FIX: mirrors _restoreTemplate()
+  // above for the Customer step/_initialClientId.
+  void _restoreClient(QuoteClient? client) {
+    setState(() {
+      _selectedClient = client;
+      _initialClientId = client?.id;
     });
   }
 
-  void _restoreTemplate(QuoteTemplate? template) {
-    setState(() => _selectedTemplate = template);
-  }
-
-  void _restoreClient(QuoteClient? client) {
-    setState(() => _selectedClient = client);
-  }
-
-  // QUOTE LIBRARY RESTRUCTURE PASS: business info/client info sync is
-  // unchanged; quote number/dates/currency/line items/tax/discount now
-  // come from _selectedQuoteDraft?.data, falling back to whatever's
-  // already on the provider before any draft is selected (mirrors
-  // Invoice's own current-value fallback in _syncSelectedToProvider()).
+  // CUSTOMISE OWNERSHIP PASS: no longer touches business logo,
+  // enabledFields, colour, font family, or font size — those are either
+  // applied once in _applyTemplate() (logo/enabledFields/payment/terms/
+  // signature) or owned entirely by QuoteStepCustomise writing straight
+  // to the provider (colour/font). Business name/email/phone/address
+  // and every per-quote field (client/details/line items) are unchanged
+  // from before.
   void _syncToProvider() {
     final provider = context.read<QuoteProvider>();
     final current = provider.quoteData;
     final d = _selectedQuoteDraft?.data;
 
     provider.updateBusinessInfo(
-      businessName: _selectedTemplate?.businessName ?? '',
-      businessEmail: _selectedTemplate?.businessEmail ?? '',
-      businessPhone: _selectedTemplate?.businessPhone ?? '',
-      businessAddress: _selectedTemplate?.businessAddress ?? '',
-      businessLogoPath: _logoPath,
-      clearBusinessLogo: _logoPath == null,
-      businessLogoOffsetDx: _logoOffset.dx,
-      businessLogoOffsetDy: _logoOffset.dy,
-      businessLogoScale: _logoScale,
-      businessLogoShape: _logoShape.storageName,
-      businessLogoDisplaySize: _logoSize,
+      businessName: _selectedTemplate?.businessName ?? current.businessName,
+      businessEmail: _selectedTemplate?.businessEmail ?? current.businessEmail,
+      businessPhone: _selectedTemplate?.businessPhone ?? current.businessPhone,
+      businessAddress: _selectedTemplate?.businessAddress ?? current.businessAddress,
       sourceTemplateId: _selectedTemplate?.id,
       clearSourceTemplateId: _selectedTemplate == null,
     );
@@ -229,15 +427,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
       taxRate: d?.taxRate ?? current.taxRate,
       discountRate: d?.discountRate ?? current.discountRate,
     );
-    provider.updateEnabledFields(_enabledFields);
     if (d != null) {
       provider.updateQuoteData(provider.quoteData.copyWith(
         lineItems: d.lineItems.map((i) => i.copyWith()).toList(),
       ));
     }
-    provider.updateColorScheme(_colorScheme);
-    provider.updateFontFamily(_fontFamily);
-    provider.updateFontSize(_fontSize);
     provider.updateLayoutTemplateId(_layoutTemplateId);
   }
 
@@ -273,21 +467,6 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // QUOTE LIBRARY RESTRUCTURE PASS: field-level validation (quote
-  // number, client name, line item descriptions, tax/discount range)
-  // now lives entirely in CreateQuoteBottomSheet's own _validateForm() —
-  // a draft can't be handed back to this screen unless it already passed
-  // those checks. This screen's own final validation is reduced to
-  // "was everything actually selected/entered".
-  String? _validateForm() {
-    if (_selectedTemplate == null) return 'Select or add a template before saving';
-    if (_selectedQuoteDraft == null) {
-      return 'Select or create a quote before saving';
-    }
-    if (_titleCtrl.text.trim().isEmpty) return 'Give this quote a title before saving';
-    return null;
-  }
-
   void _nextStep() {
     final blocked = _stepBlockReason(_step);
     if (blocked != null) {
@@ -297,9 +476,12 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     if (_step < _steps.length - 1) {
       _syncToProvider();
       setState(() => _step++);
-    } else {
-      _save();
     }
+    // CUSTOMISE OWNERSHIP PASS: there is no "else" branch here anymore —
+    // reaching the last step no longer calls a save action from this
+    // button at all, since the shared bottom nav bar isn't shown once
+    // _isLastStep is true (see build() below). Saving happens entirely
+    // inside QuoteStepCustomise's own bottom bar.
   }
 
   void _prevStep() {
@@ -308,51 +490,6 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     } else {
       Navigator.pop(context);
     }
-  }
-
-  void _openFullPreview() {
-    _syncToProvider();
-    final provider = context.read<QuoteProvider>();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChangeNotifierProvider.value(
-          value: provider,
-          child: const QuoteFullPreviewScreen(),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _save() async {
-    final error = _validateForm();
-    if (error != null) {
-      _showSnack(error);
-      return;
-    }
-    setState(() => _saving = true);
-    _syncToProvider();
-    final saved = context.read<QuoteProvider>().saveCurrentQuote(
-          title: _titleCtrl.text,
-          templateName: 'Standard',
-        );
-    // HISTORY WIRING: logs this save as a 'created' activity-feed event —
-    // see history_screen.dart / history_provider.dart. Fire-and-forget:
-    // history logging should never block or fail the actual save.
-    unawaited(context.read<HistoryProvider>().logCreated(
-          docType: HistoryDocType.quote,
-          docId: saved.id,
-          docNumber: saved.data.quoteNumber,
-          clientName: saved.data.clientName.isNotEmpty ? saved.data.clientName : null,
-          amount: saved.data.grandTotal,
-          currency: saved.data.currency,
-        ));
-    setState(() => _saving = false);
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => SavedDocumentDetailScreen.quote(saved)),
-    );
   }
 
   @override
@@ -369,21 +506,38 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
             onStepTap: _goToStep,
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: _buildStep(),
-            ),
+            // CUSTOMISE OWNERSHIP PASS: the Customise step supplies its
+            // own internal SingleChildScrollView + bottom bar (matching
+            // Invoice's StepCustomise) and needs the full bounded height
+            // this Expanded provides directly — wrapping it in another
+            // SingleChildScrollView here would both double-scroll and
+            // break its own internal Expanded/bottom-bar layout (an
+            // Expanded inside an unbounded-height ancestor throws).
+            // Every other step keeps the plain scrolling container it
+            // always had.
+            child: _isLastStep
+                ? _buildStep()
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: _buildStep(),
+                  ),
           ),
         ],
       ),
-      bottomNavigationBar: QuoteStepNavBar(
-        onBack: null,
-        onNext: _nextStep,
-        nextLabel: _step == _steps.length - 1 ? 'Save Quote' : 'Next',
-        nextIcon: _step == _steps.length - 1 ? Icons.check_rounded : Icons.arrow_forward_rounded,
-        isLoading: _saving,
-        accent: _accent,
-      ),
+      // CUSTOMISE OWNERSHIP PASS: the shared Back/Next bar only makes
+      // sense for steps 0-2, which have no bottom bar of their own.
+      // Once on Customise, QuoteStepCustomise's own _BottomBar (Back +
+      // Save Quote) takes over entirely — showing this one underneath
+      // it would leave two competing "continue" affordances on screen.
+      bottomNavigationBar: _isLastStep
+          ? null
+          : QuoteStepNavBar(
+              onBack: null,
+              onNext: _nextStep,
+              nextLabel: 'Next',
+              nextIcon: Icons.arrow_forward_rounded,
+              accent: _accent,
+            ),
     );
   }
 
@@ -470,8 +624,9 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
   }
 
   // QUOTE LIBRARY RESTRUCTURE PASS: now just embeds StepCreateQuote
-  // (create_quote_section/step_create_quote.dart) — the entire form has
-  // moved into CreateQuoteBottomSheet, opened from that library screen.
+  // (create_quote_section/step_create_quote/step_create_quote.dart) —
+  // the entire form has moved into CreateQuoteBottomSheet, opened from
+  // that library screen.
   Widget _createQuoteStep() {
     return StepCreateQuote(
       accent: _accent,
@@ -484,60 +639,11 @@ class _QuoteEditorScreenState extends State<QuoteEditorScreen> {
     );
   }
 
+  // CUSTOMISE OWNERSHIP PASS: QuoteStepCustomise now owns every piece of
+  // its own state (title, logo, colour, font, field toggles) directly
+  // against QuoteProvider — this screen hands it nothing but the one
+  // callback it can't own itself (going back a step).
   Widget _customiseStep() {
-    return QuoteStepCustomise(
-      accent: _accent,
-      titleCtrl: _titleCtrl,
-      enabledFields: _enabledFields,
-      onEnabledFieldsChanged: (updated) {
-        setState(() => _enabledFields = updated);
-        _syncToProvider();
-      },
-      logoPath: _logoPath,
-      logoOffset: _logoOffset,
-      logoScale: _logoScale,
-      logoShape: _logoShape,
-      logoSize: _logoSize,
-      onLogoChanged: (path, offset, scale, shape) {
-        setState(() {
-          _logoPath = path;
-          _logoOffset = offset;
-          _logoScale = scale;
-          _logoShape = shape;
-        });
-        _syncToProvider();
-      },
-      onLogoShapeChanged: (shape) {
-        setState(() => _logoShape = shape);
-        _syncToProvider();
-      },
-      onLogoSizeChanged: (v) {
-        setState(() => _logoSize = v);
-        _syncToProvider();
-      },
-      colorScheme: _colorScheme,
-      onColorSchemeChanged: (c) {
-        setState(() => _colorScheme = c);
-        _syncToProvider();
-      },
-      fontFamily: _fontFamily,
-      onFontFamilyChanged: (f) {
-        setState(() => _fontFamily = f);
-        _syncToProvider();
-      },
-      fontSize: _fontSize,
-      onFontSizeChanged: (v) {
-        setState(() => _fontSize = v);
-        _syncToProvider();
-      },
-      subtotal: _draftData.subtotal,
-      taxAmount: _draftData.taxAmount,
-      discountAmount: _draftData.discountAmount,
-      total: _draftData.grandTotal,
-      taxRate: _draftData.taxRate,
-      discountRate: _draftData.discountRate,
-      currencySymbol: _currencyPrefix,
-      onOpenFullPreview: _openFullPreview,
-    );
+    return QuoteStepCustomise(onBack: _prevStep);
   }
 }

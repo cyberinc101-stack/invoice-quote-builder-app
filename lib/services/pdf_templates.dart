@@ -10,81 +10,85 @@
 // service calls for styleId 2-10; styleId 1 (Executive) keeps using each
 // service's existing hand-built _buildExecutivePdf, unchanged.
 //
-// TEN-TEMPLATE PARITY PASS (this update): five Flutter templates (Nordic,
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE (this update): brings the
+// shared line-item table and totals block (used by ALL 9 non-Executive
+// PDF exports) up to full parity with what invoice_pdf_service.dart's
+// _buildExecutivePdf already does, and with the Flutter preview side's
+// shared_doc_widgets.dart (Phase 1/2 of that same parity work). Four
+// changes:
+//   1. UNIT column — _sharedLineItemsHeaderRow/_sharedLineItemsTable/
+//      _sharedLineItemsTableBodyOnly now compute the same
+//      showDiscountCol/showTaxCol/showUnitCol flags (via the new
+//      _pdfColumnFlags helper) and add matching columns, gated on
+//      whether any line item actually uses that data — mirrors
+//      lineItemColumnFlags()/sharedLineItemColumnFlags() on the Flutter
+//      side.
+//   2. Signed + named tax/discount — _itemBadges now shows a minus sign
+//      for a withholding-style item tax (itemTaxIsAddition == false) and
+//      includes the item's own itemTaxName/itemDiscountName (abbreviated
+//      via a local port of the same _kRateNameAbbreviations table
+//      Executive/the Flutter shared widgets use), instead of always
+//      reading as a plain unnamed addition.
+//   3. Correct net total — every line-item row's Total cell now shows
+//      netTotal (item.total, minus its own discount, plus/minus its own
+//      signed tax) instead of the plain item.total (qty x price) figure.
+//      This was the same bug invoice_pdf_service.dart's Executive builder
+//      already fixed for itself; the other 9 styles never got the fix.
+//   4. Grouped-by-name totals — _sharedTotalsAndNotes' "Item Discounts"/
+//      "Item Tax" rows now loop over PdfDocData.itemDiscountExtraByName/
+//      itemTaxExtraByName (see pdf_doc_adapter.dart's matching pass)
+//      instead of showing one lumped flat figure.
+//
+// KNOWN LIMITATION (carried forward, now more relevant): PdfDocData has
+// no enabledFields-equivalent map, so unlike the Flutter preview side
+// (docFieldOn()) or Executive's own PDF builder (_on()), the UNIT/
+// DISCOUNT/TAX columns here are gated purely on "does any line item
+// actually carry this data" — there is no way at this layer to also
+// respect a user's "hide discount column" template toggle the way the
+// Flutter preview does. Closing that gap fully would mean adding an
+// enabledFields map to PdfDocData and threading a docFieldOn-equivalent
+// through every one of the 9 header builders below, which is a larger,
+// separate change from the data-correctness fix this pass makes.
+//
+// PER-ITEM TAX/DISCOUNT TOTALS PASS (earlier): _sharedTotalsAndNotes
+// gained two conditional rows — "Item Discounts" and "Item Tax" — sourced
+// from PdfDocData.itemDiscountExtra/itemTaxExtra. SUPERSEDED by the
+// grouped-by-name version above.
+//
+// TEN-TEMPLATE PARITY PASS (earlier): five Flutter templates (Nordic,
 // Editorial, Pastel Soft, Brutalist, Emerald) were reworked in an earlier
-// pass to be structurally distinct from one another (see each *_template.
-// dart file's own "TEN-TEMPLATE UNIQUENESS PASS" header comment), but this
-// file was never updated to match — it was still rendering each of those
-// five templates' OLD pre-rework designs. That meant a user picking any
-// of those five saw one design in the app's live preview/editor and a
-// completely different one in the actual exported PDF. _nordicHeader,
-// _editorialHeader, _pastelSoftHeader, _brutalistHeader, and
-// _emeraldHeader are all replaced below with direct ports of each
-// template's current Flutter header, closing that gap. _vibrantHeader,
+// pass to be structurally distinct from one another, but this file was
+// never updated to match — it was still rendering each of those five
+// templates' OLD pre-rework designs. _nordicHeader, _editorialHeader,
+// _pastelSoftHeader, _brutalistHeader, and _emeraldHeader are all direct
+// ports of each template's current Flutter header. _vibrantHeader,
 // _techDarkHeader, _classicHeader, and _gradientModernHeader are
-// untouched — those four Flutter templates haven't been reworked yet, so
+// untouched — those four Flutter templates haven't been reworked, so
 // their existing PDF headers still match.
 //
-// KNOWN LIMITATION: Brutalist's Flutter header uses a diagonal ClipPath
-// (an angular "ribbon" cut on the recipient block). The `pdf` package has
-// no equivalent path-clipping widget, so _brutalistHeader below renders
-// the same content (dark reversed-type recipient block, business +
-// doc-type block) as a plain rectangle instead of the angled ribbon
-// shape — visually close, not pixel-identical to the Flutter preview.
+// KNOWN LIMITATION: Brutalist's Flutter header uses a diagonal ClipPath.
+// The `pdf` package has no equivalent path-clipping widget, so
+// _brutalistHeader below renders the same content as a plain rectangle
+// instead of the angled ribbon shape.
 //
-// BRUTALIST DOUBLE-HEADER FIX (this update): _brutalistHeader has always
-// rendered its own dark, reversed-type line-items header row inline (SL./
-// ITEM DESCRIPTION/QTY/PRICE/TOTAL on a black bar) — but buildStyledDocument's
-// needsOwnTable only ever excluded style 5 (Classic) from also getting the
-// generic accent-underline _sharedLineItemsHeaderRow appended afterward.
-// For Brutalist (style 9) that meant two header rows stacked on top of
-// each other: the dark bar this header already draws, then a second,
-// different-looking thin-underline row from _sharedLineItemsTable. Fixed
-// by adding style 9 to the needsOwnTable exclusion, same pattern Classic
-// already uses, so Brutalist's table body renders once, under its own
-// header row only.
+// BRUTALIST DOUBLE-HEADER FIX (earlier): style 9 was added to the
+// needsOwnTable exclusion, same pattern Classic already uses, so
+// Brutalist's table body renders once, under its own header row only.
 //
-// LOGO PARITY PASS (earlier): the exported PDF and the Flutter preview
-// had drifted apart on logos. _logoWidget was defined but only ever CALLED
-// from _vibrantHeader — every other header (Nordic, Tech Dark, Classic,
-// Gradient Modern, Editorial, Pastel Soft, Brutalist, Emerald) rendered no
-// logo at all, even when the user had uploaded one and could see it in
-// every one of those templates' Flutter previews and on every saved-
-// document card. A user picking any style except Vibrant (or Executive,
-// which has its own separate builder in each *_pdf_service.dart) would
-// get a logo-less PDF despite the app showing them a logo everywhere else.
-// Fixed by adding a _logoWidget(d) + spacing call to the identity-block
-// Row in all 8 of the previously-missing headers, matching each header's
-// own existing layout shape (some are a plain Row with the business name
-// starting the line, some already have other content to the left) —
-// same left-of-business-name placement Vibrant already used.
+// LOGO PARITY PASS (earlier): _logoWidget is now called from every
+// header (not just Vibrant), clips to the document's real logoShape, and
+// sits on a very light neutral background rather than solid white.
 //
-// _logoWidget itself also changed: previously a hardcoded pw.ClipOval
-// (always a circle, regardless of what LogoShape the user actually
-// picked via the Logo Sizer) on a bare white background with
-// BoxFit.contain -- now clips to the document's real logoShape (circle /
-// square / roundedSquare, from PdfDocData.logoShape, mirroring
-// LogoShape.radiusFor() on the Flutter side) and sits on a very light
-// neutral background rather than solid white, so a non-square logo on a
-// colored header panel (Vibrant, Tech Dark) doesn't read as a stray white
-// rectangle. This mirrors the Flutter-side DocLogoAvatar's own LOGO FIT
-// PASS (contain-fit, no cropping, letterboxed on a soft background)
-// closely, short of threading the pan/zoom offset through (contain-fit
-// has nothing for a crop offset to apply to — same reasoning used on the
-// Flutter side).
-//
-// CURRENCY DISPLAY PASS (earlier): the hardcoded _kCurrencySymbols
-// lookup + _fmtMoney(currency, v) helper are gone — every call site now
-// uses d.fmtMoney(v) (PdfDocData's own method, added in pdf_doc_adapter.dart)
-// which respects the document's free-text currency symbol + display mode
-// instead of a fixed currency list, matching the Flutter preview exactly.
+// CURRENCY DISPLAY PASS (earlier): every call site uses d.fmtMoney(v)
+// (PdfDocData's own method) instead of a hardcoded currency lookup.
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../models/invoice_data.dart' show LineItem, unitDisplayLabel;
 import 'pdf_doc_adapter.dart';
 
-// ── Palette (mirrors document_layout_templates/shared/shared_doc_widgets.dart) ─────────
+// ── Palette (mirrors document_layout_templates/document_template_layout_data/doc_header.dart) ─────────
 const PdfColor kPdfInk = PdfColors.grey900;
 const PdfColor kPdfGrey = PdfColors.grey600;
 const PdfColor kPdfGreyLight = PdfColors.grey400;
@@ -102,62 +106,214 @@ PdfColor _alpha(PdfColor c, double alpha) => PdfColor(c.red, c.green, c.blue, al
 String _fmtQty(double q) => q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
 String _fmtPct(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
 
-// ── Shared line items header row / rows / totals / notes / footer ──────────
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: local port of the same
+// preset-name -> abbreviation table used by Executive and the Flutter
+// shared widgets (shared_doc_widgets.dart's now-public
+// abbreviateRateName()). Duplicated here rather than shared across
+// packages, since this file has no import path into the Flutter widget
+// tree's shared file.
+const Map<String, String> _kRateNameAbbreviations = {
+  'gst': 'GST',
+  'vat': 'VAT',
+  'sales tax': 'ST',
+  'hst': 'HST',
+  'pst': 'PST',
+  'withholding tax': 'WHT',
+  'trade discount': 'TD',
+  'early payment discount': 'EPD',
+  'bulk discount': 'BD',
+  'loyalty discount': 'LD',
+};
 
-pw.Widget _sharedLineItemsHeaderRow(PdfColor accent) {
-  final hdr = pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: kPdfGrey);
-  return pw.Container(
-    padding: const pw.EdgeInsets.symmetric(vertical: 8),
-    decoration: pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: accent, width: 1.5))),
-    child: pw.Row(children: [
-      pw.Expanded(flex: 5, child: pw.Text('DESCRIPTION', style: hdr)),
-      pw.Expanded(flex: 1, child: pw.Text('QTY', textAlign: pw.TextAlign.center, style: hdr)),
-      pw.Expanded(flex: 2, child: pw.Text('UNIT PRICE', textAlign: pw.TextAlign.right, style: hdr)),
-      pw.Expanded(flex: 2, child: pw.Text('TOTAL', textAlign: pw.TextAlign.right, style: hdr)),
+String _abbreviateRateName(String name) =>
+    _kRateNameAbbreviations[name.trim().toLowerCase()] ?? name.trim();
+
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: whether the Discount/Tax/Unit
+// columns should render at all — gated purely on "does any line item
+// actually carry this data" (see this file's KNOWN LIMITATION note above
+// for why there's no enabledFields toggle check here, unlike the Flutter
+// side). Computed once per document so header and every row show/hide
+// the same columns.
+({bool showDiscountCol, bool showTaxCol, bool showUnitCol}) _pdfColumnFlags(PdfDocData d) => (
+  showDiscountCol: d.lineItems.any((i) => i.discountEnabled),
+  showTaxCol: d.lineItems.any((i) => i.taxEnabled),
+  showUnitCol: d.lineItems.any((i) => i.unit.trim().isNotEmpty),
+);
+
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: small pill badges under a
+// line item's description when that item carries its own tax/discount
+// rate. Now shows the item's own rate name (abbreviated) when set, and
+// the tax badge shows a minus sign for a withholding-style rate instead
+// of always reading as a plain addition — mirrors the identical fix
+// applied to the Flutter side's Editorial/Pastel Soft/Emerald/Brutalist
+// badge rendering.
+const PdfColor _kTaxChipBg  = PdfColor.fromInt(0xFFE3F2FD);
+const PdfColor _kTaxChipFg  = PdfColor.fromInt(0xFF1565C0);
+const PdfColor _kDiscChipBg = PdfColor.fromInt(0xFFFFF3E0);
+const PdfColor _kDiscChipFg = PdfColor.fromInt(0xFFEF6C00);
+
+pw.Widget _itemBadgeChip(String label, {required PdfColor bg, required PdfColor fg}) => pw.Container(
+  margin: const pw.EdgeInsets.only(right: 6),
+  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+  decoration: pw.BoxDecoration(color: bg, borderRadius: pw.BorderRadius.circular(8)),
+  child: pw.Text(label, style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: fg)),
+);
+
+pw.Widget _itemBadges(LineItem item) {
+  if (!item.taxEnabled && !item.discountEnabled) return pw.SizedBox();
+
+  String taxLabel = '';
+  if (item.taxEnabled) {
+    final sign = item.itemTaxIsAddition ? '' : '-';
+    final rateText = '$sign${_fmtPct(item.itemTaxRate)}%';
+    final name = item.itemTaxName.trim();
+    taxLabel = name.isEmpty ? 'Tax $rateText' : '${_abbreviateRateName(name)} $rateText';
+  }
+  String discLabel = '';
+  if (item.discountEnabled) {
+    final rateText = '-${_fmtPct(item.itemDiscountRate)}%';
+    final name = item.itemDiscountName.trim();
+    discLabel = name.isEmpty ? rateText : '${_abbreviateRateName(name)} $rateText';
+  }
+
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(top: 4),
+    child: pw.Wrap(children: [
+      if (item.taxEnabled) _itemBadgeChip(taxLabel, bg: _kTaxChipBg, fg: _kTaxChipFg),
+      if (item.discountEnabled) _itemBadgeChip(discLabel, bg: _kDiscChipBg, fg: _kDiscChipFg),
     ]),
   );
 }
 
+// Per-row net total — item.total, minus its own discount, plus/minus its
+// own signed tax. Mirrors LineItem.lineNetTotal / invoice_pdf_service.
+// dart's Executive builder / shared_doc_widgets.dart's buildSharedLineItemRow
+// exactly. This is the fix that makes a row's printed Total actually
+// reflect its own per-item discount/tax instead of the plain qty*price
+// base figure.
+double _netTotal(LineItem item) {
+  final itemDiscountAmt = item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0;
+  final itemTaxAmt      = item.taxEnabled      ? item.total * item.itemTaxRate      / 100 : 0.0;
+  final signedTaxAmt = item.taxEnabled
+      ? (item.itemTaxIsAddition ? itemTaxAmt : -itemTaxAmt)
+      : 0.0;
+  return item.total - itemDiscountAmt + signedTaxAmt;
+}
+
+// ── Shared line items header row / rows / totals / notes / footer ──────────
+
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: now takes the document (was
+// just the accent color) so it can compute _pdfColumnFlags(d) and add
+// UNIT/DISCOUNT/TAX header cells matching whatever the data rows below
+// actually render.
+pw.Widget _sharedLineItemsHeaderRow(PdfDocData d) {
+  final flags = _pdfColumnFlags(d);
+  final hdr = pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: kPdfGrey);
+  final trailing = <pw.Widget>[
+    pw.Expanded(flex: 2, child: pw.Text('QTY', textAlign: pw.TextAlign.center, style: hdr)),
+    if (flags.showUnitCol)
+      pw.Expanded(flex: 2, child: pw.Text('UNIT', textAlign: pw.TextAlign.center, style: hdr)),
+    pw.Expanded(flex: 2, child: pw.Text('UNIT PRICE', textAlign: pw.TextAlign.right, style: hdr)),
+    if (flags.showDiscountCol)
+      pw.Expanded(flex: 2, child: pw.Text('DISCOUNT', textAlign: pw.TextAlign.right, style: hdr)),
+    if (flags.showTaxCol)
+      pw.Expanded(flex: 2, child: pw.Text('TAX', textAlign: pw.TextAlign.right, style: hdr)),
+    pw.Expanded(flex: 2, child: pw.Text('TOTAL', textAlign: pw.TextAlign.right, style: hdr)),
+  ];
+  return pw.Container(
+    padding: const pw.EdgeInsets.symmetric(vertical: 8),
+    decoration: pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: d.accent, width: 1.5))),
+    child: pw.Row(children: [
+      pw.Expanded(flex: 5, child: pw.Text('DESCRIPTION', style: hdr)),
+      pw.SizedBox(width: 10),
+      for (final (i, w) in trailing.indexed) ...[if (i > 0) pw.SizedBox(width: 10), w],
+    ]),
+  );
+}
+
+pw.Widget _rateCellPdf(PdfDocData d, {
+  required bool enabled,
+  required double amount,
+  required double rate,
+  required bool negative,
+  required String name,
+}) {
+  if (!enabled) return pw.SizedBox();
+  final trimmedName = name.trim();
+  final displayName = _abbreviateRateName(trimmedName);
+  final rateText = '${_fmtPct(rate)}%';
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
+    children: [
+      pw.Text('${negative ? '-' : ''}${d.fmtMoney(amount)}',
+          textAlign: pw.TextAlign.right,
+          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: kPdfInk)),
+      pw.Text(trimmedName.isEmpty ? rateText : '$displayName ($rateText)',
+          textAlign: pw.TextAlign.right,
+          style: const pw.TextStyle(fontSize: 7.5, color: kPdfInk)),
+    ],
+  );
+}
+
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: builds each row's trailing
+// cells from _pdfColumnFlags(d) — UNIT (when any item has one), DISCOUNT/
+// TAX rate cells (signed, named), and a TOTAL cell showing _netTotal(item)
+// instead of the plain item.total.
 pw.Widget _sharedLineItemsTable(PdfDocData d) {
+  final flags = _pdfColumnFlags(d);
   return pw.Column(children: [
-    _sharedLineItemsHeaderRow(d.accent),
+    _sharedLineItemsHeaderRow(d),
     for (final item in d.lineItems)
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 9),
         decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: kPdfRule, width: 0.75))),
         child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          pw.Expanded(flex: 5, child: pw.Text(
-              item.description.isEmpty ? 'Item description' : item.description,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfInk))),
-          pw.Expanded(flex: 1, child: pw.Text(_fmtQty(item.quantity), textAlign: pw.TextAlign.center,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
-          pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.unitPrice), textAlign: pw.TextAlign.right,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
-          pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.total), textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: kPdfInk))),
+          pw.Expanded(flex: 5, child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                  item.description.isEmpty ? 'Item description' : item.description,
+                  style: const pw.TextStyle(fontSize: 10, color: kPdfInk)),
+              _itemBadges(item),
+            ],
+          )),
+          pw.SizedBox(width: 10),
+          for (final (i, w) in <pw.Widget>[
+            pw.Expanded(flex: 2, child: pw.Text(_fmtQty(item.quantity), textAlign: pw.TextAlign.center,
+                style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
+            if (flags.showUnitCol)
+              pw.Expanded(flex: 2, child: pw.Text(
+                  item.unit.isEmpty ? '' : unitDisplayLabel(item.unit, customUnitLabel: item.customUnitLabel),
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 9.5, color: kPdfInk))),
+            pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.unitPrice), textAlign: pw.TextAlign.right,
+                style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
+            if (flags.showDiscountCol)
+              pw.Expanded(flex: 2, child: _rateCellPdf(d,
+                  enabled: item.discountEnabled,
+                  amount: item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0,
+                  rate: item.itemDiscountRate, negative: true, name: item.itemDiscountName)),
+            if (flags.showTaxCol)
+              pw.Expanded(flex: 2, child: _rateCellPdf(d,
+                  enabled: item.taxEnabled,
+                  amount: item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0,
+                  rate: item.itemTaxRate, negative: !item.itemTaxIsAddition, name: item.itemTaxName)),
+            pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(_netTotal(item)), textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: kPdfInk))),
+          ].indexed) ...[
+            if (i > 0) pw.SizedBox(width: 10),
+            w,
+          ],
         ]),
       ),
   ]);
 }
 
 pw.Widget _sharedTotalsAndNotes(PdfDocData d) {
-  // OVERFLOW SAFETY PASS: mirrors the identical fix in
-  // shared_doc_widgets.dart's buildSharedTotalsAndNotesSection — label
-  // and value now wrap in pw.Flexible instead of plain pw.Text, so a long
-  // translated label or an unusually large formatted total can shrink to
-  // fit instead of throwing a layout overflow. This one function backs
-  // every one of the 10 templates' totals sections in the exported PDF,
-  // so this single fix protects all of them at once.
-  //
-  // Deliberately NOT using pw.Text's maxLines/overflow params here — the
-  // `pdf` package's exact API surface for text truncation isn't something
-  // this file can verify without an actual build, and guessing at an
-  // unconfirmed member name risks a compile error worse than the overflow
-  // this is meant to fix. pw.Flexible alone (allowing the text to shrink
-  // within the available space rather than demanding its full intrinsic
-  // width) is the structurally safe fix; if truncation with an ellipsis
-  // is also wanted, confirm the correct pw.Text overflow API against the
-  // actual installed `pdf` package version first.
+  // OVERFLOW SAFETY PASS: label and value wrap in pw.Flexible instead of
+  // plain pw.Text, so a long translated label or an unusually large
+  // formatted total can shrink to fit instead of throwing a layout
+  // overflow.
   pw.Widget row(String label, double v, {bool bold = false, bool negative = false}) => pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 6),
     child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -171,7 +327,7 @@ pw.Widget _sharedTotalsAndNotes(PdfDocData d) {
       pw.Flexible(
         child: pw.Text('${negative ? '-' : ''}${d.fmtMoney(v)}',
             style: pw.TextStyle(fontSize: bold ? 13 : 10.5,
-                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.bold,
+                fontWeight: pw.FontWeight.bold,
                 color: bold ? d.accent : kPdfInk),
             textAlign: pw.TextAlign.right),
       ),
@@ -190,6 +346,19 @@ pw.Widget _sharedTotalsAndNotes(PdfDocData d) {
             row('Subtotal', d.subtotal),
             if (d.discountRate > 0) row('Discount (${_fmtPct(d.discountRate)}%)', d.discountAmount, negative: true),
             if (d.taxRate > 0) row('Tax (${_fmtPct(d.taxRate)}%)', d.taxAmount),
+            // SHARED/EXECUTIVE PARITY PASS — PDF SIDE: grouped-by-name
+            // rows, replacing the old single lumped itemDiscountExtra/
+            // itemTaxExtra figure. Mirrors Executive's own PDF totals
+            // (invoice_pdf_service.dart) and the Flutter shared widgets
+            // exactly.
+            for (final entry in d.itemDiscountExtraByName.entries)
+              if (entry.value > 0)
+                row(entry.key.isEmpty ? 'Item Discounts' : 'Item Discounts (${entry.key})',
+                    entry.value, negative: true),
+            for (final entry in d.itemTaxExtraByName.entries)
+              if (entry.value != 0)
+                row(entry.key.isEmpty ? 'Item Tax' : 'Item Tax (${entry.key})',
+                    entry.value.abs(), negative: entry.value < 0),
             pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4), child: pw.Divider(color: kPdfRule)),
             row(d.totalLabel, d.total, bold: true),
           ]),
@@ -219,18 +388,12 @@ pw.Widget _sharedTotalsAndNotes(PdfDocData d) {
 /// Business logo widget shared by every header below. Respects the
 /// document's real logoShape (circle/square/roundedSquare) instead of a
 /// hardcoded circle, and uses BoxFit.contain on a very light neutral
-/// background so a non-square logo is shown in full rather than cropped
-/// -- see this file's LOGO PARITY PASS header comment for the full
-/// rationale. Returns an empty SizedBox when there's no logo, so every
-/// call site can include it unconditionally without its own null check.
+/// background so a non-square logo is shown in full rather than cropped.
+/// Returns an empty SizedBox when there's no logo, so every call site
+/// can include it unconditionally without its own null check.
 pw.Widget _logoWidget(PdfDocData d, {double size = 56}) {
   if (d.logoImage == null) return pw.SizedBox();
 
-  // Plain double radius (not a full BorderRadius object) since
-  // pw.ClipRRect takes horizontalRadius/verticalRadius directly — mirrors
-  // LogoShape.radiusFor() on the Flutter side (shared_logo_picker.dart)
-  // without depending on a BorderRadius.topLeft accessor that may not
-  // exist the same way in the pdf package as it does in Flutter.
   final radius = switch (d.logoShape) {
     'circle' => size / 2,
     'square' => 0.0,
@@ -274,10 +437,7 @@ pw.Widget _clientBlock(PdfDocData d, {PdfColor labelColor = kPdfGrey}) => pw.Col
 
 // ═════════════════════════════════════════════════════════════════════════
 // 2. NORDIC — right-aligned wordmark, no logo, no rule, mirrored client
-// block on the opposite (left) side. Direct port of nordic_template.dart's
-// reworked _nordicFullHeader — this template deliberately has NO logo in
-// the header and NO decorative rule of any kind, so unlike every other
-// header in this file, _logoWidget is never called here.
+// block on the opposite (left) side.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _nordicMetaStack(PdfDocData d) => pw.Column(
@@ -379,13 +539,7 @@ pw.Widget _vibrantHeader(PdfDocData d) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 4. TECH DARK — terminal/console window chrome. Direct port of
-// tech_dark_template.dart's reworked _techDarkFullHeader — replaces the
-// old solid-dark-panel skeleton it used to share with Vibrant/Classic/
-// Gradient Modern with a bordered "window" box: a dark title-bar strip
-// (window-control dots + filename-style doc label), then a plain white
-// body with a thin accent rail on the left and console-style "> label
-// value" lines for client/meta info.
+// 4. TECH DARK — terminal/console window chrome.
 // ═════════════════════════════════════════════════════════════════════════
 
 const PdfColor _kTechPanel = PdfColor.fromInt(0xFF14171C);
@@ -471,10 +625,7 @@ pw.Widget _techDarkHeader(PdfDocData d) {
 
 // ═════════════════════════════════════════════════════════════════════════
 // 5. CLASSIC — centered letterhead identity block + bordered mini-table
-// box for doc type/number/meta/status. Direct port of classic_template.
-// dart's reworked _classicFullHeader — replaces the old Row(logo|business
-// |doctype) skeleton it used to share with Vibrant/Tech Dark/Gradient
-// Modern. The shaded grey line-items header row below is unchanged.
+// box for doc type/number/meta/status.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _classicBoxRow(String label, String value) => pw.Padding(
@@ -546,16 +697,11 @@ pw.Widget _classicHeader(PdfDocData d) {
 pw.Widget _classicShadedLineHeader(PdfDocData d) => pw.Container(
       color: const PdfColor.fromInt(0xFFF3F4F6),
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
-      child: _sharedLineItemsHeaderRow(d.accent),
+      child: _sharedLineItemsHeaderRow(d),
     );
 
 // ═════════════════════════════════════════════════════════════════════════
-// 6. GRADIENT MODERN — stat-card dashboard row. Direct port of
-// gradient_modern_template.dart's reworked _gradientModernFullHeader —
-// the gradient panel is gone; the identity block sits on plain white and
-// every meta field (doc number, the two meta fields, status) renders as
-// its own small elevated card in a horizontal wrap, like a dashboard
-// summary strip.
+// 6. GRADIENT MODERN — stat-card dashboard row.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _statCard(String label, String value, {PdfColor? valueColor}) => pw.Container(
@@ -605,12 +751,7 @@ pw.Widget _gradientModernHeader(PdfDocData d) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 7. EDITORIAL — two-column letterhead grid with a left spine bar. Direct
-// port of editorial_template.dart's reworked _editorialFullHeader: a
-// full-height accent bar down the left of the header, business identity
-// in a left column, client + meta in a right column beside it (a genuine
-// side-by-side grid, not stacked) — replaces the old big-heading masthead
-// design.
+// 7. EDITORIAL — two-column letterhead grid with a left spine bar.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _editorialMetaLine(String label, String value) => pw.Row(children: [
@@ -629,10 +770,6 @@ pw.Widget _editorialHeader(PdfDocData d) {
       ]),
     ]),
     pw.SizedBox(height: 18),
-    // Letterhead spine — a full-height bar beside the two-column grid,
-    // not a rule under a line of text. crossAxisAlignment.stretch makes
-    // the Container fill the Row's height, same as the Flutter version's
-    // IntrinsicHeight+stretch combination.
     pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
       pw.Container(width: 3, color: d.accent),
       pw.SizedBox(width: 18),
@@ -662,18 +799,10 @@ pw.Widget _editorialHeader(PdfDocData d) {
 
 // ═════════════════════════════════════════════════════════════════════════
 // 8. PASTEL SOFT — floating rounded pill/chip cluster, no panel anywhere.
-// Direct port of pastel_soft_template.dart's reworked _pastelSoftFullHeader:
-// every meta field (doc number, dates, status) is its own small rounded
-// chip on a plain white background instead of one shared tinted panel.
-//
-// One deviation from the Flutter version: the chips there include small
-// leading icons (tag/calendar/event). The `pdf` package doesn't have a
-// matching built-in icon set for those glyphs, so the PDF chips are
-// text-only — same chip shape and spacing, no icon.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _pastelSoftHeader(PdfDocData d) {
-  final chipBg = _tint(d.accent, 0.86); // approximates Color.alphaBlend(accent 14%, white)
+  final chipBg = _tint(d.accent, 0.86);
 
   pw.Widget chip(String label) => pw.Container(
         margin: const pw.EdgeInsets.only(right: 8, bottom: 8),
@@ -719,13 +848,7 @@ pw.Widget _pastelSoftHeader(PdfDocData d) {
 
 // ═════════════════════════════════════════════════════════════════════════
 // 9. BRUTALIST — dark reversed-type recipient block + business/doc-type
-// block. Direct port of brutalist_template.dart's reworked
-// _brutalistFullHeader's content, minus the diagonal ribbon clip (the pdf
-// package has no ClipPath equivalent — see this file's KNOWN LIMITATION
-// note at the top). This header renders its OWN line-items header row
-// (the dark SL./ITEM DESCRIPTION/QTY/PRICE/TOTAL bar below) — see the
-// BRUTALIST DOUBLE-HEADER FIX note at the top for why buildStyledDocument
-// must not also append the generic shared header row for this style.
+// block. Renders its OWN line-items header row.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _brutalistKv(String k, String v) => pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
@@ -733,24 +856,39 @@ pw.Widget _brutalistKv(String k, String v) => pw.Row(mainAxisSize: pw.MainAxisSi
       pw.Text(v, style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: kPdfInk)),
     ]);
 
-pw.Widget _brutalistLineItemsBar() => pw.Container(
-      color: kPdfInk,
-      padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: pw.Row(children: [
-        pw.SizedBox(width: 20, child: pw.Text('SL.', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400))),
-        pw.Expanded(flex: 5, child: pw.Text('ITEM DESCRIPTION', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400, letterSpacing: 0.6))),
-        pw.Expanded(flex: 1, child: pw.Text('QTY', textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400))),
-        pw.Expanded(flex: 2, child: pw.Text('PRICE', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400))),
-        pw.Expanded(flex: 2, child: pw.Text('TOTAL', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400))),
-      ]),
-    );
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: Brutalist's dark bar now
+// takes the document and adds UNIT/DISCOUNT/TAX columns matching
+// _pdfColumnFlags(d), same shape _sharedLineItemsTableBodyOnly's rows use
+// below it.
+pw.Widget _brutalistLineItemsBar(PdfDocData d) {
+  final flags = _pdfColumnFlags(d);
+  final hdr = pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey400);
+  final trailing = <pw.Widget>[
+    pw.Expanded(flex: 2, child: pw.Text('QTY', textAlign: pw.TextAlign.center, style: hdr)),
+    if (flags.showUnitCol)
+      pw.Expanded(flex: 2, child: pw.Text('UNIT', textAlign: pw.TextAlign.center, style: hdr)),
+    pw.Expanded(flex: 2, child: pw.Text('PRICE', textAlign: pw.TextAlign.right, style: hdr)),
+    if (flags.showDiscountCol)
+      pw.Expanded(flex: 2, child: pw.Text('DISCOUNT', textAlign: pw.TextAlign.right, style: hdr)),
+    if (flags.showTaxCol)
+      pw.Expanded(flex: 2, child: pw.Text('TAX', textAlign: pw.TextAlign.right, style: hdr)),
+    pw.Expanded(flex: 2, child: pw.Text('TOTAL', textAlign: pw.TextAlign.right, style: hdr)),
+  ];
+  return pw.Container(
+    color: kPdfInk,
+    padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+    child: pw.Row(children: [
+      pw.SizedBox(width: 20, child: pw.Text('SL.', style: hdr)),
+      pw.Expanded(flex: 5, child: pw.Text('ITEM DESCRIPTION', style: hdr.copyWith(letterSpacing: 0.6))),
+      pw.SizedBox(width: 10),
+      for (final (i, w) in trailing.indexed) ...[if (i > 0) pw.SizedBox(width: 10), w],
+    ]),
+  );
+}
 
 pw.Widget _brutalistHeader(PdfDocData d) {
   return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
     pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-      // Recipient block — reversed (white-on-dark) type. Flat rectangle
-      // here rather than the Flutter version's diagonally-clipped ribbon
-      // shape (see KNOWN LIMITATION note at top of file).
       pw.Expanded(
         flex: 3,
         child: pw.Container(
@@ -766,7 +904,6 @@ pw.Widget _brutalistHeader(PdfDocData d) {
         ),
       ),
       pw.SizedBox(width: 4),
-      // Business identity + doc heading, plain white background.
       pw.Expanded(
         flex: 4,
         child: pw.Padding(
@@ -794,16 +931,12 @@ pw.Widget _brutalistHeader(PdfDocData d) {
       ),
     ]),
     pw.SizedBox(height: 20),
-    _brutalistLineItemsBar(),
+    _brutalistLineItemsBar(d),
   ]);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 10. EMERALD — compact single-column stacked form. Direct port of
-// emerald_template.dart's reworked _emeraldFullHeader: every field
-// (business, client, dates, doc number) is a tight label-over-value
-// stack in ONE narrow column — no left/right split, no logo-beside-name
-// row (the logo sits above the business name instead).
+// 10. EMERALD — compact single-column stacked form.
 // ═════════════════════════════════════════════════════════════════════════
 
 pw.Widget _emeraldField(String label, String value, {bool bold = false}) => pw.Padding(
@@ -833,13 +966,6 @@ pw.Widget _emeraldFieldStack(PdfDocData d) => pw.Column(crossAxisAlignment: pw.C
     ]);
 
 pw.Widget _emeraldHeader(PdfDocData d) {
-  // A4 page width is 595.28pt; buildStyledDocument uses 36pt margins on
-  // each side, leaving ~523.28pt of content width. 62% of that mirrors
-  // the Flutter template's kContentW * 0.62 field-column width. Written
-  // as a plain literal rather than a PdfPageFormat constant reference,
-  // since this file has no way to confirm that exact static member name
-  // against the installed `pdf` package version without running the
-  // build.
   const contentW = 523.28;
   return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
     pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -890,8 +1016,7 @@ Future<List<int>> buildStyledDocument(PdfDocData d, int styleId) async {
   // Classic (5) and Brutalist (9) both render their own line-items header
   // row inline as part of the header widget itself, so the table body
   // below must skip re-rendering the generic shared header row on top of
-  // it — see the BRUTALIST DOUBLE-HEADER FIX note at the top of this file
-  // for why style 9 was added here.
+  // it.
   final needsOwnTable = styleId != 5 && styleId != 9;
 
   pdf.addPage(
@@ -912,22 +1037,55 @@ Future<List<int>> buildStyledDocument(PdfDocData d, int styleId) async {
 // Classic/Brutalist's headers already render their own (shaded/dark) line
 // items header row, so the table body here skips re-rendering another
 // header row on top of it.
+//
+// SHARED/EXECUTIVE PARITY PASS — PDF SIDE: same four fixes as
+// _sharedLineItemsTable above — UNIT/DISCOUNT/TAX columns via
+// _pdfColumnFlags(d), signed+named rate cells, and netTotal instead of
+// plain item.total.
 pw.Widget _sharedLineItemsTableBodyOnly(PdfDocData d) {
+  final flags = _pdfColumnFlags(d);
   return pw.Column(children: [
     for (final item in d.lineItems)
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 9),
         decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: kPdfRule, width: 0.75))),
         child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          pw.Expanded(flex: 5, child: pw.Text(
-              item.description.isEmpty ? 'Item description' : item.description,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfInk))),
-          pw.Expanded(flex: 1, child: pw.Text(_fmtQty(item.quantity), textAlign: pw.TextAlign.center,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
-          pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.unitPrice), textAlign: pw.TextAlign.right,
-              style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
-          pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.total), textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: kPdfInk))),
+          pw.Expanded(flex: 5, child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                  item.description.isEmpty ? 'Item description' : item.description,
+                  style: const pw.TextStyle(fontSize: 10, color: kPdfInk)),
+              _itemBadges(item),
+            ],
+          )),
+          pw.SizedBox(width: 10),
+          for (final (i, w) in <pw.Widget>[
+            pw.Expanded(flex: 2, child: pw.Text(_fmtQty(item.quantity), textAlign: pw.TextAlign.center,
+                style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
+            if (flags.showUnitCol)
+              pw.Expanded(flex: 2, child: pw.Text(
+                  item.unit.isEmpty ? '' : unitDisplayLabel(item.unit, customUnitLabel: item.customUnitLabel),
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 9.5, color: kPdfInk))),
+            pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(item.unitPrice), textAlign: pw.TextAlign.right,
+                style: const pw.TextStyle(fontSize: 10, color: kPdfGrey))),
+            if (flags.showDiscountCol)
+              pw.Expanded(flex: 2, child: _rateCellPdf(d,
+                  enabled: item.discountEnabled,
+                  amount: item.discountEnabled ? item.total * item.itemDiscountRate / 100 : 0.0,
+                  rate: item.itemDiscountRate, negative: true, name: item.itemDiscountName)),
+            if (flags.showTaxCol)
+              pw.Expanded(flex: 2, child: _rateCellPdf(d,
+                  enabled: item.taxEnabled,
+                  amount: item.taxEnabled ? item.total * item.itemTaxRate / 100 : 0.0,
+                  rate: item.itemTaxRate, negative: !item.itemTaxIsAddition, name: item.itemTaxName)),
+            pw.Expanded(flex: 2, child: pw.Text(d.fmtMoney(_netTotal(item)), textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: kPdfInk))),
+          ].indexed) ...[
+            if (i > 0) pw.SizedBox(width: 10),
+            w,
+          ],
         ]),
       ),
   ]);

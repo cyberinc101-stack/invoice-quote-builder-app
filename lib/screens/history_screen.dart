@@ -1,6 +1,20 @@
 // lib/screens/history_screen.dart
 //
-// FILTERS PASS (this update): added two more filter dimensions alongside
+// OPEN-ON-TAP PASS (this update): tapping a _HistoryTile now opens that
+// document's SavedDocumentDetailScreen instead of doing nothing. Each
+// tile looks itself up in the relevant provider by event.docId (via
+// context.read<InvoiceProvider/QuoteProvider/ReceiptProvider>()) since
+// HistoryEvent only stores docId/docType, not the saved object itself —
+// the document may also have changed (renamed, status updated) since the
+// event was logged, so looking it up live rather than reconstructing a
+// stale copy from the event's own fields is deliberate. If the document
+// was deleted since the event was logged (firstWhere finds nothing), taps
+// show a snackbar ("This document no longer exists") instead of pushing a
+// broken screen. The reshare ("send again") IconButton's onPressed still
+// calls _reshare directly and does NOT trigger the row's own onTap — it's
+// wrapped separately so both actions coexist on the same row.
+//
+// FILTERS PASS (earlier update): added two more filter dimensions alongside
 // the existing event-type chips (All/Created/Shared/Downloaded/Sent/
 // Printed):
 //   1. Document type — All/Invoices/Quotes/Receipts, a second chip row.
@@ -32,8 +46,12 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/history_event.dart';
 import '../providers/history_provider.dart';
+import '../providers/invoice_provider.dart';
+import '../providers/quote_provider.dart';
+import '../providers/receipt_provider.dart';
 import '../widgets/very_top_header.dart';
 import 'settings_screen.dart';
+import 'saved_invoice_details_section/saved_document_detail_screen.dart';
 
 // ── Date-range presets ──────────────────────────────────────────────────
 
@@ -531,11 +549,61 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
 // -----------------------------------------------------------------------------
 // _HistoryTile — one activity-feed row
+//
+// OPEN-ON-TAP PASS: the whole row is now wrapped in an InkWell that looks
+// the document up live in its provider (by docId) and pushes
+// SavedDocumentDetailScreen for it. This is separate from the trailing
+// "send again" IconButton, which keeps its own onPressed and does not
+// bubble up to trigger the row's tap.
 // -----------------------------------------------------------------------------
 
 class _HistoryTile extends StatelessWidget {
   final HistoryEvent event;
   const _HistoryTile({required this.event});
+
+  // Looks the document up live in the relevant provider by docId (not
+  // reconstructed from the event's own snapshot fields, since the
+  // document may have been renamed/edited/had its status change since
+  // this event was logged). Returns null if it's since been deleted.
+  Widget? _buildDetailScreen(BuildContext context) {
+    switch (event.docType) {
+      case HistoryDocType.invoice:
+        final list = context.read<InvoiceProvider>().savedInvoices;
+        for (final inv in list) {
+          if (inv.id == event.docId) {
+            return SavedDocumentDetailScreen.invoice(inv);
+          }
+        }
+        return null;
+      case HistoryDocType.quote:
+        final list = context.read<QuoteProvider>().savedQuotes;
+        for (final q in list) {
+          if (q.id == event.docId) {
+            return SavedDocumentDetailScreen.quote(q);
+          }
+        }
+        return null;
+      case HistoryDocType.receipt:
+        final list = context.read<ReceiptProvider>().savedReceipts;
+        for (final r in list) {
+          if (r.id == event.docId) {
+            return SavedDocumentDetailScreen.receipt(r);
+          }
+        }
+        return null;
+    }
+  }
+
+  void _openDetail(BuildContext context) {
+    final screen = _buildDetailScreen(context);
+    if (screen == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This document no longer exists.')),
+      );
+      return;
+    }
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -545,81 +613,88 @@ class _HistoryTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: meta.color.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(meta.icon, size: 18, color: meta.color),
+          onTap: () => _openDetail(context),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colorScheme.outline.withValues(alpha: 0.15)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_docTypeLabel(event.docType)} ${event.docNumber}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurface,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _subtitle(event),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Row(
               children: [
-                Text(
-                  _timeLabel(event.timestamp),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: colorScheme.onSurface.withValues(alpha: 0.45),
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: meta.color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(meta.icon, size: 18, color: meta.color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_docTypeLabel(event.docType)} ${event.docNumber}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _subtitle(event),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: canReshare ? 'Send again' : 'File no longer available',
-                  icon: Icon(
-                    Icons.ios_share_rounded,
-                    size: 18,
-                    color: canReshare
-                        ? colorScheme.primary
-                        : colorScheme.onSurface.withValues(alpha: 0.25),
-                  ),
-                  onPressed: canReshare ? () => _reshare(context) : null,
+                const SizedBox(width: 8),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _timeLabel(event.timestamp),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurface.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: canReshare ? 'Send again' : 'File no longer available',
+                      icon: Icon(
+                        Icons.ios_share_rounded,
+                        size: 18,
+                        color: canReshare
+                            ? colorScheme.primary
+                            : colorScheme.onSurface.withValues(alpha: 0.25),
+                      ),
+                      onPressed: canReshare ? () => _reshare(context) : null,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

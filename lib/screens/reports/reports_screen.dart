@@ -1,7 +1,83 @@
 // reports_screen.dart
 // lib/screens/reports/reports_screen.dart
 //
-// PROFIT & LOSS PASS (this update): _sumIncome's single combined total is
+// STATUS BAR REPOSITION PASS (this update): "Invoice value by status"
+// (StatusBreakdownBar) moved from the very bottom of the screen to sit
+// directly under the Net stat card, right before the Profit & Loss
+// section — pure reordering, no data/logic change. statusSegments is
+// still computed in the same place in build(); only where it's rendered
+// changed.
+//
+// PARITY FIX (earlier): _outputTaxCollected() folded in
+// InvoiceData.itemTaxExtra for invoices but never added
+// ReceiptData.itemTaxExtra for receipts — so a receipt using a per-item
+// tax rate (as opposed to the whole-receipt Tax %) had its per-item tax
+// silently missing from the "output tax collected" figure, even though
+// ReceiptData.itemTaxExtra exists and every other total on this screen
+// (Income, Top Clients, client statements, the document list) already
+// reads r.data.amountPaid directly, which DOES fold itemTaxExtra in at
+// the model level. This was purely a gap in this one derived figure —
+// nothing else on the screen was affected.
+//
+// TAX PAYABLE PASS (earlier): added _outputTaxCollected() and
+// _inputTaxPaid() plus wiring for the new TaxPayableCard
+// (reports_widgets.dart) — GST/VAT/sales tax already collected on
+// invoices/receipts, optionally netted against tax paid on expenses
+// (ExpenseEntry.taxAmount, expense_data.dart's INPUT TAX CREDIT PASS)
+// when ReportsPrefs.includeInputCreditsInTaxPayable is on. Deliberately
+// separate from the existing TaxSetAsideCard, which estimates INCOME tax
+// (net × a flat planning rate) — this is a different accounting concept:
+// tax already charged to customers and owed to a tax authority, not a
+// forward-looking estimate. Both output and input figures are computed
+// straight off numbers InvoiceData/ReceiptData/ExpenseEntry already
+// expose (taxAmount/itemTaxExtra), gated the same way Income already is
+// — no new document-model fields, no changes to invoices/quotes/receipts
+// themselves or their templates. Rendered directly under TaxSetAsideCard
+// so the two tax concepts sit next to each other rather than being
+// confused for one figure.
+//
+// ── Everything else below is unchanged from the previous pass — see
+// original header comments preserved below. ──
+//
+// DEFAULT-TO-ALL-TIME PASS (earlier): _isAllTimeActive now starts
+// true instead of false — Reports opens showing every document
+// regardless of date, rather than the current calendar month. This is a
+// pure default-value change: every other file/pass listed below
+// (_periodLabel, the period-computation block, the hero card's mode
+// display, the net-margin badge/income-goal card's gating) already
+// treats _isAllTimeActive as the highest-priority state with full
+// support — nothing else needed to change for the new default to work
+// correctly. Tapping the month label (or the "x" on the All time pill)
+// still switches into single-month/range mode exactly as before; this
+// only changes what the screen shows on first open.
+//
+// ALL TIME PASS (earlier): added a third report scope — "All time" —
+// alongside the existing single-month and custom-range modes, selected via
+// the same month_picker_sheet.dart sheet (now with a third mode tab; see
+// its own header comment). _isAllTimeActive is the new source of truth,
+// checked ahead of _isRangeActive everywhere the screen decides which
+// period's documents to total. When active, periodInvoices/periodReceipts/
+// periodQuotes are simply the full (folder-scoped) invoices/receipts/
+// quotes lists with no date filtering at all — every document created at
+// any point in time counts — and periodExpenses/expensesThisMonth pull
+// from ExpenseProvider via a wide-open forRange/totalForRange spanning
+// 1970 through 100 years from now, since ExpenseProvider doesn't expose a
+// dedicated "everything" accessor. Every other card on this screen
+// (Income/Expenses/Net, the P&L card, Total Unpaid, aging buckets,
+// days-to-paid, Top Clients, category breakdown, "Documents in this
+// period", the invoice-status breakdown) already reads from those same
+// period* variables, so all of them automatically total across every
+// document with no further changes — same reasoning _isRangeActive's
+// introduction relied on. Net margin badge and the monthly income goal
+// card are both inherently month-over-month concepts with no sensible
+// "previous period" when the period is literally everything, so both are
+// now gated behind `!_isRangeActive && !_isAllTimeActive`, same treatment
+// range mode already got. _periodLabel() is a new single choke point for
+// "what string names the active period" (All time / the range label / the
+// month label) — client statements and the P&L card both route through it
+// now instead of repeating the _isRangeActive ternary.
+//
+// PROFIT & LOSS PASS (earlier): _sumIncome's single combined total is
 // now backed by a new _incomeBreakdown() helper that returns invoice and
 // receipt revenue as separate numbers (invoice, receipt) — _sumIncome
 // just adds the two together, so every existing caller (income,
@@ -14,9 +90,6 @@
 // computes — so the P&L card can never disagree with any other card on
 // this screen about what counts as revenue or an expense. Rendered as a
 // new section directly under the Net stat card, above Total Unpaid.
-//
-// ── Everything else below is unchanged from the previous pass — see
-// original header comments preserved below. ──
 //
 // MONTH PICKER THEME-COLOR PASS (earlier): _openMonthPicker() now
 // passes Theme.of(context).colorScheme.primary as the picker's accent
@@ -309,6 +382,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
   DateTime? _rangeEnd;
   bool get _isRangeActive => _rangeStart != null && _rangeEnd != null;
 
+  // All time state — true means every document counts regardless of its
+  // date, taking priority over both _isRangeActive and _month. See the
+  // ALL TIME PASS header comment for how this composes with the rest of
+  // the screen.
+  //
+  // DEFAULT-TO-ALL-TIME PASS: starts true, so Reports opens on "All
+  // time" instead of the current calendar month. Tapping the month
+  // label (or the "x" on the All time pill in the hero card) still
+  // switches into single-month/range mode exactly as before — this only
+  // changes the screen's starting state.
+  bool _isAllTimeActive = true;
+
   // Folder scope. null = "All folders" (no filtering, prior behavior).
   // Non-null narrows every document list to that folder before any
   // month/range bucketing happens.
@@ -327,6 +412,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return '${fmt(_rangeStart!)} – ${fmt(_rangeEnd!)}';
   }
 
+  // Single choke point for "what string names the active period" — All
+  // time / the custom range label / the single-month label, in that
+  // priority order (matching how the period-computation block below picks
+  // which documents count). Client statements and the P&L card both route
+  // through this instead of repeating the _isRangeActive ternary.
+  String _periodLabel() {
+    if (_isAllTimeActive) return 'All time';
+    if (_isRangeActive) return _rangeLabel();
+    return _monthLabel(_month);
+  }
+
   String _monthKey(DateTime d) => '${d.year}-${d.month}';
 
   DateTime _monthsBefore(DateTime month, int n) => DateTime(month.year, month.month - n);
@@ -337,22 +433,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
       initialMonth: _month,
       initialRangeStart: _rangeStart,
       initialRangeEnd: _rangeEnd,
+      initialIsAllTime: _isAllTimeActive,
       // Uses the app's overall theme color (colorScheme.primary, seeded
       // from Color(0xFF1565C0) in main.dart) rather than this screen's
       // own kReportsAccent teal, so the picker's selected-day circles,
-      // range band, mode toggle, and "Done" button match the rest of the
-      // app instead of standing out in Reports-specific teal.
+      // range band, mode toggle, and "Done" button now match the rest of
+      // the app instead of standing out in Reports-specific teal.
       accent: Theme.of(context).colorScheme.primary,
     );
     if (result == null) return;
 
-    if (result.isRange) {
+    if (result.isAllTime) {
       setState(() {
+        _isAllTimeActive = true;
+        _rangeStart = null;
+        _rangeEnd = null;
+      });
+    } else if (result.isRange) {
+      setState(() {
+        _isAllTimeActive = false;
         _rangeStart = result.rangeStart;
         _rangeEnd = result.rangeEnd;
       });
     } else if (result.month != null) {
       setState(() {
+        _isAllTimeActive = false;
         _month = DateTime(result.month!.year, result.month!.month);
         _rangeStart = null;
         _rangeEnd = null;
@@ -365,6 +470,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _rangeStart = null;
       _rangeEnd = null;
     });
+  }
+
+  void _clearAllTime() {
+    setState(() => _isAllTimeActive = false);
   }
 
   // Folder picker sheet — lists "All folders" plus every folder name
@@ -534,6 +643,66 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 i.data.paymentStatus == PaymentStatus.overdue) &&
             _isReportable(i.completionPercent, i.data.excludeFromReports))
         .fold(0.0, (s, i) => s + i.data.grandTotal);
+  }
+
+  // TAX PAYABLE PASS: tax already collected from customers on invoices/
+  // receipts for the active period — the "output tax" side of a GST/VAT/
+  // sales-tax return. Same gating as _sumIncome (prefs.includeInvoices/
+  // includeReceipts, paid invoices/issued receipts only, _isReportable)
+  // so this can never disagree with Income about which documents count.
+  //
+  // PARITY FIX: the receipts branch now also adds r.data.itemTaxExtra,
+  // matching the invoices branch immediately above it — previously only
+  // r.data.taxAmount (the whole-receipt rate) was counted, silently
+  // missing any per-item tax rate set on a receipt's own line items,
+  // even though ReceiptData.itemTaxExtra exists and every other total on
+  // this screen (Income via amountPaid, Top Clients, client statements,
+  // the document list) already folds it in at the model level.
+  //
+  // Reads InvoiceData.taxAmount + itemTaxExtra — the whole-invoice rate
+  // plus any per-item override, matching exactly how grandTotal itself is
+  // built — and ReceiptData.taxAmount + itemTaxExtra, matching exactly
+  // how amountPaid itself is built. No new document-model fields needed:
+  // this is purely a different way of reading numbers that were already
+  // being computed for the grand total / amount paid.
+  double _outputTaxCollected({
+    required List<SavedInvoice> invoices,
+    required List<SavedReceipt> receipts,
+    required ReportsPrefs prefs,
+  }) {
+    double total = 0;
+    if (prefs.includeInvoices) {
+      total += invoices
+          .where((i) =>
+              i.data.paymentStatus == PaymentStatus.paid &&
+              _isReportable(i.completionPercent, i.data.excludeFromReports))
+          .fold(0.0, (s, i) => s + i.data.taxAmount + i.data.itemTaxExtra);
+    }
+    if (prefs.includeReceipts) {
+      // PARITY FIX: + r.data.itemTaxExtra added — see doc comment above.
+      total += receipts
+          .where((r) =>
+              r.data.status == ReceiptStatus.issued &&
+              _isReportable(r.completionPercent, r.data.excludeFromReports))
+          .fold(0.0, (s, r) => s + r.data.taxAmount + r.data.itemTaxExtra);
+    }
+    return total;
+  }
+
+  // TAX PAYABLE PASS: tax already paid on business expenses for the
+  // active period — the "input tax credit" side of a GST/VAT return, only
+  // ever subtracted from output tax when
+  // ReportsPrefs.includeInputCreditsInTaxPayable is on. periodExpenses is
+  // already range/folder-scoped and empty whenever prefs.includeExpenses
+  // is off, so no extra gating is needed there; the !excludeFromReports
+  // check mirrors the same manual-exclusion gate ExpenseProvider applies
+  // internally for totalForRange/totalForMonth, applied directly here
+  // since Reports already holds the raw periodExpenses list rather than
+  // making a second provider call.
+  double _inputTaxPaid(List<ExpenseEntry> periodExpenses) {
+    return periodExpenses
+        .where((e) => !e.excludeFromReports)
+        .fold(0.0, (s, e) => s + e.taxAmount);
   }
 
   // Average days between issue date (falls back to createdAt if issueDate
@@ -756,7 +925,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     showClientStatementSheet(
       context,
       clientName: clientName,
-      periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+      periodLabel: _periodLabel(),
       lines: _statementLinesForClient(
         clientName,
         periodInvoices: periodInvoices,
@@ -802,7 +971,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     showClientStatementsListSheet(
       context,
-      periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+      periodLabel: _periodLabel(),
       summaries: summaries,
       isDark: Theme.of(context).brightness == Brightness.dark,
       accent: kReportsAccent,
@@ -866,10 +1035,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final receiptsByMonth = _groupByMonth<SavedReceipt>(receipts, (r) => r.createdAt);
     final quotesByMonth = _groupByMonth<SavedQuote>(quotes, (q) => q.createdAt);
 
-    // ── Current period figures — either the active custom range, or the
-    // single selected month (unchanged behavior). periodExpenses/
-    // expensesThisMonth respect prefs.includeExpenses, same pattern as
-    // includeInvoices/includeQuotes gating income above. ─────────────
+    // ── Current period figures — either All time, the active custom
+    // range, or the single selected month (unchanged behavior), checked
+    // in that priority order. periodExpenses/expensesThisMonth respect
+    // prefs.includeExpenses, same pattern as includeInvoices/includeQuotes
+    // gating income above. ───────────────────────────────────────────
     late final List<SavedInvoice> periodInvoices;
     late final List<SavedReceipt> periodReceipts;
     late final List<SavedQuote> periodQuotes;
@@ -877,7 +1047,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
     late final double income;
     late final double expensesThisMonth;
 
-    if (_isRangeActive) {
+    if (_isAllTimeActive) {
+      // Every already folder-scoped document counts, regardless of when it
+      // was created — no date filtering at all. ExpenseProvider has no
+      // dedicated "everything" accessor, so a wide-open range spanning
+      // 1970 through 100 years from now stands in for "all of it".
+      final allTimeStart = DateTime(1970, 1, 1);
+      final allTimeEnd = DateTime(DateTime.now().year + 100, 12, 31);
+      periodInvoices = invoices;
+      periodReceipts = receipts;
+      periodQuotes = quotes;
+      periodExpenses = prefs.includeExpenses
+          ? expenseProvider.forRange(allTimeStart, allTimeEnd)
+          : const <ExpenseEntry>[];
+      income = _sumIncome(invoices: periodInvoices, receipts: periodReceipts, prefs: prefs);
+      expensesThisMonth = prefs.includeExpenses
+          ? expenseProvider.totalForRange(allTimeStart, allTimeEnd)
+          : 0.0;
+    } else if (_isRangeActive) {
       periodInvoices = _filterByRange(invoices, (i) => i.createdAt, _rangeStart!, _rangeEnd!);
       periodReceipts = _filterByRange(receipts, (r) => r.createdAt, _rangeStart!, _rangeEnd!);
       periodQuotes = _filterByRange(quotes, (q) => q.createdAt, _rangeStart!, _rangeEnd!);
@@ -908,6 +1095,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // scope as everything else above. See _sumUnpaid's doc comment.
     final totalUnpaid = _sumUnpaid(invoices: periodInvoices, prefs: prefs);
 
+    // TAX PAYABLE PASS: output tax (collected on sales) and input tax
+    // (paid on expenses) for the active period — see both methods' doc
+    // comments above for the gating/accounting rules. inputTaxPaid is
+    // always computed (cheap — just a fold over periodExpenses) even when
+    // the toggle is off, so flipping the toggle on doesn't need a rebuild
+    // path of its own.
+    final outputTaxCollected = _outputTaxCollected(invoices: periodInvoices, receipts: periodReceipts, prefs: prefs);
+    final inputTaxPaid = _inputTaxPaid(periodExpenses);
+
     final agingBuckets = prefs.includeInvoices
         ? _overdueAgingBuckets(periodInvoices)
         : (d0to30: 0.0, d31to60: 0.0, d61plus: 0.0);
@@ -930,9 +1126,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // empty breakdown, consistent with the $0 Expenses stat card.
     final byCategory = !prefs.includeExpenses
         ? const <String, double>{}
-        : (_isRangeActive
-            ? expenseProvider.byCategoryForRange(_rangeStart!, _rangeEnd!)
-            : expenseProvider.byCategoryForMonth(_month));
+        : (_isAllTimeActive
+            ? expenseProvider.byCategoryForRange(DateTime(1970, 1, 1), DateTime(DateTime.now().year + 100, 12, 31))
+            : _isRangeActive
+                ? expenseProvider.byCategoryForRange(_rangeStart!, _rangeEnd!)
+                : expenseProvider.byCategoryForMonth(_month));
     final sortedCategoryEntries = byCategory.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxCategoryAmount = sortedCategoryEntries.isEmpty ? 1.0 : sortedCategoryEntries.first.value;
@@ -948,9 +1146,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     // ── Net margin badge — only meaningful for single-month mode; a
     // "previous period" comparison doesn't have an obvious definition for
-    // an arbitrary custom range, so it's hidden in range mode. ─────────
+    // an arbitrary custom range OR for "all time", so it's hidden in both
+    // range mode and all-time mode. ─────────────────────────────────
     double? netChangePercent;
-    if (!_isRangeActive) {
+    if (!_isRangeActive && !_isAllTimeActive) {
       final prevMonth = _monthsBefore(_month, 1);
       final prevIncome = _incomeForMonth(prevMonth, invoicesByMonth: invoicesByMonth, receiptsByMonth: receiptsByMonth, prefs: prefs);
       final prevExpenses = prefs.includeExpenses ? expenseProvider.totalForMonth(prevMonth) : 0.0;
@@ -1137,7 +1336,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         sortedCategoryEntries.isNotEmpty;
 
     final animationSignature =
-        '${_isRangeActive}-${_rangeStart}-${_rangeEnd}-${_month.year}-${_month.month}-${prefs.includeInvoices}-${prefs.includeQuotes}-${prefs.includeReceipts}-${prefs.includeExpenses}-$_selectedFolder';
+        '$_isAllTimeActive-$_isRangeActive-$_rangeStart-$_rangeEnd-${_month.year}-${_month.month}-${prefs.includeInvoices}-${prefs.includeQuotes}-${prefs.includeReceipts}-${prefs.includeExpenses}-$_selectedFolder';
 
     return Scaffold(
       appBar: AppBar(
@@ -1154,10 +1353,44 @@ class _ReportsScreenState extends State<ReportsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Period selector — either month chevrons + label, or the
-                // active range label + a clear button. White-on-dark
+                // Period selector — All time label + a clear button, the
+                // active range label + a clear button, or month chevrons +
+                // label, checked in that priority order (matching
+                // _isAllTimeActive/_isRangeActive elsewhere). White-on-dark
                 // styling since this now sits on the gradient card.
-                if (_isRangeActive)
+                if (_isAllTimeActive)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: _openMonthPicker,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.all_inclusive_rounded, size: 16, color: Colors.white70),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'All time',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                        tooltip: 'Exit all time',
+                        onPressed: _clearAllTime,
+                      ),
+                    ],
+                  )
+                else if (_isRangeActive)
                   Row(
                     children: [
                       Expanded(
@@ -1344,6 +1577,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Moved here (previously rendered at the very bottom of the
+            // screen) so the invoice-status breakdown sits directly under
+            // Net, right before the P&L card. statusSegments is computed
+            // earlier in build() exactly as before — only the render
+            // position changed.
+            if (statusSegments.isNotEmpty) ...[
+              StatusBreakdownBar(title: 'Invoice value by status', segments: statusSegments, isDark: isDark),
+              const SizedBox(height: 12),
+            ],
+
             // ── Profit & Loss statement — new section, sits right under
             // Net so the headline number (Net) is immediately followed by
             // the structured breakdown explaining how it was arrived at.
@@ -1352,7 +1595,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             // disagree with Income/Expenses/Net or "Expenses by category"
             // further down.
             ProfitLossCard(
-              periodLabel: _isRangeActive ? _rangeLabel() : _monthLabel(_month),
+              periodLabel: _periodLabel(),
               invoiceRevenue: incomeBreakdown.invoice,
               receiptRevenue: incomeBreakdown.receipt,
               expensesByCategory: [
@@ -1364,7 +1607,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 12),
 
-            if (!_isRangeActive)
+            if (!_isRangeActive && !_isAllTimeActive)
               IncomeGoalCard(
                 income: income,
                 goal: prefs.monthlyIncomeGoal,
@@ -1411,6 +1654,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 12),
 
+            // TAX PAYABLE PASS: GST/VAT/sales tax already collected on
+            // sales, optionally netted against tax paid on expenses.
+            // Deliberately placed right after TaxSetAsideCard so the two
+            // different "tax" cards sit together rather than being
+            // mistaken for the same figure — see reports_widgets.dart's
+            // TaxPayableCard doc comment.
+            TaxPayableCard(
+              taxTypeLabel: prefs.taxTypeLabel,
+              outputTax: outputTaxCollected,
+              inputTax: inputTaxPaid,
+              includeInputCredits: prefs.includeInputCreditsInTaxPayable,
+              isDark: isDark,
+              accent: kReportsAccent,
+              onLabelChanged: (v) => prefs.setTaxTypeLabel(v),
+              onIncludeInputCreditsChanged: (v) => prefs.setIncludeInputCreditsInTaxPayable(v),
+            ),
+            const SizedBox(height: 12),
+
             if (prefs.includeQuotes)
               Container(
                 padding: const EdgeInsets.all(14),
@@ -1424,7 +1685,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Accepted quotes ${_isRangeActive ? 'in this range' : 'this month'} (not counted as income): '
+                        'Accepted quotes ${_isAllTimeActive ? 'in all time' : (_isRangeActive ? 'in this range' : 'this month')} (not counted as income): '
                         '${acceptedQuotesThisPeriod.length} · ${quotePipeline.toStringAsFixed(2)} total',
                         style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.6)),
                       ),
@@ -1478,7 +1739,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Text(
                 !prefs.includeExpenses
                     ? 'Expenses are turned off for this report.'
-                    : 'No expenses recorded ${_isRangeActive ? 'in this range' : 'this month'}.',
+                    : 'No expenses recorded ${_isAllTimeActive ? 'in all time' : (_isRangeActive ? 'in this range' : 'this month')}.',
                 style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               )
             else
@@ -1503,12 +1764,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               isDark: isDark,
               emptyLabel: 'No invoices, quotes, receipts, or expenses in this period.',
             ),
-            const SizedBox(height: 24),
-
-            if (statusSegments.isNotEmpty) ...[
-              StatusBreakdownBar(title: 'Invoice value by status', segments: statusSegments, isDark: isDark),
-              const SizedBox(height: 24),
-            ],
           ],
         ],
       ),
