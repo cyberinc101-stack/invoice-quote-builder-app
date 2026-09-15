@@ -10,7 +10,18 @@
 // reference the dialog class directly. Behavior unchanged from the
 // original file.
 //
-// BANNER-SHAPE LOCK PASS (this update): the header target's reposition-
+// ZOOM-OUT RANGE PASS (this update): the reposition dialog's zoom floor
+// (_minScale below) is lowered from 1.0 to kBackgroundMinZoomOutScale
+// (imported from background_spec.dart — the same constant
+// BackgroundSpec.clampedScale itself now uses as its render-time floor,
+// so the dialog and the real document can't drift to different ranges
+// again), so a person can zoom OUT past "just barely covers the box" to
+// reveal more of the image (with background showing around it), not
+// just zoom in. The thumbnail preview's own hardcoded .clamp(1.0, 3.0)
+// calls are widened to match, so what's shown while editing doesn't
+// clip a value the dialog itself now allows.
+
+// BANNER-SHAPE LOCK PASS (earlier): the header target's reposition-
 // dialog preview box used to be a hardcoded 280×110 (≈2.55:1) — which
 // doesn't match the header's real rendered banner shape of
 // kPageW × kHeaderBackgroundBandHeight (595×130, ≈4.58:1, exported as
@@ -37,6 +48,8 @@ import '../../../providers/invoice_provider.dart';
 import '../../../models/invoice_data.dart';
 import '../../../document_layout_templates/01_executive/executive_template.dart'
     show kHeaderBannerAspectRatio;
+import '../../../document_layout_templates/document_backgrounds/background_spec.dart'
+    show kBackgroundMinZoomOutScale;
 import 'customise_shared_widgets.dart';
 
 // =============================================================================
@@ -242,7 +255,7 @@ class BackgroundImageSection extends StatelessWidget {
                         Opacity(
                           opacity: opacity.clamp(0.0, 1.0),
                           child: Transform.scale(
-                            scale: _scaleOf(data).clamp(1.0, 3.0),
+                            scale: _scaleOf(data).clamp(kBackgroundMinZoomOutScale, 3.0),
                             alignment: Alignment(_offsetDxOf(data).clamp(-1.0, 1.0), _offsetDyOf(data).clamp(-1.0, 1.0)),
                             child: Image.file(
                               File(path),
@@ -403,7 +416,10 @@ class _BackgroundRepositionDialog extends StatefulWidget {
 
 class _BackgroundRepositionDialogState extends State<_BackgroundRepositionDialog> {
   static const double _overScale = 1.35;
-  static const double _minScale = 1.0;
+  // ZOOM-OUT RANGE PASS: was 1.0 — see this file's header comment for
+  // why 0.4 (kBackgroundMinZoomOutScale) lets a person zoom out past
+  // "just covers the box" instead of only ever zooming in.
+  static const double _minScale = kBackgroundMinZoomOutScale;
   static const double _maxScale = 3.0;
 
   late double _scale;
@@ -413,8 +429,16 @@ class _BackgroundRepositionDialogState extends State<_BackgroundRepositionDialog
   Offset? _offsetAtGestureStart;
   double? _scaleAtGestureStart;
 
-  double get _maxTravelX => (widget.previewWidth * _overScale * _scale - widget.previewWidth) / 2;
-  double get _maxTravelY => (widget.previewHeight * _overScale * _scale - widget.previewHeight) / 2;
+  // ZOOM-OUT RANGE PASS: at scale below ~1/_overScale (≈0.74), the
+  // zoomed image is now SMALLER than the preview box, not larger — the
+  // old formula went negative there, which broke Offset.clamp (min >
+  // max). Floored at 0: below that point there's no overflow to pan
+  // through, so travel range is correctly zero and the image just sits
+  // centred (still draggable back in once zoomed past the floor again).
+  double get _maxTravelX =>
+      ((widget.previewWidth * _overScale * _scale - widget.previewWidth) / 2).clamp(0.0, double.infinity);
+  double get _maxTravelY =>
+      ((widget.previewHeight * _overScale * _scale - widget.previewHeight) / 2).clamp(0.0, double.infinity);
 
   Offset _clamped(Offset o) {
     final mx = _maxTravelX;

@@ -6,7 +6,7 @@ import '../document_template_layout_data/doc_template_adapter.dart';
 import '../document_template_layout_data/doc_edit_bundle.dart';
 import '../document_template_layout_data/doc_header.dart'
     show buildSharedHeaderIdentity, buildSharedMetaRow, kRule, kGrey, kGreyLight,
-        kPagePadH, kPageW;
+        kPagePadH, kPagePadV, kPageW;
 import '../document_template_layout_data/doc_line_items.dart'
     show buildSharedLineItemsHeaderRow;
 import '../document_template_layout_data/template_document.dart';
@@ -22,24 +22,35 @@ const List<String> kSignatureFonts = [
   'Caveat',
 ];
 
-// HEIGHT-CAP FIX: fixed height for the header background band — see
-// _fullBleedHeaderBackground's doc comment. 130 comfortably covers the
-// identity row's normal height (logo + business name/tagline + doc
-// type/number, roughly 90-110px) plus the -16 top bleed and enough
-// slack to reach the rule divider below it without relying on the
-// content's own measured height, which is what let the band balloon
-// when the logo grows.
-const double kHeaderBackgroundBandHeight = 130.0;
+// TOP-BLEED FIX (this update): kHeaderBackgroundBandHeight is now the
+// TOTAL band height passed to renderDocumentBackground's `height` param
+// — it must be read together with kHeaderBackgroundBleedTop below, not
+// in isolation. Previously this was 130 with a separate hardcoded
+// bleedTop of 16, which left the band's top edge 32pt short of the
+// page's true top edge (kPagePadV is 48, not 16) — visible as a strip
+// of "invisible padding" above the banner that left/right never had,
+// since left/right already correctly bled the full kPagePadH. Fixed by
+// bleeding the top the same full amount (kPagePadV) left/right already
+// do, and growing the total height by that same +32 so the band's
+// BOTTOM edge lands in exactly the same place as before (bottom edge =
+// height - bleedTop = 162 - 48 = 114, unchanged from the old 130 - 16 =
+// 114) — i.e. this is a pure "extend upward to the true page edge",
+// not a change to how far down the band reaches or how much of the
+// identity content it covers.
+const double kHeaderBackgroundBleedTop = kPagePadV;
+const double kHeaderBackgroundBandHeight = 162.0;
 
 // BANNER-SHAPE LOCK PASS: the fixed, locked shape every header
 // background image is rendered into — full page width (kPageW, from
-// doc_header.dart) by the fixed band height above. This is the SAME
-// ratio the upload/reposition UI (_BackgroundRepositionDialog in
-// customise_background_section.dart) should crop against, so what the
-// person frames in that dialog is pixel-for-pixel what ends up behind
-// the header. Exported so that file can reference it directly instead
-// of a second hardcoded copy of the same math.
-const double kHeaderBannerAspectRatio = kPageW / kHeaderBackgroundBandHeight; // 595 / 130 ≈ 4.58
+// doc_header.dart) by the fixed TOTAL band height above (the true
+// on-page banner shape, top edge flush with the page's actual top
+// edge). This is the SAME ratio the upload/reposition UI
+// (_BackgroundRepositionDialog in customise_background_section.dart)
+// should crop against, so what the person frames in that dialog is
+// pixel-for-pixel what ends up behind the header. Exported so that
+// file can reference it directly instead of a second hardcoded copy of
+// the same math.
+const double kHeaderBannerAspectRatio = kPageW / kHeaderBackgroundBandHeight; // 595 / 162 ≈ 3.67
 
 Color invoiceAccent(InvoiceData d) {
   switch (d.colorScheme) {
@@ -158,15 +169,20 @@ Widget _fullBleedHeaderBackground({
   // HEIGHT-CAP FIX: a background band should have its own sensible
   // fixed cap (kHeaderBackgroundBandHeight), independent of whatever
   // the identity content currently measures — see that constant's own
-  // doc comment for why. bleedLeft/Right reach the true page edge from
-  // inside the page's own horizontal padding; bleedTop opens up a
-  // little breathing room above the identity content's own top edge.
+  // doc comment for why.
+  //
+  // TOP-BLEED FIX: bleedLeft/Right/Top now ALL reach the true page edge
+  // — bleedTop uses kHeaderBackgroundBleedTop (= kPagePadV, the page's
+  // real top inset), the same treatment left/right already had via
+  // kPagePadH. See kHeaderBackgroundBandHeight's doc comment for why
+  // the total height grew alongside this, to keep the band's bottom
+  // edge exactly where it was before.
   return renderDocumentBackground(
     spec: spec,
     child: content,
     bleedLeft: kPagePadH,
     bleedRight: kPagePadH,
-    bleedTop: 16,
+    bleedTop: kHeaderBackgroundBleedTop,
     height: kHeaderBackgroundBandHeight,
   );
 }
