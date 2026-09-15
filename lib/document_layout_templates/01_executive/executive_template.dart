@@ -1,37 +1,3 @@
-// executive_template.dart
-// lib/document_layout_templates/01_executive/executive_template.dart
-//
-// ITEMS-HEADER-ROW PASS (this update): _executiveFullHeader and
-// _executiveContinuationHeader no longer call
-// buildSharedLineItemsHeaderRow() themselves — that row is now supplied
-// to TemplateDocument via the new `buildLineItemsHeaderRow` param on
-// every Preview/Editor class below, and A4Paginator decides per page
-// whether to actually show it (skipped on a totals-only overflow page
-// with zero items). See a4_paginator.dart's header comment for the bug
-// this fixes: a floating column-header row above nothing whenever the
-// totals block overflowed to its own page.
-//
-// MERGE PASS (earlier): this file does everything the three deleted
-// files did — executive_invoice_stationary_layout.dart, executive_quote_
-// stationary_layout.dart, executive_receipt_stationary_layout.dart, and
-// their matching *_payment_terms_signature.dart / *_logic_data.dart
-// files. Both Preview (read-only) AND Editor (WYSIWYG tap-to-edit) run
-// through the same DocTemplateAdapter/TemplateDocument plumbing.
-//
-// What changed to make the merge possible:
-//   1. invoiceAccent()/quoteAccent()/receiptAccent() now live HERE.
-//   2. _executiveFullHeader / _executiveContinuationHeader take an
-//      optional `edit` param and build via buildSharedHeaderIdentity() /
-//      buildSharedMetaRow() (doc_header.dart) instead of composing their
-//      own Text widgets.
-//   3. Three Editor wrapper widgets — ExecutiveInvoiceEditor,
-//      ExecutiveQuoteEditor, ExecutiveReceiptEditor — mirror the
-//      existing Preview wrappers exactly, but require a DocEditBundle
-//      and pass it through to TemplateDocument.
-//
-// ENGINE FOLDER SPLIT PASS (earlier): imports redirected off shared/
-// (now removed) to document_template_layout_data/.
-
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart' show InvoiceData, InvoiceColor;
 import '../../models/quote_data.dart' show QuoteData, QuoteColor;
@@ -39,16 +5,13 @@ import '../../models/receipt_data.dart' show ReceiptData, ReceiptColor;
 import '../document_template_layout_data/doc_template_adapter.dart';
 import '../document_template_layout_data/doc_edit_bundle.dart';
 import '../document_template_layout_data/doc_header.dart'
-    show buildSharedHeaderIdentity, buildSharedMetaRow, kRule, kGrey, kGreyLight;
+    show buildSharedHeaderIdentity, buildSharedMetaRow, kRule, kGrey, kGreyLight,
+        kPagePadH, kPageW;
 import '../document_template_layout_data/doc_line_items.dart'
     show buildSharedLineItemsHeaderRow;
 import '../document_template_layout_data/template_document.dart';
-
-// ─────────────────────────────────────────────────────────────────────────
-// MERGE PASS: the six script-font families offered for a typed
-// signature, moved here from the now-deleted
-// executive_invoice_payment_terms_signature.dart.
-// ─────────────────────────────────────────────────────────────────────────
+import '../document_backgrounds/background_spec.dart';
+import '../document_backgrounds/background_render.dart';
 
 const List<String> kSignatureFonts = [
   'Dancing Script',
@@ -59,12 +22,24 @@ const List<String> kSignatureFonts = [
   'Caveat',
 ];
 
-// ─────────────────────────────────────────────────────────────────────────
-// MERGE PASS: accent-color functions, moved here from the three deleted
-// *_stationary_layout.dart files. doc_template_adapter.dart's
-// invoiceToAdapter()/quoteToAdapter()/receiptToAdapter() import these
-// three from this file.
-// ─────────────────────────────────────────────────────────────────────────
+// HEIGHT-CAP FIX: fixed height for the header background band — see
+// _fullBleedHeaderBackground's doc comment. 130 comfortably covers the
+// identity row's normal height (logo + business name/tagline + doc
+// type/number, roughly 90-110px) plus the -16 top bleed and enough
+// slack to reach the rule divider below it without relying on the
+// content's own measured height, which is what let the band balloon
+// when the logo grows.
+const double kHeaderBackgroundBandHeight = 130.0;
+
+// BANNER-SHAPE LOCK PASS: the fixed, locked shape every header
+// background image is rendered into — full page width (kPageW, from
+// doc_header.dart) by the fixed band height above. This is the SAME
+// ratio the upload/reposition UI (_BackgroundRepositionDialog in
+// customise_background_section.dart) should crop against, so what the
+// person frames in that dialog is pixel-for-pixel what ends up behind
+// the header. Exported so that file can reference it directly instead
+// of a second hardcoded copy of the same math.
+const double kHeaderBannerAspectRatio = kPageW / kHeaderBackgroundBandHeight; // 595 / 130 ≈ 4.58
 
 Color invoiceAccent(InvoiceData d) {
   switch (d.colorScheme) {
@@ -105,22 +80,137 @@ Color receiptAccent(ReceiptData d) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Header design — diamond logo mark, generous whitespace, single page in
-// spirit (paginates via A4Paginator like every other design).
+// HEADER-BACKGROUND SCOPE + FULL-BLEED FIX (earlier): two bugs fixed
+// together, since both were caused by the same wrapping location.
 //
-// ITEMS-HEADER-ROW PASS: no longer ends with
-// buildSharedLineItemsHeaderRow(adapter: a) — A4Paginator renders that
-// row itself now, per page, only when the page has items. See this
-// file's own Preview/Editor classes for where it's supplied instead.
-// ─────────────────────────────────────────────────────────────────────────
+// Bug 1 — background bled into FROM/BILLED-TO/DETAILS: the header
+// background used to wrap the WHOLE `content` Column (logo/doc-type
+// identity block + the rule divider + buildSharedMetaRow's three-column
+// FROM/BILLED-TO/DETAILS row) inside withOptionalBackgroundImage. That
+// meant the image + scrim rendered behind the address/date text too, not
+// just the header band the person actually meant. Fixed by wrapping ONLY
+// buildSharedHeaderIdentity's result — the rule divider and
+// buildSharedMetaRow now render on the plain page background exactly as
+// before this pass, regardless of whether a header background is set.
+//
+// Bug 2 — couldn't reach the true left/right page edges: the wrapped
+// content lives inside the page's own horizontal padding (kPagePadH on
+// each side, applied by A4Paginator's _buildPage), so the background
+// band was boxed in ~48pt short of the real page edge no matter what.
+//
+// CRASH FIX (earlier): the first version of this fix used OverflowBox to
+// widen the background band. OverflowBox inherits its PARENT's
+// constraint for any axis it doesn't explicitly override — and the live
+// Customise-screen preview renders the whole page inside a FittedBox
+// (ScaledPageStack, to scale the native-size page down to fit the phone
+// screen), which by design gives its child UNBOUNDED height.
+//
+// DOCUMENT BACKGROUNDS FOUNDATION PASS (earlier): the hand-rolled Stack +
+// Positioned bleed logic that used to live directly in this function has
+// moved into background_render.dart's renderDocumentBackground() — the
+// ONE place every background render site (header here, footer, mid-page
+// body) now shares.
+//
+// BANNER-SHAPE LOCK / COVER-FIT FIX (this update): `fit` used to be
+// hardcoded to BoxFit.contain, on the theory that showing the whole
+// uploaded image letterboxed was safer than cropping it. In practice
+// that was the actual bug behind two reported symptoms at once:
+//
+//   1. "White space gap at top, image sitting below its container" —
+//      contain shrinks the image to fit kPageW's WIDTH, and since almost
+//      no uploaded image is naturally kHeaderBannerAspectRatio (~4.58:1)
+//      shaped, that left the image shorter than the 130pt band, with
+//      empty band space above/below it.
+//   2. "Can't move the image left to right" — once an image's width
+//      already matches the band's full width under `contain`, there is
+//      zero horizontal pixels left to pan through, so
+//      headerBackgroundOffsetDx had nothing to actually move.
+//
+// Switching to BoxFit.cover fixes both: the image always fills the
+// entire band edge-to-edge (cropping whatever doesn't fit, never
+// leaving empty space), and — because it now genuinely overflows the
+// band on one axis — offsetDx/offsetDy panning and the pinch/slider
+// zoom (spec.clampedScale, see background_render.dart's
+// _imageScrimStack, which only applies scale when fit == BoxFit.cover)
+// become real, visible controls. This also makes the header's actual
+// render finally match the small thumbnail preview shown while editing
+// in customise_background_section.dart, which already used
+// BoxFit.cover — the two had drifted apart, which is why what you saw
+// while picking an image never matched what the document actually
+// produced.
+Widget _fullBleedHeaderBackground({
+  required DocTemplateAdapter a,
+  required Widget content,
+}) {
+  final spec = BackgroundSpec.fromFields(
+    imagePath: a.headerBackgroundImagePath,
+    enabled: a.headerBackgroundEnabled,
+    opacity: a.headerBackgroundOpacity,
+    offsetDx: a.headerBackgroundOffsetDx,
+    offsetDy: a.headerBackgroundOffsetDy,
+    scale: a.headerBackgroundScale,
+    // BANNER-SHAPE LOCK / COVER-FIT FIX: always fill the fixed
+    // kPageW × kHeaderBackgroundBandHeight banner shape completely —
+    // see the pass note above for why `contain` was the actual root
+    // cause of both the gap and the broken left/right drag.
+    fit: BoxFit.cover,
+  );
+  // HEIGHT-CAP FIX: a background band should have its own sensible
+  // fixed cap (kHeaderBackgroundBandHeight), independent of whatever
+  // the identity content currently measures — see that constant's own
+  // doc comment for why. bleedLeft/Right reach the true page edge from
+  // inside the page's own horizontal padding; bleedTop opens up a
+  // little breathing room above the identity content's own top edge.
+  return renderDocumentBackground(
+    spec: spec,
+    child: content,
+    bleedLeft: kPagePadH,
+    bleedRight: kPagePadH,
+    bleedTop: 16,
+    height: kHeaderBackgroundBandHeight,
+  );
+}
 
-Widget _executiveFullHeader(DocTemplateAdapter a, {DocEditBundle? edit}) {
+// PAN + PINCH HEADER LOGO PASS (earlier): _executiveFullHeader accepts
+// onFreeformLogoScaleChanged, forwarded straight into
+// buildSharedHeaderIdentity() alongside the existing offset callback.
+// Leaving all three drag/pinch callbacks null (every call site that
+// doesn't pass them) renders exactly as before — PDF export and the
+// static Full Preview screen are untouched.
+//
+// FREEFORM HEADER LOGO DRAG PASS (earlier): _executiveFullHeader accepts
+// the two drag callbacks and forwards them into buildSharedHeaderIdentity().
+//
+// The continuation header (_executiveContinuationHeader below) is
+// deliberately NOT wrapped/wired for drag, pinch, or a background — it's
+// a thin one-line running header repeated on every overflow page, not
+// the main header band.
+Widget _executiveFullHeader(
+  DocTemplateAdapter a, {
+  DocEditBundle? edit,
+  ValueChanged<Offset>? onFreeformLogoOffsetChanged,
+  ValueChanged<double>? onFreeformLogoScaleChanged,
+  VoidCallback? onFreeformLogoDragEnd,
+}) {
+  final identity = buildSharedHeaderIdentity(
+    a: a,
+    edit: edit,
+    onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+    onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+    onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+  );
+
+  // HEADER-BACKGROUND SCOPE FIX: only the identity block (logo +
+  // doc-type/number) sits inside the optional background band now.
+  final headerBand = a.headerBackgroundEnabled
+      ? _fullBleedHeaderBackground(a: a, content: identity)
+      : identity;
+
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      buildSharedHeaderIdentity(a: a, edit: edit),
+      headerBand,
       const SizedBox(height: 28),
       Container(height: 1, color: kRule),
       const SizedBox(height: 24),
@@ -150,19 +240,30 @@ Widget _executiveContinuationHeader(DocTemplateAdapter a, {DocEditBundle? edit})
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Preview wrappers — read-only (edit bundle is null internally).
-// ─────────────────────────────────────────────────────────────────────────
-
 class ExecutiveInvoicePreview extends StatelessWidget {
   final InvoiceData data;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveInvoicePreview({super.key, required this.data, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveInvoicePreview({
+    super.key,
+    required this.data,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: invoiceToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
@@ -172,12 +273,27 @@ class ExecutiveInvoicePreview extends StatelessWidget {
 class ExecutiveQuotePreview extends StatelessWidget {
   final QuoteData data;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveQuotePreview({super.key, required this.data, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveQuotePreview({
+    super.key,
+    required this.data,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: quoteToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
@@ -187,34 +303,60 @@ class ExecutiveQuotePreview extends StatelessWidget {
 class ExecutiveReceiptPreview extends StatelessWidget {
   final ReceiptData data;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveReceiptPreview({super.key, required this.data, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveReceiptPreview({
+    super.key,
+    required this.data,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: receiptToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// MERGE PASS: Editor wrappers — WYSIWYG editable, mirror the Preview
-// wrappers exactly but require a DocEditBundle and pass it through to
-// TemplateDocument.
-// ─────────────────────────────────────────────────────────────────────────
-
 class ExecutiveInvoiceEditor extends StatelessWidget {
   final InvoiceData data;
   final DocEditBundle edit;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveInvoiceEditor({super.key, required this.data, required this.edit, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveInvoiceEditor({
+    super.key,
+    required this.data,
+    required this.edit,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: invoiceToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          edit: edit,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
@@ -226,12 +368,29 @@ class ExecutiveQuoteEditor extends StatelessWidget {
   final QuoteData data;
   final DocEditBundle edit;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveQuoteEditor({super.key, required this.data, required this.edit, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveQuoteEditor({
+    super.key,
+    required this.data,
+    required this.edit,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: quoteToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          edit: edit,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
@@ -243,12 +402,29 @@ class ExecutiveReceiptEditor extends StatelessWidget {
   final ReceiptData data;
   final DocEditBundle edit;
   final void Function(int pageCount)? onPageCount;
-  const ExecutiveReceiptEditor({super.key, required this.data, required this.edit, this.onPageCount});
+  final ValueChanged<Offset>? onFreeformLogoOffsetChanged;
+  final ValueChanged<double>? onFreeformLogoScaleChanged;
+  final VoidCallback? onFreeformLogoDragEnd;
+  const ExecutiveReceiptEditor({
+    super.key,
+    required this.data,
+    required this.edit,
+    this.onPageCount,
+    this.onFreeformLogoOffsetChanged,
+    this.onFreeformLogoScaleChanged,
+    this.onFreeformLogoDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) => TemplateDocument(
         adapter: receiptToAdapter(data),
-        buildFullHeader: (a) => _executiveFullHeader(a, edit: edit),
+        buildFullHeader: (a) => _executiveFullHeader(
+          a,
+          edit: edit,
+          onFreeformLogoOffsetChanged: onFreeformLogoOffsetChanged,
+          onFreeformLogoScaleChanged: onFreeformLogoScaleChanged,
+          onFreeformLogoDragEnd: onFreeformLogoDragEnd,
+        ),
         buildContinuationHeader: (a) => _executiveContinuationHeader(a, edit: edit),
         buildLineItemsHeaderRow: (a) => buildSharedLineItemsHeaderRow(adapter: a),
         onPageCount: onPageCount,
