@@ -1,165 +1,153 @@
 // lib/screens/invoice_create_section/step_create_invoice/step_create_invoice.dart
 //
-// SCAFFOLD PARITY FIX (this update): the previous "TOAST PARITY FIX"
-// pass (removing `behavior: SnackBarBehavior.floating` from _continue()'s
-// validation SnackBar) did NOT fix the overlap — because the real cause
-// was never the `behavior` value. It's a Scaffold structure problem:
+// ENABLED-FIELDS RE-SYNC FIX (this update): _syncSelectedToProvider()'s
+// `enabledFields` resolution was the one field in this whole function
+// that never got the SAME-SESSION RE-SYNC FIX treatment (see that pass's
+// comment below) — it unconditionally overwrote the ENTIRE enabledFields
+// map from the template's copy (when the template had one) on every
+// single call, including a same-session re-sync (Customise -> Back ->
+// Continue again without saving). That silently reverted ANY field
+// toggle made in Customise — Business Name included — the moment the
+// person navigated back and forward between these two steps, which is
+// exactly what "the switch won't stay off" turned out to be. Fixed with
+// the same `sameSession ? current.enabledFields : ...` guard every other
+// Customise-only field here already has.
 //
-// A fixed-behavior SnackBar docks directly above whatever Scaffold's
-// `bottomNavigationBar` is — the nearest Scaffold ANCESTOR of the
-// BuildContext used to call ScaffoldMessenger.of(context). This widget
-// has never had its own Scaffold; its StepNavBar was just the last
-// child of a plain Column, sitting inside EditorScreen's body
-// (editor_screen.dart), and EditorScreen's own Scaffold has no
-// `bottomNavigationBar` set at all. So `ScaffoldMessenger.of(context)`
-// from _continue() found EditorScreen's Scaffold, which has nothing to
-// dock above — the SnackBar just sat at the literal bottom of the
-// screen, on top of wherever this widget's own StepNavBar happened to
-// be rendered. Quote's equivalent toast doesn't have this problem
-// because QuoteEditorScreen registers its nav bar as its Scaffold's
-// actual `bottomNavigationBar` (see quote_editor_screen.dart) — so a
-// SnackBar shown there automatically docks above it instead of over it.
+// DRAFT-SYNC PASS (earlier): two related fixes so Customise-only
+// fields (Footer Taglines, and the invoice's own business logo — as
+// opposed to this screen's separate "Container Logo") stop reverting
+// when a draft is reused.
 //
-// Fix: this widget now wraps itself in its own `ScaffoldMessenger` +
-// `Scaffold`, with its StepNavBar registered as that Scaffold's real
-// `bottomNavigationBar` instead of being a plain trailing Column child.
-// SnackBars are shown via a local `GlobalKey<ScaffoldMessengerState>`
-// (`_messengerKey`) rather than `ScaffoldMessenger.of(context)`, so they
-// resolve to THIS widget's own ScaffoldMessenger — which now has a real
-// bottomNavigationBar to dock above — regardless of what the parent
-// screen (EditorScreen) does or doesn't provide. `backgroundColor:
-// Colors.transparent` on the nested Scaffold keeps this purely a
-// layout/messenger change with no visual difference otherwise.
+//   1. _syncSelectedToProvider()'s business-logo resolution previously
+//      only ever considered `current` (the live provider — which may
+//      have just been reset to defaults by Home's "Create Invoice"
+//      button) or the template's own logo — never `d` (the actual
+//      selected draft's own saved data). That's the exact same bug
+//      class the FOOTER TAGLINES PERSISTENCE FIX v2 below already fixed
+//      for the taglines fields — just not caught for the business logo
+//      at the time. Now the draft's own logo (path/offset/scale/shape/
+//      display size/show-initial/initial-letter) wins first when it has
+//      one, ahead of the template, ahead of `current`.
 //
-// SAVED-ITEMS FILTERS PASS (earlier): adds a search field +
-// Recent/A-Z/Z-A sort selector to the "Saved Invoices" list, matching
-// the same treatment already applied to the Templates step
-// (step_templates.dart) — new _DraftSearchField / _DraftSortSelector
-// widgets at the bottom of this file, matching relevance against the
-// draft's display name, invoice number, and client name. The library's
-// previous hardcoded `_library.length - 1 - displayIdx` reversal is
-// gone — the SliverList now iterates `_visibleIndices`, which
-// reproduces that exact same newest-first order under the default
-// "Recent" sort mode, so nothing changes visually until a person
-// actually searches or picks a different sort.
+//   2. Neither Footer Taglines nor the business logo are ever touched
+//      by CreateInvoiceBottomSheet itself (they're Customise-only
+//      controls) — so even reading them correctly from `d` here only
+//      gets you the value the draft had the LAST time it was synced to
+//      Customise and saved. Nothing previously wrote a Customise
+//      session's changes back onto the originating draft, so picking
+//      the same draft again after customising and saving an invoice
+//      from it would still show the stale, pre-customisation value.
+//      Fixed with a new public helper, syncCustomiseFieldsToDraft(),
+//      called from step_customise.dart's _handleSave() right after a
+//      successful save — see that file's own comment. This screen also
+//      now calls provider.setSourceDraftId(draft.id) in
+//      _syncSelectedToProvider() so the provider knows which draft (if
+//      any) the current session came from, letting Customise's save
+//      step know which draft entry to write back to.
 //
-// PAYMENT TERMS REMOVAL PASS (earlier): the sync of BusinessInfo's
-// paymentTerms onto InvoiceData in _syncSelectedToProvider() has been
-// removed entirely — the field no longer exists on either BusinessInfo
-// (client_info.dart) or InvoiceData (invoice_data.dart), so this line
-// would no longer compile. Matches the corresponding removal in
-// step_templates.dart (the controller + form field),
-// step_templates_terms.dart (the section), step_customise.dart (the
-// toggle row), and the two render sites
-// (executive_invoice_payment_terms_signature.dart,
-// invoice_pdf_extra_sections.dart).
+// SAME-SESSION RE-SYNC FIX (earlier): the fix above only solved half
+// the problem. _syncSelectedToProvider() re-runs on EVERY press of
+// "Continue to Customise" — including when the user has already been in
+// Customise this session, made an unsaved change (e.g. toggled Footer
+// Taglines on), then tapped Back (returning to this step, same draft
+// still selected) and Continue again. syncCustomiseFieldsToDraft() only
+// writes Customise-only fields back onto the draft ON SAVE — so at that
+// point the draft (`d`) still has whatever value it had BEFORE this
+// session started, and re-reading `d` here silently overwrote the
+// in-progress, not-yet-saved change with that stale value. This is what
+// "Footer Taglines keeps turning off every time I enter Customise"
+// actually was, whenever the flow involved any back-and-forth before
+// saving — not just the "reset by Home" case the v2 fix below handled.
 //
-// STRUCTURED ADDRESS SYNC PASS (earlier): _syncSelectedToProvider()
-// now carries businessAddressInfo through — same template-first-else-
-// current pattern already used for businessName/Email/Phone/Address
-// just above it. The resolved AddressInfo's singleLine also updates the
-// legacy flat businessAddress string (falling back to
-// businessInfo?.address / current.businessAddress when the structured
-// value is still empty, e.g. a template saved before the structured
-// address pass existed), so anything still reading the flat string
-// keeps working. clientAddressInfo is per-invoice — like clientName,
-// it's read straight off the selected draft's own data (`d`), which
-// create_invoice_bottom_sheet.dart's _save() is now responsible for
-// populating (from the selected Customer's addressInfo, or from the
-// sheet's own six manual address fields — see that file's own pass
-// note).
+// Fixed by detecting whether this is a fresh sync from the draft (first
+// time this session touches it) versus a RE-sync of the same
+// already-in-progress session (provider.sourceDraftId already equals
+// this draft's id). For every
+// Customise-only field — footer taglines (enabled/font size/items), the
+// entire business-logo group, and (as of this update) enabledFields — a
+// same-session re-sync now keeps whatever's currently on the provider
+// instead of re-pulling from the draft, so an unsaved in-session change
+// can no longer be clobbered by navigating back and forward again.
+// businessTagline (the actual TEXT) is unaffected — that's still
+// authored on the template, not editable in Customise, so it keeps its
+// original template-first-else-current resolution regardless of session
+// state.
 //
-// SIGNATURE SIZER SYNC PASS (earlier): added
-// `signatureFontSize: current.signatureFontSize` to
-// _syncSelectedToProvider()'s InvoiceData constructor call — same
-// preserve-from-current pattern already used for
-// businessLogoDisplaySize just above it, since signatureFontSize is
-// likewise a per-invoice Customise-step setting (a slider on the
-// Signature toggle row), not something a template authors. Without
-// this it would silently reset to 22.0 every time this sync runs.
+// (All header comments below from previous passes describe work already
+// done and unaffected by this update — see project history.)
 //
-// AMOUNT DUE SYNC FIX (earlier): _syncSelectedToProvider() was
-// missing `amountDueOverride: d.amountDueOverride` from its InvoiceData
-// constructor call — same bug class the ENABLED FIELDS + LOGO DISPLAY
-// SYNC FIX and the poNumber BUG FIX below it already document: an
-// optional constructor param silently omitted here means "reset to the
-// constructor default" (null — auto), so a manually-set Amount Due
-// typed on the Create Invoice step's new "Due Date & Amount Due"
-// section (create_invoice_bottom_sheet.dart) would have survived onto
-// the SavedInvoiceDraft just fine, then been silently dropped the
-// moment "Continue to Customise" was tapped. Added alongside poNumber
-// as a per-invoice field read from the draft's own data (`d`) — NOT
-// template-sourced, since Amount Due is specific to this invoice, not
-// something a template authors.
+// FOOTER TAGLINES PERSISTENCE FIX v2 (earlier): _syncSelectedToProvider()
+// previously carried businessTaglineEnabled/footerTaglinesEnabled/
+// footerTaglinesFontSize forward from `current` (provider.invoiceData)
+// instead of a template default — correct in isolation, but this sync also
+// runs right after Home's "Create Invoice" button calls
+// InvoiceProvider.resetInvoiceData() (see home_screen.dart), which wipes
+// `current` back to a brand-new InvoiceData() BEFORE the user ever picks a
+// saved draft on this screen. So "carry forward from current" was actually
+// carrying forward an already-reset value, not the draft's real saved
+// value — invisible for footerTaglinesEnabled specifically because its
+// default is false, the same failure mode as the original bug, just one
+// step earlier in the flow (Home -> Create Invoice -> pick an existing
+// draft -> Continue to Customise).
 //
-// ENABLED FIELDS + LOGO DISPLAY SYNC FIX (earlier):
-// _syncSelectedToProvider() was rebuilding InvoiceData from scratch on
-// every "Continue to Customise" tap but never passing `enabledFields`
-// into that constructor call — since it's an optional parameter, leaving
-// it out silently fell back to defaultInvoiceEnabledFields() (every key
-// true), wiping out whatever template toggles or previously-set Customise
-// toggles were already in effect, every single time this ran. Now reads
-// `widget.selectedTemplate?.enabledFields ?? current.enabledFields`,
-// mirroring the exact template-first-else-current pattern already used
-// for businessName/Email/Phone/Address a few lines above it. Same bug,
-// same fix, for businessLogoDisplaySize/businessLogoShowInitial/
-// businessLogoInitialLetter — all three were also missing from that
-// constructor call and were silently resetting to their constructor
-// defaults (40.0 / true / '') on every sync.
+// Fixed by sourcing these three fields from `d` (draft.data — the actual
+// selected saved draft) instead of `current`, matching every other
+// per-document field in this constructor (clientName, invoiceNumber,
+// lineItems, taxRate, poNumber, amountDueOverride, etc. all already read
+// from `d`). footerTaglines itself now also prefers the draft's own items
+// when non-empty, ahead of the template's, ahead of current — same
+// three-tier fallback shape as before, just with the right priority order:
+// a real per-document value (d) outranks a template default, which
+// outranks provider state that may have just been reset to nothing.
 //
-// PAYMENT INFO / TERMS & SIGNATURE SYNC PASS (earlier): _syncSelectedToProvider()
-// now copies BusinessInfo's template-authored bankName/accountName/
-// accountNumber/otherPaymentDetails/termsAndConditions/
-// signatureMode/signatureName/signatureImagePath (see client_info.dart's
-// PAYMENT INFO / TERMS & SIGNATURE PASS) onto the InvoiceData built here —
-// same "template value if a template is selected, else keep whatever's
-// already on the provider" pattern already used for businessName/Email/
-// Phone/Address above. This is the sync step step_templates.dart's own
-// pass note has been flagging as pending — filling in Payment Info /
-// Terms & Conditions / Signature on a template now actually reaches the
-// invoice. poNumber is deliberately NOT included in this
-// template-sourced block — it's per-invoice only (see client_info.dart's
-// BusinessInfo header comment) and is instead picked up from the draft's
-// own data below.
+// (All header comments below from previous passes describe work already
+// done and unaffected by this pass — see project history.)
 //
-// BUG FIX (found while making the above change): poNumber was never
-// being copied from the selected draft's InvoiceData (`d`) onto the
-// synced InvoiceData at all — every other per-invoice field on `d`
-// (clientName, invoiceNumber, notes, etc) was already being copied, but
-// poNumber was simply missing from this constructor call, so any PO /
-// Reference Number typed into an invoice draft was silently dropped the
-// moment "Continue to Customise" was tapped. Added `poNumber: d.poNumber`
-// alongside the other per-invoice fields.
+// FOOTER TAGLINES PERSISTENCE FIX (earlier): _syncSelectedToProvider()
+// used to resolve businessTaglineEnabled/footerTaglinesEnabled as
+// `businessInfo?.field ?? current.field` — but both fields are
+// non-nullable bools on BusinessInfo, so a template that simply hasn't
+// touched them (still sitting at BusinessInfo's own defaults) silently
+// overrode whatever the user had already set on THIS document in
+// Customise, every single time this sync re-ran (i.e. every time the
+// flow moved from Create Invoice into Customise). Most visible on
+// footerTaglinesEnabled specifically because its default is false —
+// unlike nearly every other toggle here, which defaults true, so an
+// unnoticed reset there just looks like nothing changed. Same fix
+// shape as footerTaglinesFontSize already below: always carry the
+// current session's value forward instead of letting a template
+// default silently stomp it. Trade-off: a template that explicitly
+// sets footerTaglinesEnabled/businessTaglineEnabled true no longer
+// auto-applies to a brand-new invoice from that template — the user
+// toggles it on once in Customise as before.
 //
-// CONTAINER LOGO + MANDATORY NAME PASS (earlier): _InvoiceDraftCard's
-// icon block now renders the draft's own container logo
-// (SavedInvoiceDraft.logoPath, set via create_invoice_bottom_sheet.dart's
-// new "Container Logo" section) exactly the way step_templates.dart's
-// _TemplateCard renders BusinessInfo.logoPath — a real SharedLogoThumbnail
-// when a logo is set, else the same rotated-square initial-letter
-// fallback mark (respecting logoShowInitial/logoInitialLetter), else a
-// plain icon as the last resort. New _DraftCardFallbackMark mirrors
-// step_templates.dart's _CardFallbackMark exactly, adapted to
-// SavedInvoiceDraft's flat logo fields instead of BusinessInfo's nesting.
+// SENDER-AS-FROM-CONTACT SYNC PASS (earlier): _syncSelectedToProvider()
+// also carries BusinessInfo.senderEmail/senderPhone/senderAddressInfo
+// through onto InvoiceData.senderEmail/senderPhone/senderAddressInfo —
+// same template-first-else-current pattern as every other field here.
+// Previously these sender fields existed on BusinessInfo (collected on
+// the template sheet) but were never copied onto InvoiceData at all, so
+// they never reached the actual document. Now that
+// doc_template_adapter.dart's invoiceToAdapter() sources the FROM
+// block's email/phone/address from these sender fields instead of the
+// business* ones (see that file, and step_templates.dart's trimmed
+// Business Information section), this sync step is what actually gets
+// sender data from the template onto a real invoice.
 //
-// INVOICE LIBRARY RESTRUCTURE PASS (earlier): this step is now a
-// library screen, mirroring step_customers.dart/step_templates.dart's
-// pattern (header -> info banner -> "Create Invoice" button -> "Saved
-// Invoices" section with Hide/Show -> cards -> "Continue to Customise"
-// button in the StepNavBar) instead of being one long inline form.
+// FOOTER TAGLINES SYNC PASS (earlier): _syncSelectedToProvider()
+// now carries businessTagline/businessTaglineEnabled/
+// footerTaglinesEnabled/footerTaglines through — same template-first-
+// else-current pattern already used for businessName/Email/Phone/
+// Address just above it. Without this, a tagline or footer-tagline
+// items authored on a template never reached a brand-new invoice built
+// from that template — they only ever showed up if set directly on an
+// in-progress document via Customise. footerTaglines specifically uses
+// "template has any items -> use them, else keep current" rather than
+// a plain `??`, since an empty list is not the same as "no template
+// value" the way null is for every other field here.
 //
-// This screen owns a library of SavedInvoiceDraft (invoice_data.dart),
-// persisted as a single JSON-encoded SharedPreferences list under
-// 'invoice_saved_draft_list'. Tapping "Create Invoice" opens the sheet
-// blank (seeded only from widget.selectedCustomer/widget.selectedTemplate);
-// saving it appends a new draft to the library and selects it. Tapping
-// a saved card selects it (single-select); tapping its pencil icon
-// reopens the sheet pre-filled with that draft's data for further
-// editing; tapping its trash icon deletes it.
-//
-// "Continue to Customise" requires a selected draft. When tapped,
-// _syncSelectedToProvider() builds the same InvoiceData shape the old
-// _syncToProvider() did, then calls widget.onNext().
+// (All other header comments from the previous version describe work
+// already done and unaffected by this pass — see project history.)
 
 import 'dart:convert';
 import 'dart:io';
@@ -201,6 +189,54 @@ Future<List<SavedInvoiceDraft>> _loadDrafts() async {
   } catch (_) {
     return [];
   }
+}
+
+// DRAFT-SYNC PASS: writes the just-saved invoice's Customise-only
+// fields back onto the draft that originated it (identified by
+// InvoiceProvider.sourceDraftId, set by _syncSelectedToProvider()
+// below). Without this, Footer Taglines and the business logo only
+// ever live on the finished SavedInvoice — the separate draft library
+// never learns the change, since CreateInvoiceBottomSheet never touches
+// either of these fields itself. So re-selecting that draft next time
+// would keep reverting to whatever it was when the draft was last saved
+// via the bottom sheet (its class defaults, most of the time).
+//
+// Called from step_customise.dart's _handleSave() right after a
+// successful saveCurrentInvoice() call, passing the freshly-saved
+// SavedInvoice's own `.data`. No-ops quietly if the draft no longer
+// exists (e.g. it was deleted from the library in the meantime) — this
+// is a best-effort convenience sync, not something that should ever
+// block or fail the actual invoice save it runs after.
+Future<void> syncCustomiseFieldsToDraft(
+  String draftId,
+  InvoiceData finalData,
+) async {
+  final drafts = await _loadDrafts();
+  final index = drafts.indexWhere((d) => d.id == draftId);
+  if (index == -1) return;
+
+  final updated = drafts[index].copyWith(
+    data: drafts[index].data.copyWith(
+          businessTagline: finalData.businessTagline,
+          businessTaglineEnabled: finalData.businessTaglineEnabled,
+          footerTaglinesEnabled: finalData.footerTaglinesEnabled,
+          footerTaglinesFontSize: finalData.footerTaglinesFontSize,
+          footerTaglines:
+              finalData.footerTaglines.map((t) => t.copyWith()).toList(),
+          businessLogoPath: finalData.businessLogoPath,
+          clearBusinessLogo: finalData.businessLogoPath == null,
+          businessLogoOffsetDx: finalData.businessLogoOffsetDx,
+          businessLogoOffsetDy: finalData.businessLogoOffsetDy,
+          businessLogoScale: finalData.businessLogoScale,
+          businessLogoShape: finalData.businessLogoShape,
+          businessLogoDisplaySize: finalData.businessLogoDisplaySize,
+          businessLogoShowInitial: finalData.businessLogoShowInitial,
+          businessLogoInitialLetter: finalData.businessLogoInitialLetter,
+        ),
+    lastEditedAt: DateTime.now(),
+  );
+  drafts[index] = updated;
+  await _persistDrafts(drafts);
 }
 
 // =============================================================================
@@ -247,13 +283,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
   String _searchQuery = '';
   _DraftSortMode _sortMode = _DraftSortMode.recent;
 
-  // SCAFFOLD PARITY FIX: this widget's own ScaffoldMessenger, so
-  // SnackBars shown from here (_continue(), the "Maximum invoices
-  // reached" tap) dock above THIS widget's own StepNavBar — now
-  // registered as this widget's own nested Scaffold's
-  // `bottomNavigationBar` in build() below — instead of resolving to
-  // EditorScreen's ambient Scaffold, which has no `bottomNavigationBar`
-  // to dock above at all.
   final GlobalKey<ScaffoldMessengerState> _messengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -281,9 +310,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     });
   }
 
-  // SAVED-ITEMS FILTERS PASS: relevance tier against display name,
-  // invoice number, and client name. 3 means "doesn't match" and gets
-  // filtered out.
   int _relevance(int i, String q) {
     final draft = _library[i];
     final d = draft.data;
@@ -296,12 +322,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     return 3;
   }
 
-  // Real _library indices for what's currently displayed — same
-  // relevance-vs-sort behaviour as the Templates step's own
-  // _visibleIndices. "Recent" reproduces the exact same newest-first
-  // order the SliverList previously got via the hardcoded
-  // `_library.length - 1 - displayIdx` reversal, so the default view is
-  // unchanged.
   List<int> get _visibleIndices {
     final q = _searchQuery.trim().toLowerCase();
     var indices = List<int>.generate(_library.length, (i) => i);
@@ -390,22 +410,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     _persistDrafts(_library);
   }
 
-  // ---------------------------------------------------------------------------
-  // Continue — requires a selected draft. Syncs it into InvoiceProvider
-  // (business info/logo resolution unchanged from the pre-restructure
-  // _syncToProvider()) then hands off to the parent flow via
-  // widget.onNext(), exactly as before.
-  //
-  // SCAFFOLD PARITY FIX: shows the SnackBar via `_messengerKey` (this
-  // widget's own ScaffoldMessenger) instead of `ScaffoldMessenger.of
-  // (context)`. The latter resolved to EditorScreen's ambient Scaffold,
-  // which has no `bottomNavigationBar` — so the SnackBar had nothing to
-  // dock above and just sat at the literal bottom of the screen, on top
-  // of this widget's own StepNavBar. `_messengerKey` now resolves to
-  // THIS widget's own nested Scaffold (see build() below), whose
-  // `bottomNavigationBar` IS the StepNavBar — so the SnackBar docks
-  // above it correctly, matching Quote's/Receipt's look.
-  // ---------------------------------------------------------------------------
   void _continue() {
     if (_selectedIndex == null) {
       _messengerKey.currentState?.showSnackBar(
@@ -419,6 +423,34 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     widget.onNext();
   }
 
+  // DRAFT-SYNC PASS: see this file's header comment for the full
+  // rationale. Short version — businessLogo* fields now prefer the
+  // selected draft's own saved logo (d) over `current`/the template,
+  // matching footerTaglinesEnabled's own fix below, and
+  // provider.setSourceDraftId(draft.id) records which draft this
+  // session came from so step_customise.dart's _handleSave() can write
+  // Customise-only changes back onto it later.
+  //
+  // SAME-SESSION RE-SYNC FIX: `sameSession` is true when this screen's
+  // "Continue" is being pressed again for a session that was ALREADY
+  // synced from this exact draft (i.e. provider.sourceDraftId already
+  // equals draft.id) — meaning the user went Customise -> Back ->
+  // Continue without saving in between. In that case every
+  // Customise-only field (footer taglines, the whole business-logo
+  // group, and — per the ENABLED-FIELDS RE-SYNC FIX above —
+  // enabledFields) is left exactly as `current` already has it, instead
+  // of being re-pulled from the draft/template — otherwise any unsaved
+  // change made in that Customise session gets silently stomped by the
+  // draft's/template's stale, last-saved value. A fresh sync (new
+  // draft, or first time this draft is picked) still resolves
+  // draft-first exactly as before.
+  //
+  // FOOTER TAGLINES PERSISTENCE FIX v2: businessTaglineEnabled,
+  // footerTaglinesEnabled, and footerTaglinesFontSize read from `d`
+  // (draft.data, the actual selected saved draft) instead of `current`
+  // (provider.invoiceData, which may have just been reset to defaults
+  // by Home's "Create Invoice" button before this screen ever ran) —
+  // UNLESS sameSession, per the fix above.
   void _syncSelectedToProvider() {
     final draft = _library[_selectedIndex!];
     final d = draft.data;
@@ -426,76 +458,155 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     final current = provider.invoiceData;
     final businessInfo = widget.selectedTemplate?.businessInfo;
 
-    // LOGO OVERWRITE FIX (unchanged from the original step file): keep
-    // whatever's already on the provider if it already has a logo set;
-    // only pull from the template when the provider has none at all yet.
+    // SAME-SESSION RE-SYNC FIX: sourceDraftId lives on the PROVIDER
+    // (set via provider.setSourceDraftId() at the bottom of this
+    // function), not on InvoiceData itself — read it from `provider`,
+    // not from `current`.
+    final bool sameSession = provider.sourceDraftId == draft.id;
+
+    // DRAFT-SYNC PASS: the invoice's own business logo (set via
+    // Customise's LogoSection) previously only ever read from `current`
+    // (the live provider, which may have just been reset to defaults)
+    // or the template — never from `d`, the same bug class
+    // footerTaglinesEnabled had before its own fix below. The draft's
+    // own logo wins first when it has one, ahead of the template, ahead
+    // of whatever's currently on the provider — but only on a FRESH
+    // sync (see SAME-SESSION RE-SYNC FIX above); a same-session re-sync
+    // keeps `current`'s logo untouched instead, since the user may have
+    // just changed it in Customise without saving yet.
+    final draftHasLogo =
+        d.businessLogoPath != null && d.businessLogoPath!.isNotEmpty;
     final providerHasLogo = current.businessLogoPath != null &&
         current.businessLogoPath!.isNotEmpty;
-    final useTemplateLogo = !providerHasLogo && businessInfo?.logoPath != null;
+    final useDraftLogo = draftHasLogo && !sameSession;
+    final useTemplateLogo = !sameSession &&
+        !draftHasLogo &&
+        !providerHasLogo &&
+        businessInfo?.logoPath != null;
 
-    final resolvedLogoPath =
-        useTemplateLogo ? businessInfo!.logoPath : current.businessLogoPath;
-    final resolvedLogoOffsetDx = useTemplateLogo
-        ? businessInfo!.logoOffsetDx
-        : current.businessLogoOffsetDx;
-    final resolvedLogoOffsetDy = useTemplateLogo
-        ? businessInfo!.logoOffsetDy
-        : current.businessLogoOffsetDy;
-    final resolvedLogoScale =
-        useTemplateLogo ? businessInfo!.logoScale : current.businessLogoScale;
-    final resolvedLogoShape =
-        useTemplateLogo ? businessInfo!.logoShape : current.businessLogoShape;
+    final resolvedLogoPath = sameSession
+        ? current.businessLogoPath
+        : (useDraftLogo
+            ? d.businessLogoPath
+            : (useTemplateLogo ? businessInfo!.logoPath : current.businessLogoPath));
+    final resolvedLogoOffsetDx = sameSession
+        ? current.businessLogoOffsetDx
+        : (useDraftLogo
+            ? d.businessLogoOffsetDx
+            : (useTemplateLogo
+                ? businessInfo!.logoOffsetDx
+                : current.businessLogoOffsetDx));
+    final resolvedLogoOffsetDy = sameSession
+        ? current.businessLogoOffsetDy
+        : (useDraftLogo
+            ? d.businessLogoOffsetDy
+            : (useTemplateLogo
+                ? businessInfo!.logoOffsetDy
+                : current.businessLogoOffsetDy));
+    final resolvedLogoScale = sameSession
+        ? current.businessLogoScale
+        : (useDraftLogo
+            ? d.businessLogoScale
+            : (useTemplateLogo ? businessInfo!.logoScale : current.businessLogoScale));
+    final resolvedLogoShape = sameSession
+        ? current.businessLogoShape
+        : (useDraftLogo
+            ? d.businessLogoShape
+            : (useTemplateLogo ? businessInfo!.logoShape : current.businessLogoShape));
+    final resolvedLogoDisplaySize = sameSession
+        ? current.businessLogoDisplaySize
+        : (draftHasLogo ? d.businessLogoDisplaySize : current.businessLogoDisplaySize);
+    final resolvedLogoShowInitial = sameSession
+        ? current.businessLogoShowInitial
+        : (draftHasLogo
+            ? d.businessLogoShowInitial
+            : (businessInfo?.logoShowInitial ?? current.businessLogoShowInitial));
+    final resolvedLogoInitialLetter = sameSession
+        ? current.businessLogoInitialLetter
+        : (draftHasLogo
+            ? d.businessLogoInitialLetter
+            : (businessInfo?.logoInitialLetter ?? current.businessLogoInitialLetter));
 
-    // STRUCTURED ADDRESS SYNC PASS: template value if a template is
-    // selected, else keep whatever's already on the provider — same
-    // pattern as businessName/Email/Phone/Address above. The legacy flat
-    // businessAddress string is derived from whichever AddressInfo wins
-    // here (its singleLine), falling back to the template's/provider's
-    // own flat string when the structured value is still empty (a
-    // template saved before AddressInfo existed on BusinessInfo).
     final resolvedBusinessAddressInfo =
         businessInfo?.addressInfo ?? current.businessAddressInfo;
     final resolvedBusinessAddress = resolvedBusinessAddressInfo.isNotEmpty
         ? resolvedBusinessAddressInfo.singleLine
         : (businessInfo?.address ?? current.businessAddress);
 
+    // SENDER-AS-FROM-CONTACT SYNC PASS: same template-first-else-current
+    // resolution as resolvedBusinessAddressInfo above, but for the
+    // sender's own address — this is what the FROM block on the actual
+    // document now renders (see doc_template_adapter.dart).
+    final resolvedSenderAddressInfo =
+        businessInfo?.senderAddressInfo ?? current.senderAddressInfo;
+
+    // SAME-SESSION RE-SYNC FIX / FOOTER TAGLINES PERSISTENCE FIX v2:
+    // prefer the draft's own saved items first, then the template's,
+    // then whatever's currently on the provider — but only on a FRESH
+    // sync. A same-session re-sync keeps `current`'s items untouched,
+    // for the same reason as the logo group above.
+    final resolvedFooterTaglines = sameSession
+        ? current.footerTaglines.map((t) => t.copyWith()).toList()
+        : (d.footerTaglines.isNotEmpty
+            ? d.footerTaglines.map((t) => t.copyWith()).toList()
+            : (businessInfo != null && businessInfo.footerTaglines.isNotEmpty)
+                ? businessInfo.footerTaglines.map((t) => t.copyWith()).toList()
+                : current.footerTaglines.map((t) => t.copyWith()).toList());
+
     final data = InvoiceData(
       businessName: businessInfo?.name ?? current.businessName,
+      // FOOTER TAGLINES SYNC PASS: template value if a template is
+      // selected, else keep whatever's already on the provider — same
+      // pattern as businessName/Email/Phone/Address. businessTagline
+      // itself is authored on the template (not editable in Customise),
+      // so it's unaffected by the SAME-SESSION RE-SYNC FIX.
+      businessTagline: businessInfo?.tagline ?? current.businessTagline,
+      // SAME-SESSION RE-SYNC FIX: keep `current`'s value when re-syncing
+      // the same in-progress session — see this function's header
+      // comment. Otherwise (fresh sync), read from the actual selected
+      // draft (d), not the live provider (current) — current may have
+      // just been reset to defaults by Home's "Create Invoice" button
+      // before this screen ever ran.
+      businessTaglineEnabled:
+          sameSession ? current.businessTaglineEnabled : d.businessTaglineEnabled,
+      footerTaglinesEnabled:
+          sameSession ? current.footerTaglinesEnabled : d.footerTaglinesEnabled,
+      // MISSING-FONT-SIZE FIX (revised): same reasoning as
+      // footerTaglinesEnabled above.
+      footerTaglinesFontSize:
+          sameSession ? current.footerTaglinesFontSize : d.footerTaglinesFontSize,
+      footerTaglines: resolvedFooterTaglines,
       businessEmail: businessInfo?.email ?? current.businessEmail,
       businessPhone: businessInfo?.phone ?? current.businessPhone,
       businessAddress: resolvedBusinessAddress,
       businessAddressInfo: resolvedBusinessAddressInfo,
+      // SENDER-AS-FROM-CONTACT SYNC PASS: the fields that actually
+      // render in the FROM block now (see doc_template_adapter.dart's
+      // invoiceToAdapter). Sourced from the template's Sender / Contact
+      // Person section, not Business Information.
+      senderEmail: businessInfo?.senderEmail ?? current.senderEmail,
+      senderPhone: businessInfo?.senderPhone ?? current.senderPhone,
+      senderAddressInfo: resolvedSenderAddressInfo,
+      businessTaxId: businessInfo?.taxId ?? current.businessTaxId,
+      businessGst: businessInfo?.gstNumber ?? current.businessGst,
       businessLogoPath: resolvedLogoPath,
       businessLogoOffsetDx: resolvedLogoOffsetDx,
       businessLogoOffsetDy: resolvedLogoOffsetDy,
       businessLogoScale: resolvedLogoScale,
       businessLogoShape: resolvedLogoShape,
 
-      // ENABLED FIELDS + LOGO DISPLAY SYNC FIX: these three (display
-      // size, show-initial-fallback, initial-letter override) and
-      // enabledFields below were all missing from this constructor call
-      // entirely — since every one of them is an optional parameter,
-      // omitting them silently reset each to its constructor default
-      // (40.0 / true / '' / "everything shown") on every single
-      // "Continue to Customise" tap, discarding whatever was actually
-      // set on the template or already in effect on the provider. Same
-      // template-first-else-current pattern as businessName/etc above.
-      businessLogoDisplaySize: current.businessLogoDisplaySize,
-      businessLogoShowInitial:
-          businessInfo?.logoShowInitial ?? current.businessLogoShowInitial,
-      businessLogoInitialLetter:
-          businessInfo?.logoInitialLetter ?? current.businessLogoInitialLetter,
+      // DRAFT-SYNC PASS / SAME-SESSION RE-SYNC FIX: now sourced from
+      // the same draft-first-unless-sameSession resolution as the rest
+      // of the logo fields above, instead of reading `current`/the
+      // template directly.
+      businessLogoDisplaySize: resolvedLogoDisplaySize,
+      businessLogoShowInitial: resolvedLogoShowInitial,
+      businessLogoInitialLetter: resolvedLogoInitialLetter,
 
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
       clientAddress: d.clientAddress,
-      // STRUCTURED ADDRESS SYNC PASS: clientAddressInfo is per-invoice —
-      // like clientName/clientAddress above, it's read straight off the
-      // selected draft's own data. create_invoice_bottom_sheet.dart's
-      // _save() is what actually populates this (from the selected
-      // Customer's addressInfo when one is picked in step 1, or from the
-      // sheet's own six manual address fields otherwise).
       clientAddressInfo: d.clientAddressInfo,
       invoiceNumber: d.invoiceNumber,
       issueDate: d.issueDate,
@@ -512,36 +623,21 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       colorScheme: current.colorScheme,
       layoutTemplateId: widget.layoutTemplateId ?? current.layoutTemplateId,
 
-      // ENABLED FIELDS + LOGO DISPLAY SYNC FIX: the fix this whole pass
-      // was actually about — every field-visibility toggle in the app
-      // (Payment Info/Terms/Signature and every pre-existing toggle
-      // alike) is gated on this map, and it was never being carried
-      // into the reconstructed InvoiceData here at all.
-      enabledFields: widget.selectedTemplate?.enabledFields ?? current.enabledFields,
+      // ENABLED-FIELDS RE-SYNC FIX: this was the one Customise-only
+      // value in the whole function still missing the sameSession
+      // guard — see this file's header comment. A same-session re-sync
+      // now keeps whatever's currently on the provider (i.e. whatever
+      // the person just toggled in Customise) instead of being
+      // unconditionally overwritten by the template's own copy every
+      // time this screen's "Continue" runs.
+      enabledFields: sameSession
+          ? current.enabledFields
+          : (widget.selectedTemplate?.enabledFields ?? current.enabledFields),
 
-      // BUG FIX: poNumber is per-invoice (see client_info.dart's
-      // BusinessInfo header comment) and lives on the draft's own data —
-      // was previously missing from this constructor entirely, so it
-      // never survived past this sync step.
       poNumber: d.poNumber,
 
-      // AMOUNT DUE SYNC FIX: same bug class as poNumber above —
-      // amountDueOverride is per-invoice (set on the Create Invoice
-      // step's Due Date & Amount Due section) and lives on the draft's
-      // own data, not on the template. Was missing from this
-      // constructor call entirely, so a manually-set Amount Due never
-      // survived past "Continue to Customise".
       amountDueOverride: d.amountDueOverride,
 
-      // PAYMENT INFO / TERMS & SIGNATURE SYNC PASS: template value when
-      // a template is selected, else keep whatever's already on the
-      // provider — same pattern as businessName/Email/Phone/Address
-      // above. Deliberately does NOT read these off `d` (the draft) —
-      // these are template-authored, not per-invoice.
-      //
-      // PAYMENT TERMS REMOVAL PASS: the `paymentTerms:` line that used
-      // to sit here has been removed — the field no longer exists on
-      // either BusinessInfo or InvoiceData.
       bankName: businessInfo?.bankName ?? current.bankName,
       accountName: businessInfo?.accountName ?? current.accountName,
       accountNumber: businessInfo?.accountNumber ?? current.accountNumber,
@@ -554,18 +650,16 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
       signatureImagePath:
           businessInfo?.signatureImagePath ?? current.signatureImagePath,
 
-      // SIGNATURE SIZER PASS: signatureFontSize is a per-invoice
-      // Customise-step setting (the "Size" slider under the Signature
-      // toggle), not template-authored — same class of field as
-      // businessLogoDisplaySize above, which this constructor already
-      // preserves from `current` for exactly this reason. Without this,
-      // adjusting the slider on Customise, then going back and tapping
-      // "Continue to Customise" again, would silently reset it to the
-      // 22.0 constructor default.
       signatureFontSize: current.signatureFontSize,
     );
 
     provider.updateInvoiceData(data);
+    // DRAFT-SYNC PASS: record which draft this session came from, so
+    // step_customise.dart's _handleSave() knows which draft entry to
+    // write Customise-only fields back onto once the invoice is saved.
+    // This is what the NEXT call to _syncSelectedToProvider() reads (as
+    // `provider.sourceDraftId`) to compute `sameSession` above.
+    provider.setSourceDraftId(draft.id);
   }
 
   @override
@@ -573,25 +667,15 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atMax = _library.length >= _kMaxInvoiceDrafts;
-    // SAVED-ITEMS FILTERS PASS
     final visible = _visibleIndices;
     final isSearching = _searchQuery.trim().isNotEmpty;
 
-    // SCAFFOLD PARITY FIX: this widget now returns its OWN
-    // ScaffoldMessenger + Scaffold, with the StepNavBar registered as
-    // that Scaffold's real `bottomNavigationBar` — instead of being a
-    // plain trailing Column child inside EditorScreen's body. This is
-    // what actually gives SnackBars shown via `_messengerKey` something
-    // correct to dock above. `backgroundColor: Colors.transparent` keeps
-    // this a pure layout/messenger change with no visual difference —
-    // EditorScreen's own background still shows through underneath.
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: CustomScrollView(
           slivers: [
-            // ── Header ──────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
@@ -657,7 +741,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                     ),
                     const SizedBox(height: 12),
 
-                    // ── Context banner (template / customer selection) ─
                     CreateInvoiceContextBanner(
                       template: widget.selectedTemplate,
                       customer: widget.selectedCustomer,
@@ -665,14 +748,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                     ),
                     const SizedBox(height: 16),
 
-                    // ── Create Invoice button ──────────────────────
-                    // SCAFFOLD PARITY FIX: routed through _messengerKey
-                    // instead of ScaffoldMessenger.of(context), and the
-                    // stray `behavior: SnackBarBehavior.floating` here
-                    // is dropped for consistency — the SnackBar default
-                    // (fixed) now docks above this widget's own
-                    // StepNavBar exactly like the other toasts in this
-                    // file.
                     GestureDetector(
                       onTap: atMax
                           ? () => _messengerKey.currentState?.showSnackBar(
@@ -744,7 +819,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
               ),
             ),
 
-            // ── Library header ────────────────────────────────────────
             if (!_loading && _library.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -840,7 +914,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                 ),
               ),
 
-            // ── Search + sort (SAVED-ITEMS FILTERS PASS) ─────────────
             if (!_loading && _showLibraryPanel && _library.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -884,7 +957,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                 ),
               ),
 
-            // ── Draft cards ────────────────────────────────────────────
             if (!_loading && _showLibraryPanel && _library.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -906,7 +978,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                 ),
               ),
 
-            // ── No search results ────────────────────────────────────
             if (!_loading &&
                 _showLibraryPanel &&
                 _library.isNotEmpty &&
@@ -925,7 +996,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
                 ),
               ),
 
-            // ── Empty state ─────────────────────────────────────────
             if (!_loading && _library.isEmpty)
               SliverFillRemaining(
                 child: EmptyState(
@@ -944,12 +1014,6 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
           ],
         ),
 
-        // ── Bottom nav bar (Back / Continue to Customise) ───────────────
-        // SCAFFOLD PARITY FIX: this is now the nested Scaffold's real
-        // `bottomNavigationBar` — the piece that actually makes SnackBars
-        // shown via `_messengerKey` dock correctly above it, instead of
-        // being just another trailing Column child with nothing for a
-        // fixed-behavior SnackBar to dock above.
         bottomNavigationBar: SafeArea(
           top: false,
           bottom: true,
@@ -965,9 +1029,7 @@ class _StepCreateInvoiceState extends State<StepCreateInvoice> {
 }
 
 // =============================================================================
-// SAVED-ITEMS FILTERS PASS: search field for the saved-invoice list.
-// Functionally identical to the Templates step's own search field,
-// duplicated here since that widget is file-private to that file.
+// Search field / sort selector — unchanged from earlier passes.
 // =============================================================================
 
 class _DraftSearchField extends StatelessWidget {
@@ -1029,12 +1091,6 @@ class _DraftSearchField extends StatelessWidget {
     );
   }
 }
-
-// =============================================================================
-// SAVED-ITEMS FILTERS PASS: sort selector (segmented chips) for the
-// saved-invoice list. Same shape as the Templates step's own sort
-// selector.
-// =============================================================================
 
 class _DraftSortSelector extends StatelessWidget {
   final _DraftSortMode value;
@@ -1138,12 +1194,6 @@ class _InvoiceDraftCard extends StatelessWidget {
         ? d.currencySymbol.trim()
         : (d.currency.trim().isNotEmpty ? '${d.currency.trim()} ' : '');
 
-    // CONTAINER LOGO + MANDATORY NAME PASS: real thumbnail when the
-    // container has a logo set, else the same rotated-square fallback
-    // mark step_templates.dart's _TemplateCard uses (or a plain icon as
-    // the last resort when logoShowInitial is off) — mirrors that
-    // card's icon-block logic exactly, adapted to SavedInvoiceDraft's
-    // flat logo fields.
     final hasLogo = draft.logoPath != null &&
         draft.logoPath!.isNotEmpty &&
         File(draft.logoPath!).existsSync();
@@ -1183,7 +1233,6 @@ class _InvoiceDraftCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Radio indicator
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 22,
@@ -1206,8 +1255,6 @@ class _InvoiceDraftCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Logo / fallback mark — see CONTAINER LOGO + MANDATORY
-              // NAME PASS above.
               Container(
                 width: 46,
                 height: 46,
@@ -1247,7 +1294,6 @@ class _InvoiceDraftCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1343,7 +1389,6 @@ class _InvoiceDraftCard extends StatelessWidget {
                 ),
               ),
 
-              // Action buttons
               Column(
                 children: [
                   GestureDetector(
@@ -1386,14 +1431,6 @@ class _InvoiceDraftCard extends StatelessWidget {
     );
   }
 }
-
-// =============================================================================
-// _DraftCardFallbackMark — rotated-square initial mark shown when a draft
-// has no container logo set and logoShowInitial is on. Mirrors
-// step_templates.dart's _CardFallbackMark exactly, adapted to
-// SavedInvoiceDraft's flat logo fields (and draft.name / the invoice's
-// client name as the letter source) instead of BusinessInfo's nesting.
-// =============================================================================
 
 class _DraftCardFallbackMark extends StatelessWidget {
   final SavedInvoiceDraft draft;

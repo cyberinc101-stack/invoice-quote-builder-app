@@ -1,24 +1,9 @@
-// receipt_provider.dart
-// lib/providers/receipt_provider.dart
-//
-// SIGNATURE PASS (this update): added updateSignatureMode(),
-// updateSignatureName(), updateSignatureImagePath(),
-// updateSignatureFontSize(), updateSignatureFontFamily(), and
-// updateShowSignature() — thin pass-throughs to
-// ReceiptData.copyWith's new signature fields, mirroring
-// InvoiceProvider's/QuoteProvider's identical shapes. Backs the new
-// Signature section on receipt_step_customise.dart's Receipt Fields
-// section.
-//
-// HISTORY LOGGING PASS, CONVERT FORMAT PASS, ALERTPREFS PUSH WIRING,
-// PUSH ALERTS (all earlier) — see prior header comments; unaffected by
-// this update.
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/receipt_data.dart';
+import '../models/footer_tagline.dart';
 import '../models/history_event.dart' show HistoryDocType;
 import '../filters/filter_logic.dart' show receiptIsDraft;
 import '../alerts/notifications/document_alert_scheduler.dart';
@@ -37,8 +22,6 @@ class ReceiptProvider extends ChangeNotifier {
 
   String? get currentReceiptId => _currentReceiptId;
 
-  // -- Reset / update current draft ------------------------------------------
-
   void resetReceiptData() {
     _currentReceiptData = ReceiptData();
     _currentReceiptId = null;
@@ -50,10 +33,92 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // SIGNATURE PASS: mirrors InvoiceProvider's/QuoteProvider's identical
-  // shapes, writing onto the active editor draft (_currentReceiptData)
-  // via copyWith — same layer every other updateXxx() method here
-  // already writes to.
+  // BACKGROUND-IMAGE PASS: mirrors InvoiceProvider's/QuoteProvider's
+  // identical two methods exactly, writing onto the active editor draft
+  // (_currentReceiptData) via copyWith.
+  void updateHeaderBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _currentReceiptData = _currentReceiptData.copyWith(
+      headerBackgroundImagePath: path,
+      clearHeaderBackgroundImage: path == null,
+      headerBackgroundEnabled: enabled,
+      headerBackgroundOpacity: opacity,
+      headerBackgroundOffsetDx: offsetDx,
+      headerBackgroundOffsetDy: offsetDy,
+      headerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateFooterBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _currentReceiptData = _currentReceiptData.copyWith(
+      footerBackgroundImagePath: path,
+      clearFooterBackgroundImage: path == null,
+      footerBackgroundEnabled: enabled,
+      footerBackgroundOpacity: opacity,
+      footerBackgroundOffsetDx: offsetDx,
+      footerBackgroundOffsetDy: offsetDy,
+      footerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateBodyBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _currentReceiptData = _currentReceiptData.copyWith(
+      bodyBackgroundImagePath: path,
+      clearBodyBackgroundImage: path == null,
+      bodyBackgroundEnabled: enabled,
+      bodyBackgroundOpacity: opacity,
+      bodyBackgroundOffsetDx: offsetDx,
+      bodyBackgroundOffsetDy: offsetDy,
+      bodyBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateBusinessTaglineEnabled(bool enabled) {
+    _currentReceiptData = _currentReceiptData.copyWith(businessTaglineEnabled: enabled);
+    notifyListeners();
+  }
+
+  void updateFooterTaglinesEnabled(bool enabled) {
+    _currentReceiptData = _currentReceiptData.copyWith(footerTaglinesEnabled: enabled);
+    notifyListeners();
+  }
+
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text.
+  void updateFooterTaglinesFontSize(double size) {
+    _currentReceiptData = _currentReceiptData.copyWith(footerTaglinesFontSize: size);
+    notifyListeners();
+  }
+
+  void updateFooterTaglines(List<FooterTaglineItem> items) {
+    _currentReceiptData = _currentReceiptData.copyWith(
+      footerTaglines: items.map((i) => i.copyWith()).toList(),
+    );
+    notifyListeners();
+  }
+
   void updateShowSignature(bool show) {
     _currentReceiptData = _currentReceiptData.copyWith(showSignature: show);
     notifyListeners();
@@ -86,8 +151,6 @@ class ReceiptProvider extends ChangeNotifier {
     _currentReceiptData = _currentReceiptData.copyWith(signatureFontFamily: family);
     notifyListeners();
   }
-
-  // -- Completion percent (simple heuristic) ---------------------------------
 
   int _calcCompletionPercent(ReceiptData d) {
     final fields = [
@@ -122,8 +185,6 @@ class ReceiptProvider extends ChangeNotifier {
     ));
   }
 
-  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
-
   Future<void> applyDraftAlertsEnabled(bool enabled) async {
     for (final r in _savedReceipts) {
       try {
@@ -135,8 +196,6 @@ class ReceiptProvider extends ChangeNotifier {
       } catch (_) {}
     }
   }
-
-  // -- Save current draft as a SavedReceipt ----------------------------------
 
   Future<void> saveCurrentReceipt({
     required String title,
@@ -208,8 +267,6 @@ class ReceiptProvider extends ChangeNotifier {
     return saved;
   }
 
-  // -- Load a saved receipt back into the editor -----------------------------
-
   void loadSavedReceipt(String id) {
     final match = _savedReceipts.where((r) => r.id == id);
     if (match.isEmpty) return;
@@ -219,8 +276,6 @@ class ReceiptProvider extends ChangeNotifier {
     _currentReceiptData = saved.data.deepCopy();
     notifyListeners();
   }
-
-  // -- Rename -----------------------------------------------------------------
 
   Future<void> renameSavedReceipt(String id, String newTitle) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
@@ -233,20 +288,27 @@ class ReceiptProvider extends ChangeNotifier {
     unawaited(_syncDraftNudge(_savedReceipts[index]));
   }
 
-  // -- Status ------------------------------------------------------------
-
   Future<void> updateSavedReceiptStatus(String id, ReceiptStatus status) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
     if (index == -1) return;
     _savedReceipts[index] = _savedReceipts[index].copyWith(
-      data: _savedReceipts[index].data.copyWith(status: status),
+      data: _savedReceipts[index].data.copyWith(status: status, statusHidden: false),
       lastEditedAt: DateTime.now(),
     );
     await _persist();
     notifyListeners();
   }
 
-  // -- Format (paper size / design) --------------------------------------
+  Future<void> updateSavedReceiptStatusHidden(String id, bool hidden) async {
+    final index = _savedReceipts.indexWhere((r) => r.id == id);
+    if (index == -1) return;
+    _savedReceipts[index] = _savedReceipts[index].copyWith(
+      data: _savedReceipts[index].data.copyWith(statusHidden: hidden),
+      lastEditedAt: DateTime.now(),
+    );
+    await _persist();
+    notifyListeners();
+  }
 
   Future<void> updateSavedReceiptFormat(
     String id, {
@@ -266,8 +328,6 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // -- Folder --------------------------------------------------------------
-
   Future<void> updateReceiptFolder(String id, String? folderName) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
     if (index == -1) return;
@@ -280,8 +340,6 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // -- Reports exclusion ----------------------------------------------------
-
   Future<void> updateReceiptExcludeFromReports(String id, bool exclude) async {
     final index = _savedReceipts.indexWhere((r) => r.id == id);
     if (index == -1) return;
@@ -292,8 +350,6 @@ class ReceiptProvider extends ChangeNotifier {
     await _persist();
     notifyListeners();
   }
-
-  // -- Delete -------------------------------------------------------------
 
   Future<void> deleteSavedReceipt(String id, {HistoryProvider? historyProvider}) async {
     SavedReceipt? deleted;
@@ -322,8 +378,6 @@ class ReceiptProvider extends ChangeNotifier {
       ));
     }
   }
-
-  // -- Persistence --------------------------------------------------------
 
   Future<void> loadPersistedReceipts() async {
     try {

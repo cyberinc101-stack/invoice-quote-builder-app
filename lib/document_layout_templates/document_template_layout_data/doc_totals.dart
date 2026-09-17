@@ -1,10 +1,28 @@
 // doc_totals.dart
 // lib/document_layout_templates/document_template_layout_data/doc_totals.dart
 //
+// NO-TRUNCATION / MAX-14PT PASS (this update): the totals row() helper
+// (Subtotal/Discount/Tax/Grand Total labels + amounts) and
+// buildSharedThankYouFooter both used `maxLines: 1, overflow:
+// TextOverflow.ellipsis` — a long discount/tax name (user-typed, e.g.
+// "Early Payment Discount (3%)") or a long thank-you line
+// ("Thank you for your business — someone@areallylongdomainname.com")
+// could get cut with "…". Both now use the shared autoFitText() helper
+// from doc_header.dart, which shrinks the whole line to fit instead of
+// hiding part of it, and never exceeds kMaxAutoFitFontSize (14pt).
+// buildSharedPaymentInfoPanel / buildSharedTermsPanel / notes already
+// wrap (softWrap true, no maxLines) so multi-line panel text was never
+// truncated — left unchanged.
+//
+// DIVIDER-MOVE PASS (earlier): buildSharedThankYouFooter no longer
+// draws its own leading divider — that divider now lives in
+// doc_footer.dart's buildSharedFooterTaglines instead, sitting directly
+// ABOVE the taglines row (which now renders below this thank-you text
+// in _defaultFooterContent — see template_document.dart). Visual order
+// is now: thank-you text, divider, taglines row.
+//
 // ENGINE FOLDER SPLIT PASS: split out of the former shared_doc_widgets.
 // dart — see doc_header.dart's header comment for the full rationale.
-// No behavior change from the split; every function here is
-// byte-for-byte what shared_doc_widgets.dart had.
 //
 // This file holds everything that renders below the line-item table:
 //   - buildSharedPaymentInfoPanel — Bank/Account Name/Account Number/
@@ -27,7 +45,7 @@ import 'package:flutter/material.dart';
 import 'doc_template_adapter.dart';
 import 'doc_edit_bundle.dart';
 import '../pagination/doc_field.dart';
-import 'doc_header.dart' show kInk, kGrey, kGreyLight, kPanelBg, kRule;
+import 'doc_header.dart' show kInk, kGrey, kGreyLight, kPanelBg, kRule, autoFitText;
 
 Widget _panelLabel(String text, String ff) => Text(text,
     style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
@@ -65,6 +83,8 @@ Widget buildSharedPaymentInfoPanel(DocTemplateAdapter a) {
   );
 }
 
+// Already wraps (softWrap: true, no maxLines) — never truncated, left
+// unchanged by the NO-TRUNCATION PASS.
 Widget _paymentRow(String label, String value, String ff) => Padding(
   padding: const EdgeInsets.only(bottom: 4),
   child: Column(
@@ -122,7 +142,9 @@ double _measureTextWidth(String text, TextStyle style) {
 /// Signature block. Modes: 'typed', 'image', 'blank', '' (none). 'typed'
 /// resolves a chosen script family via a plain TextStyle(fontFamily:)
 /// against the locally-bundled asset (see pubspec.yaml) — no runtime
-/// font fetch.
+/// font fetch. Already used FittedBox(scaleDown) for the typed name
+/// before this pass, so it was never subject to the ellipsis-truncation
+/// bug this pass fixes elsewhere — left unchanged.
 Widget buildSharedSignatureBlock(DocTemplateAdapter a) {
   if (!docFieldOn(a, 'signature')) return const SizedBox.shrink();
   if (a.signatureMode.trim().isEmpty) return const SizedBox.shrink();
@@ -216,7 +238,8 @@ Widget buildSharedSignatureBlock(DocTemplateAdapter a) {
 
 /// Due Date/Amount Due bar, rendered under Grand Total. Renders nothing
 /// when either value is null (quote/receipt — see
-/// doc_template_adapter.dart) or its toggle is off.
+/// doc_template_adapter.dart) or its toggle is off. Neither label had
+/// maxLines/ellipsis before this pass — left unchanged.
 Widget buildSharedDueDateAmountBar(DocTemplateAdapter a) {
   final showDueDateSummary = docFieldOn(a, 'dueDateSummary') && a.dueDateSummaryValue != null;
   final showAmountDueSummary = docFieldOn(a, 'amountDue') && a.amountDueValue != null;
@@ -242,8 +265,10 @@ Widget buildSharedDueDateAmountBar(DocTemplateAdapter a) {
                 Text('DUE DATE', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w700,
                     color: kGrey, letterSpacing: 1.0, fontFamily: ff)),
                 const SizedBox(height: 3),
-                Text(a.dueDateSummaryValue!.isEmpty ? '—' : a.dueDateSummaryValue!,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kInk, fontFamily: ff)),
+                autoFitText(
+                  a.dueDateSummaryValue!.isEmpty ? '—' : a.dueDateSummaryValue!,
+                  TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kInk, fontFamily: ff),
+                ),
               ],
             ),
           if (showAmountDueSummary)
@@ -254,8 +279,11 @@ Widget buildSharedDueDateAmountBar(DocTemplateAdapter a) {
                 Text('AMOUNT DUE', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w700,
                     color: kGrey, letterSpacing: 1.0, fontFamily: ff)),
                 const SizedBox(height: 3),
-                Text(a.fmtMoney(a.amountDueValue!),
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: a.accent, fontFamily: ff)),
+                autoFitText(
+                  a.fmtMoney(a.amountDueValue!),
+                  TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: a.accent, fontFamily: ff),
+                  textAlign: TextAlign.right,
+                ),
               ],
             ),
         ],
@@ -273,24 +301,32 @@ Widget buildSharedTotalsAndNotesSection(DocTemplateAdapter a, {DocEditBundle? ed
   final editable = edit != null;
   final ff = a.fontFamily;
 
+  // NO-TRUNCATION PASS: label and amount both now render via
+  // autoFitText instead of Flexible + maxLines:1 + ellipsis. A
+  // user-typed discount/tax label like "Early Payment Discount (3%)"
+  // (row() is called with that whole string as its label — see
+  // discountLabel/taxLabel below) used to get cut off; it now shrinks
+  // to fit the row's width instead.
   Widget row(String label, double v, {bool bold = false, bool negative = false}) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Flexible(
-        child: Text(label,
-            style: TextStyle(fontSize: bold ? 11 : 10,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-                color: bold ? kInk : kGrey, fontFamily: ff),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: autoFitText(
+          label,
+          TextStyle(fontSize: bold ? 11 : 10,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+              color: bold ? kInk : kGrey, fontFamily: ff),
+        ),
       ),
       const SizedBox(width: 8),
       Flexible(
-        child: Text('${negative ? '−' : ''}${a.fmtMoney(v)}',
-            style: TextStyle(fontSize: bold ? 13 : 10.5,
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-                color: bold ? a.accent : kInk, fontFamily: ff),
-            textAlign: TextAlign.right,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: autoFitText(
+          '${negative ? '−' : ''}${a.fmtMoney(v)}',
+          TextStyle(fontSize: bold ? 13 : 10.5,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+              color: bold ? a.accent : kInk, fontFamily: ff),
+          textAlign: TextAlign.right,
+        ),
       ),
     ]),
   );
@@ -406,18 +442,18 @@ Widget buildSharedTotalsAndNotesSection(DocTemplateAdapter a, {DocEditBundle? ed
   );
 }
 
+/// NO-TRUNCATION PASS: was maxLines:1 + ellipsis — a longer thank-you
+/// line (e.g. with a long email address baked in — see
+/// doc_template_adapter.dart's thankYouLabel construction) could get
+/// cut with "…". Now shrinks via autoFitText instead.
 Widget buildSharedThankYouFooter(DocTemplateAdapter a) {
   if (!docFieldOn(a, 'thankYouMessage')) return const SizedBox.shrink();
 
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(height: 0.75, color: kRule),
-      const SizedBox(height: 10),
-      Text(a.thankYouLabel,
-          style: TextStyle(fontSize: 8.5, color: kGreyLight, fontFamily: a.fontFamily),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
-    ],
+  return Align(
+    alignment: Alignment.centerLeft,
+    child: autoFitText(
+      a.thankYouLabel,
+      TextStyle(fontSize: 8.5, color: kGreyLight, fontFamily: a.fontFamily),
+    ),
   );
 }

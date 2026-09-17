@@ -1,6 +1,14 @@
 // lib/screens/create_receipt_section/step_templates/receipt_step_template.dart
 //
-// SAVED-ITEMS CAP + FILTERS PASS (this update): _kMaxReceiptTemplates
+// TAGLINE PASS (this update): ReceiptTemplate gains `tagline` (String,
+// default '') — mirrors BusinessInfo.tagline / QuoteTemplate.tagline
+// exactly, a short line rendered under the business name in the
+// document header (e.g. "TECHNOLOGY | WEBSITES | SUPPORT"). Edited via
+// a new field in the "Business Information" section, right after
+// Business Name. Synced onto ReceiptData.businessTagline wherever a
+// ReceiptTemplate is applied.
+//
+// SAVED-ITEMS CAP + FILTERS PASS (earlier): _kMaxReceiptTemplates
 // raised from 10 to 100, matching the cap used elsewhere in this app's
 // saved-item libraries. Since a library of up to 100 saved templates is
 // unusable without a way to narrow it down, this pass also adds the
@@ -39,8 +47,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../models/address_info.dart';
+import '../../../models/footer_tagline.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import '../../../widgets/shared_address_field_group.dart';
+import '../../../widgets/footer_taglines_editor.dart';
 import '../receipt_edit_widgets.dart' show receiptSectionHeader, ReceiptField;
 
 part 'receipt_step_template_payment.dart';
@@ -61,11 +71,19 @@ class ReceiptTemplate {
   final String id;
   String name;
   String businessName;
+  // TAGLINE PASS: short line rendered under the business name in the
+  // document header — mirrors BusinessInfo.tagline / QuoteTemplate.tagline
+  // exactly.
+  String tagline;
   String businessEmail;
   String businessPhone;
   String businessAddress; // legacy flat address — kept in sync from
                            // addressInfo.singleLine by this sheet's _save().
   AddressInfo addressInfo;
+  // FOOTER TAGLINES PASS: 3–6 icon+text items authored here; the
+  // Customise-step "Footer Taglines" switch (ReceiptData.
+  // footerTaglinesEnabled) controls whether they actually render.
+  List<FooterTaglineItem> footerTaglines;
   String? logoPath;
   double logoOffsetDx;
   double logoOffsetDy;
@@ -124,10 +142,12 @@ class ReceiptTemplate {
     required this.id,
     this.name = '',
     this.businessName = '',
+    this.tagline = '',
     this.businessEmail = '',
     this.businessPhone = '',
     this.businessAddress = '',
     AddressInfo? addressInfo,
+    List<FooterTaglineItem>? footerTaglines,
     this.logoPath,
     this.logoOffsetDx = 0.0,
     this.logoOffsetDy = 0.0,
@@ -161,7 +181,8 @@ class ReceiptTemplate {
     this.signatureName = '',
     this.signatureImagePath,
   })  : addressInfo = addressInfo ?? AddressInfo(),
-        senderAddressInfo = senderAddressInfo ?? AddressInfo();
+        senderAddressInfo = senderAddressInfo ?? AddressInfo(),
+        footerTaglines = footerTaglines ?? [];
 
   Offset get logoOffset => Offset(logoOffsetDx, logoOffsetDy);
   LogoShape get shape => logoShapeFromString(logoShape);
@@ -185,10 +206,12 @@ class ReceiptTemplate {
         'id': id,
         'name': name,
         'businessName': businessName,
+        'tagline': tagline,
         'businessEmail': businessEmail,
         'businessPhone': businessPhone,
         'businessAddress': businessAddress,
         'addressInfo': addressInfo.toJson(),
+        'footerTaglines': footerTaglinesToJson(footerTaglines),
         'logoPath': logoPath,
         'logoOffsetDx': logoOffsetDx,
         'logoOffsetDy': logoOffsetDy,
@@ -227,11 +250,13 @@ class ReceiptTemplate {
         id: j['id'] as String,
         name: j['name'] as String? ?? '',
         businessName: j['businessName'] as String? ?? '',
+        tagline: j['tagline'] as String? ?? '',
         businessEmail: j['businessEmail'] as String? ?? '',
         businessPhone: j['businessPhone'] as String? ?? '',
         businessAddress: j['businessAddress'] as String? ?? '',
         addressInfo:
             AddressInfo.fromJson(j['addressInfo'] ?? j['businessAddress']),
+        footerTaglines: footerTaglinesFromJson(j['footerTaglines']),
         logoPath: j['logoPath'] as String?,
         logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
@@ -448,10 +473,12 @@ class _ReceiptStepTemplateSectionState extends State<ReceiptStepTemplateSection>
       id: const Uuid().v4(),
       name: '${orig.name} (Copy)',
       businessName: orig.businessName,
+      tagline: orig.tagline,
       businessEmail: orig.businessEmail,
       businessPhone: orig.businessPhone,
       businessAddress: orig.businessAddress,
       addressInfo: orig.addressInfo.copyWith(),
+      footerTaglines: orig.footerTaglines.map((t) => t.copyWith()).toList(),
       logoPath: orig.logoPath,
       logoOffsetDx: orig.logoOffsetDx,
       logoOffsetDy: orig.logoOffsetDy,
@@ -1098,9 +1125,11 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
   late final String _currency;
 
   late TextEditingController _bizNameCtrl;
+  late TextEditingController _bizTaglineCtrl;
   late TextEditingController _bizEmailCtrl;
   late TextEditingController _bizPhoneCtrl;
   late AddressFieldControllers _bizAddressControllers;
+  List<FooterTaglineItem> _footerTaglines = [];
 
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
@@ -1148,9 +1177,11 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
     _currency = e?.currency ?? 'USD';
 
     _bizNameCtrl = TextEditingController(text: e?.businessName ?? '');
+    _bizTaglineCtrl = TextEditingController(text: e?.tagline ?? '');
     _bizEmailCtrl = TextEditingController(text: e?.businessEmail ?? '');
     _bizPhoneCtrl = TextEditingController(text: e?.businessPhone ?? '');
     _bizAddressControllers = AddressFieldControllers.seeded(e?.addressInfo);
+    _footerTaglines = e?.footerTaglines.map((t) => t.copyWith()).toList() ?? [];
 
     _logoPath = e?.logoPath;
     _logoOffset = e?.logoOffset ?? Offset.zero;
@@ -1189,7 +1220,7 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
     _showPaymentMethod = e?.showPaymentMethod ?? true;
 
     for (final c in [
-      _nameCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _nameCtrl, _bizNameCtrl, _bizTaglineCtrl, _bizEmailCtrl, _bizPhoneCtrl,
       _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
       _senderPhoneCtrl, _senderWebsiteCtrl,
       _thankYouCtrl,
@@ -1206,7 +1237,7 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
   @override
   void dispose() {
     for (final c in [
-      _nameCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _nameCtrl, _bizNameCtrl, _bizTaglineCtrl, _bizEmailCtrl, _bizPhoneCtrl,
       _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
       _senderPhoneCtrl, _senderWebsiteCtrl,
       _thankYouCtrl,
@@ -1243,10 +1274,12 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
       name: _nameCtrl.text.trim(),
       currency: _currency,
       businessName: _bizNameCtrl.text.trim(),
+      tagline: _bizTaglineCtrl.text.trim(),
       businessEmail: _bizEmailCtrl.text.trim(),
       businessPhone: _bizPhoneCtrl.text.trim(),
       businessAddress: bizAddressInfo.singleLine,
       addressInfo: bizAddressInfo,
+      footerTaglines: _footerTaglines.map((t) => t.copyWith()).toList(),
       logoPath: _logoPath,
       logoOffsetDx: _logoOffset.dx,
       logoOffsetDy: _logoOffset.dy,
@@ -1395,6 +1428,16 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
                               _counter(context, _bizNameCtrl.text.length, 40),
                               const SizedBox(height: 12),
                               ReceiptField(
+                                ctrl: _bizTaglineCtrl,
+                                label: 'Tagline',
+                                hint: 'e.g. Technology | Websites | Support',
+                                accent: accent,
+                                icon: Icons.short_text_rounded,
+                                max: 60,
+                              ),
+                              _counter(context, _bizTaglineCtrl.text.length, 60),
+                              const SizedBox(height: 12),
+                              ReceiptField(
                                 ctrl: _bizEmailCtrl,
                                 label: 'Business Email',
                                 hint: 'e.g. hello@acme.com',
@@ -1422,6 +1465,18 @@ class _ReceiptTemplateSheetState extends State<_ReceiptTemplateSheet> {
                                 accent: accent,
                               ),
                             ],
+                          ),
+                        ),
+
+                        _CollapsibleGroup(
+                          label: 'Footer Taglines',
+                          icon: Icons.share_rounded,
+                          accent: accent,
+                          sectionKey: 'footer_taglines',
+                          child: FooterTaglinesEditor(
+                            initialItems: _footerTaglines,
+                            accent: accent,
+                            onChanged: (items) => _footerTaglines = items,
                           ),
                         ),
 

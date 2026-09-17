@@ -1,328 +1,6 @@
-// invoice_data.dart
-// lib/models/invoice_data.dart
-//
-// TEXT SIZE WIRING FIX (this update): InvoiceData gains `fontSize`
-// (double, default 14.0) — the base body-text size (px) for the
-// rendered document. Previously the Customise step's "Text Size" slider
-// wrote to a plain, unsaved `InvoiceProvider._fontSize` field that
-// nothing on this model or any renderer ever read — moving the slider
-// had zero visual effect and nothing was persisted. The slider (and
-// InvoiceProvider.fontSize/updateFontSize) now read/write straight
-// through to this field via copyWith, same pattern as every other
-// single-value field here. Default 14.0 matches the old disconnected
-// field's own default, so every existing invoice renders identically
-// until the slider is actually moved. Every hardcoded `fontSize:` value
-// in executive_invoice_stationary_layout.dart / invoice_pdf_service.dart
-// is meant to eventually scale off this field (via a shared ratio
-// helper) so preview and exported PDF both actually respond to it — see
-// those files' own pending pass notes.
-//
-// SIGNATURE FONT FAMILY PASS (earlier): InvoiceData gained
-// signatureFontFamily (String, default '') — which of six google_fonts
-// script families (Dancing Script, Great Vibes, Sacramento, Pacifico,
-// Alex Brush, Caveat — see kSignatureFonts in
-// executive_invoice_payment_terms_signature.dart) a typed signature
-// renders in. '' means "no family chosen" — every render site
-// (buildSignatureBlock, buildSharedSignatureBlock, buildPdfSignatureBlock)
-// falls back to the pre-existing italic body-font look in that case, so
-// every invoice saved before this field existed renders exactly as
-// before. Only meaningful when signatureMode == 'typed'.
-//
-// PAYMENT TERMS REMOVAL PASS (earlier): InvoiceData.paymentTerms has
-// been removed entirely — field, toJson/fromJson keys, copyWith
-// parameter, and the 'paymentTerms' entry in defaultInvoiceEnabledFields()
-// are all gone. Matches the corresponding removal in client_info.dart
-// (BusinessInfo.paymentTerms), step_customise.dart (the "Payment Terms"
-// toggle row), the template editor's "Payment Terms / Due Note" input
-// field, step_create_invoice.dart's sync step, and the two render sites
-// (executive_invoice_payment_terms_signature.dart's buildPaymentInfoPanel,
-// invoice_pdf_extra_sections.dart's buildPdfPaymentInfoPanel). Persisted
-// invoices that still have a 'paymentTerms' key in their saved JSON
-// simply have it ignored on load now — no migration or crash.
-//
-// STRUCTURED ADDRESS PASS (earlier): InvoiceData gains
-// businessAddressInfo / clientAddressInfo (AddressInfo, see
-// lib/models/address_info.dart) — the structured six-field address
-// that now backs the live preview's/PDF's rendering, mirroring what
-// client_info.dart already did for ClientInfo.addressInfo /
-// BusinessInfo.addressInfo. The original businessAddress/clientAddress
-// String fields are NOT removed — they're kept in sync (set to
-// addressInfo.singleLine) by whoever resolves them onto InvoiceData
-// (step_create_invoice.dart's _syncSelectedToProvider() for business,
-// create_invoice_bottom_sheet.dart's _save() for client), so anything
-// still reading the flat strings (older code paths, any template that
-// hasn't been touched) keeps working unchanged. fromJson() migrates
-// existing data for free: if no 'businessAddressInfo'/'clientAddressInfo'
-// key is present yet (every invoice saved before this pass), it builds
-// the AddressInfo from the legacy flat string instead — same pattern
-// ClientInfo/BusinessInfo.fromJson() already use in client_info.dart.
-//
-// LINE NET TOTAL FIX (earlier): LineItem was missing lineNetTotal —
-// create_invoice_item_widgets.dart (New Item draft card, Committed Item
-// row) reads this getter to show a row's Total after ITS OWN tax/
-// discount are applied, but the getter was never actually present on
-// this file on disk (only in an earlier draft pass), which is why
-// `flutter run` failed with "The getter 'lineNetTotal' isn't defined
-// for the type 'LineItem'". Added below, plus SavedLineItemSet.total
-// updated to sum lineNetTotal instead of the plain base total, for the
-// same reason a bundle preview's total should reflect real per-item
-// tax/discount too.
-//
-// TAX/DISCOUNT NAMING COPYWITH FIX (earlier): InvoiceData.copyWith()
-// was missing taxName/discountName from its parameter list and
-// constructor call — the fields existed (declared, defaulted, in
-// toJson/fromJson) but copyWith silently dropped any value passed in,
-// resetting both back to '' on every single copy. This is why
-// InvoiceProvider.updateInvoiceDetails()'s taxName/discountName params
-// had no effect. Fixed by adding both to copyWith's signature and
-// passing them through with the standard `?? this.x` pattern, same as
-// every other field.
-//
-// SIGNATURE SIZER PASS (earlier): InvoiceData gained
-// signatureFontSize (double, default 22.0) — the typed-name signature's
-// font size, adjustable via a slider on the Customise step's Signature
-// toggle row (step_customise.dart). Read by
-// executive_invoice_payment_terms_signature.dart's buildSignatureBlock
-// in place of the previously-hardcoded 22. Default matches the old
-// hardcoded size exactly, so existing invoices render identically until
-// the slider is actually moved.
-//
-// AMOUNT DUE PASS (earlier): InvoiceData gained amountDueOverride
-// (nullable double) — a manual override for the "Amount Due" figure
-// shown next to Due Date under Grand Total. Null means "auto": amountDue
-// (the new getter) always tracks grandTotal live as line items/tax/
-// discount change. Once the person manually edits the Amount Due field
-// on the Create Invoice step (create_invoice_bottom_sheet.dart's new
-// "Due Date & Amount Due" section), this holds that fixed value instead
-// and stops tracking grandTotal. Two new enabledFields keys —
-// dueDateSummary and amountDue — gate the new bar that renders this
-// pair directly under Grand Total (executive_invoice_stationary_layout.
-// dart's buildFooterSection). dueDateSummary is deliberately a
-// DIFFERENT key from the pre-existing 'dueDate' toggle — 'dueDate'
-// already controls the Due Date shown in the Billed-To meta row near
-// the top of the document, a different rendering location from this new
-// bar. Both new keys default true, same as every other field, so
-// existing invoices render the new bar automatically once amountDue/
-// dueDate actually have values — no migration needed since amountDue
-// always resolves to something (grandTotal) even for invoices saved
-// before this pass existed.
-//
-// PAYMENT INFO / TERMS & CONDITIONS / SIGNATURE PASS (earlier):
-// InvoiceData gained bankName/accountName/accountNumber/
-// otherPaymentDetails (Payment Info), poNumber (a
-// PO/Reference Number — deliberately per-invoice, NOT copied from a
-// template, since a PO number is different on every invoice),
-// termsAndConditions, and a three-mode Signature block: signatureMode
-// ('typed' | 'image' | 'blank'), signatureName (typed caption, used
-// when signatureMode == 'typed'), signatureImagePath (used when
-// signatureMode == 'image'; 'blank' renders neither — just an empty
-// line for a physical wet-ink signature). All new fields default
-// to '' / 'blank' / null so every persisted invoice loads exactly as
-// before this pass. Matching keys (bankName, accountName, accountNumber,
-// otherPaymentDetails, poNumber, termsAndConditions,
-// signature) were added to defaultInvoiceEnabledFields() so each has its
-// own show/hide toggle on the Customise step, same as every other field
-// — see step_customise.dart's _FieldsSection "Payment Info" and "Terms &
-// Signature" groups. NOTE: bankName/accountName/accountNumber/
-// otherPaymentDetails/termsAndConditions/signature* are
-// intended to eventually be authored once on BusinessInfo (in
-// client_info.dart) and copied onto InvoiceData at template-select time,
-// the same way businessName/businessLogoPath etc. already work — that
-// BusinessInfo-side change and the sync step in
-// StepCreateInvoice._syncToProvider() are NOT done yet (need
-// client_info.dart / step_create_invoice.dart first). For now these
-// fields are plain per-invoice InvoiceData fields with no template
-// authoring UI wired up.
-//
-// CONTAINER LOGO + MANDATORY NAME PASS (earlier): SavedInvoiceDraft
-// gained its own logoPath/logoOffsetDx/Dy/logoScale/logoShape/
-// logoShowInitial/logoInitialLetter fields — a small identifying image
-// for the SAVED DRAFT CONTAINER itself (shown on step_create_invoice.
-// dart's _InvoiceDraftCard), separate from the invoice's own business
-// logo. Mirrors BusinessInfo's identical field set exactly, edited via
-// the same SharedLogoPicker UI used on the Template sheet — see
-// create_invoice_bottom_sheet.dart's "Container Logo" section. The
-// draft's `name` field (previously optional, labelled "Draft Label") is
-// now mandatory on that same sheet — see that file's own pass note.
-//
-// PER-ITEM TAX/DISCOUNT + SAVED SINGLE LINE ITEMS PASS (earlier):
-// LineItem gained four new fields — taxEnabled/itemTaxRate,
-// discountEnabled/itemDiscountRate — so a single line item can carry its
-// own tax/discount rate independent of InvoiceData's existing whole-
-// invoice taxRate/discountRate (which is UNCHANGED and still applies to
-// the full subtotal exactly as before). Both can be active at once
-// (they stack — see create_invoice_bottom_sheet.dart's totals formula
-// and its one-time "both are active" toast). Also added sourceSavedId
-// (nullable String) — when a line item currently on an invoice was
-// added by tapping a saved single-item container (see the new
-// SavedInvoiceLineItem below / create_invoice_saved_line_items_widgets.
-// dart), this holds that container's id, so the saved-items panel can
-// show its radio button as "currently included" for THIS invoice. Items
-// typed by hand, or added via the pre-existing SavedLineItemSet bundle
-// quick-add, leave this null. All four new fields default to
-// false/0.0/false/0.0/null, so every persisted LineItem/invoice loads
-// and totals exactly as before this pass.
-//
-// New model: SavedInvoiceLineItem — a single saved line item (as
-// opposed to SavedLineItemSet below, which is a bundle of several).
-// Mirrors SavedLineItemSet/Customer/InvoiceTemplate's shape (id/name +
-// toJson/fromJson/copyWith), persisted the same way via its own single
-// JSON-encoded SharedPreferences list — see
-// create_invoice_saved_line_items_widgets.dart for the UI this backs.
-//
-// INVOICE DRAFT LIBRARY PASS (earlier): added SavedInvoiceDraft — a
-// named, editable invoice-in-progress, saved from the Create Invoice
-// step's new library screen (step_create_invoice.dart) and reopened via
-// CreateInvoiceBottomSheet (create_invoice_bottom_sheet.dart) to keep
-// editing it. Mirrors Customer/InvoiceTemplate/SavedLineItemSet's shape
-// (id/name + toJson/fromJson/copyWith) so it persists the same way, via
-// a single JSON-encoded SharedPreferences list. Unlike SavedInvoice (the
-// finished, fully-rendered invoice with completionPercent/folderName/etc),
-// SavedInvoiceDraft only carries what's actually editable on the Create
-// Invoice step — it stores a full InvoiceData snapshot for convenience
-// (so nothing about the shape of an in-progress invoice needs to be
-// duplicated here), but business info/logo and layoutTemplateId are
-// deliberately re-resolved from the selected template + provider state
-// at "Continue to Customise" time (see StepCreateInvoice.
-// _syncSelectedToProvider), not read back out of the draft.
-//
-// LINE ITEM CONTAINERS PASS (earlier): added SavedLineItemSet — a
-// named, reusable bundle of line items, saved from the Create Invoice
-// step's Line Items section and quick-added back onto any future
-// invoice with a tap. Mirrors Customer/InvoiceTemplate's shape (id/name
-// + toJson/fromJson/copyWith) so it persists the same way, via a single
-// JSON-encoded SharedPreferences list — see
-// create_invoice_saved_items_widgets.dart (CreateInvoiceSavedItemSets)
-// for the UI this backs.
-//
-// TEMPLATE FIELD VISIBILITY PASS (earlier): added enabledFields — a
-// Map<String, bool> keyed by the same field-id strings used in
-// step_templates.dart's toggle rows (see defaultInvoiceEnabledFields()
-// below, which mirrors that file's _defaultFields() exactly). Previously
-// InvoiceTemplate.enabledFields was saved on the template but never
-// copied anywhere InvoiceData could read it, so the Invoice Fields /
-// Customer Fields toggles in the template sheet had no effect on the
-// actual rendered invoice or exported PDF. Populated from
-// InvoiceTemplate.enabledFields in StepCreateInvoice._syncToProvider(),
-// and read by executive_invoice_stationary_layout.dart (preview/edit
-// canvas) and invoice_pdf_service.dart (exported PDF) to decide what
-// actually renders. Missing keys default to true via `?? true` at each
-// read site, so persisted invoices saved before this field existed still
-// render exactly as before.
-//
-// LOGO FALLBACK MARK PASS (earlier): added businessLogoShowInitial
-// (bool, default true) and businessLogoInitialLetter (String, default
-// '') alongside the existing logo fields. When no real logo image is
-// set, every template renders a small rotated-square initial-letter mark
-// (the "blue diamond") instead of leaving blank space — these two fields
-// let the user turn that mark off entirely (businessLogoShowInitial =
-// false), or override which letter it shows instead of always
-// auto-deriving the first letter of businessName
-// (businessLogoInitialLetter). Both are read by buildSharedLogo() in
-// shared_doc_widgets.dart via DocTemplateAdapter. Defaults preserve
-// existing behaviour exactly (mark shown, auto letter) for every
-// persisted invoice, no migration needed.
-//
-// STATUS HIDDEN PASS (earlier): statusHidden — a plain bool, default
-// false — lets the status chip be hidden on the card faces without
-// touching paymentStatus itself. Backs the new "None" radio option in the
-// status menu (document_status_menu.dart / InvoiceProvider.
-// updateSavedInvoiceStatusHidden): picking "None" sets this true and
-// leaves paymentStatus exactly as it was; picking any real status sets it
-// back to false. Kept separate from paymentStatus rather than adding a
-// 5th enum value, since paymentStatus still needs to hold a real, valid
-// status for aging/reports/overdue logic even while the chip is hidden.
-//
-// TEMPLATE + LOGO SIZER PASS: layoutTemplateId (which visual design —
-// Executive/Nordic/Vibrant/etc, see preview_registry.dart — this invoice
-// renders with) and businessLogoOffsetDx/Dy/Scale/Shape (driven by
-// SharedLogoPicker) plus businessLogoDisplaySize (rendered logo box size
-// in px, driven by the Logo Size slider on the Customise step). All new
-// fields fall back to sensible defaults when missing from persisted JSON
-// (layoutTemplateId 1 = Executive, zero offset, scale 1.0, 'roundedSquare'
-// shape, size 40.0), so existing persisted invoices load correctly with
-// no migration step.
-//
-// CURRENCY DISPLAY PASS (this update): added currencySymbol and
-// currencyDisplayMode alongside currency (the code, e.g. "USD"). Both are
-// free text / free choice — no hardcoded currency list gates what can be
-// entered here, since a fixed dropdown would cap which currencies the app
-// can invoice in. currencyDisplayMode is 'code' | 'symbol' | 'both' and
-// controls how shared_doc_widgets.dart's fmtMoney() renders amounts.
-// Defaults ('' symbol, 'code' mode) mean existing persisted invoices
-// render exactly as before this field existed.
-//
-// WHOLE-INVOICE TAX/DISCOUNT TOGGLE PASS (this update): InvoiceData
-// gained taxEnabled/discountEnabled — independent on/off switches for
-// the document's own whole-invoice Tax %/Discount %, mirroring
-// LineItem's own taxEnabled/discountEnabled pattern one level up. Both
-// default to TRUE (the opposite of LineItem's default-false) because
-// every existing persisted invoice already had its taxRate/discountRate
-// applying unconditionally before this pass existed — defaulting to
-// true means nothing changes for any invoice until someone actually
-// flips a switch off. Turning either off hides that rate's Name/% row
-// entirely on the Create Invoice sheet (create_invoice_bottom_sheet.
-// dart) and makes taxAmount/discountAmount return 0 below, so a
-// disabled rate stops contributing to grandTotal rather than just being
-// visually hidden while still secretly applied. Read by
-// executive_invoice_stationary_layout.dart's buildFooterSection (folded
-// into its existing showTax/showDiscount gates) so the printed/exported
-// Tax and Discount rows disappear the same way.
-
 import 'address_info.dart';
+import 'footer_tagline.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LineItem
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// LINE NET TOTAL PASS: LineItem gained lineNetTotal — a row's own Total
-// after ITS OWN tax/discount are applied (total minus this item's
-// discount, plus this item's signed tax). `total` itself is UNCHANGED
-// (still the plain qty × unitPrice base every other total depends on)
-// — this is a second, display-oriented getter. Every UI site that
-// renders a line item's Total (the New Item draft card, the Committed
-// Item row, the Saved Item card, and the rendered document's TOTAL
-// column) now reads this instead of `total`, so a row with its own
-// tax/discount actually shows a total that reflects it instead of the
-// pre-tax/discount base figure. SavedLineItemSet.total (the bundle
-// preview total) now sums lineNetTotal too, for the same reason.
-//
-// TAX NAME PASS (earlier): LineItem gained itemTaxName/
-// itemDiscountName (both default '') — a user-typed label like "GST" or
-// "VAT" for tax, "Trade Discount" for discount. The TAX/DISCOUNT column
-// headers on the document stay generic (a single column can't show
-// multiple different names), but each row's own name shows inline next
-// to that row's percentage. InvoiceData gained itemTaxExtraByName/
-// itemDiscountExtraByName — the totals section's per-name breakdown,
-// grouping every item by its name so differently-named items get
-// separate "Item Tax (GST)"/"Item Tax (VAT)" rows instead of one
-// combined figure, while a single shared name (or no name at all)
-// still collapses to one row exactly as before this pass.
-//
-// TAX SIGN PASS (earlier): LineItem gained itemTaxIsAddition
-// (default true) — whether this item's per-item tax adds to the total
-// (ordinary sales tax) or subtracts from it (a withholding tax, common
-// for contractors: the client deducts it before paying, reducing what's
-// owed). InvoiceData.itemTaxExtra is now a signed net figure instead of
-// always-positive — see that getter's own comment for exactly how this
-// composes with grandTotal (no formula change needed there) and which
-// render sites needed updating to handle a possibly-negative value.
-//
-// UNIT OF MEASURE PASS (earlier): added kLineItemUnits (the full picklist), plus
-// unitDisplayLabel()/unitPriceSuffix() — shared vocabulary used by both
-// the item-entry UI (create_invoice_item_widgets.dart's Unit dropdown,
-// create_invoice_saved_line_items_widgets.dart's edit sheet) and the
-// document render side (executive_invoice_stationary_layout.dart's new
-// UNIT column). '' means "no unit set" — every existing persisted
-// LineItem defaults to it, so old invoices render exactly as before
-// (no UNIT column at all — see that file's showUnitCol gate). 'custom'
-// is the one key whose display text comes from the item's own
-// customUnitLabel instead of this fixed map, for a unit that doesn't
-// fit any preset (e.g. "sqm", "page", "seat").
-
-/// The full Unit-of-measure picklist, in the order shown in the
-/// dropdown. '' (empty) is deliberately first — "no unit" is a valid,
-/// common choice for a simple flat-price line item.
 const List<String> kLineItemUnits = [
   '',
   'hour',
@@ -359,11 +37,6 @@ const Map<String, String> _kUnitDisplayLabels = {
   'custom': 'Custom Unit…',
 };
 
-/// Display text for a unit key — for 'custom', prefers the item's own
-/// customUnitLabel (falling back to 'Custom' if that's somehow still
-/// blank); every other key reads from the fixed map above. Used both by
-/// the dropdown's selected-value display and by the rendered UNIT
-/// column on the document.
 String unitDisplayLabel(String unit, {String customUnitLabel = ''}) {
   if (unit == 'custom') {
     final trimmed = customUnitLabel.trim();
@@ -372,13 +45,6 @@ String unitDisplayLabel(String unit, {String customUnitLabel = ''}) {
   return _kUnitDisplayLabels[unit] ?? unit;
 }
 
-// Lowercase "per X" suffix for the Price field's label — only for units
-// where "Price per <unit>" actually reads naturally. Deliberately
-// excludes '', 'fixed_price' (already a whole-item price), 'expense'
-// (reimbursement, not a per-unit rate), and 'percentage' (the price
-// field there is an amount, not a per-unit rate) — 'custom' is handled
-// by the caller using the item's own customUnitLabel text directly
-// rather than this map.
 const Map<String, String> _kUnitPriceSuffix = {
   'hour': 'hour',
   'day': 'day',
@@ -392,12 +58,6 @@ const Map<String, String> _kUnitPriceSuffix = {
   'service': 'service',
 };
 
-/// The "per X" suffix to show next to the Price field's label (e.g.
-/// "Price (per hour)"), or null when this unit doesn't have one — see
-/// _kUnitPriceSuffix's doc comment for exactly which units qualify.
-/// For 'custom', returns the item's own customUnitLabel (trimmed) when
-/// non-empty, so a person who typed e.g. "sqm" sees "Price (per sqm)"
-/// too, not just the preset units.
 String? unitPriceSuffix(String unit, {String customUnitLabel = ''}) {
   if (unit == 'custom') {
     final trimmed = customUnitLabel.trim();
@@ -411,57 +71,20 @@ class LineItem {
   double quantity;
   double unitPrice;
 
-  // UNIT OF MEASURE PASS: which of kLineItemUnits this item is priced
-  // in — '' (the default) means no unit was set, matching every
-  // persisted LineItem from before this pass existed. customUnitLabel
-  // is only meaningful when unit == 'custom' — the free-text label the
-  // person typed (e.g. "sqm", "page", "seat").
   String unit;
   String customUnitLabel;
 
-  // PER-ITEM TAX/DISCOUNT PASS: this item's own rate, independent of
-  // InvoiceData's whole-invoice taxRate/discountRate. Only applied when
-  // its matching *Enabled flag is true. See
-  // create_invoice_bottom_sheet.dart's totals getters for exactly how
-  // this combines with the global rate (they stack, not override).
   bool taxEnabled;
   double itemTaxRate;
   bool discountEnabled;
   double itemDiscountRate;
 
-  // TAX SIGN PASS: whether this item's tax adds to the total (true —
-  // ordinary sales tax, the default) or subtracts from it (false — a
-  // withholding tax: the client deducts it before paying you, so it
-  // reduces what's owed rather than adding on top). Defaults to true so
-  // every existing item with taxEnabled already set keeps behaving
-  // exactly as before this field existed. Purely a display/sign concern
-  // for itemTaxRate — the rate and enabled flag themselves are
-  // unchanged.
   bool itemTaxIsAddition;
 
-  // TAX NAME PASS: user-typed label for this item's tax (e.g. "GST",
-  // "VAT", "Sales Tax") — '' (default) means unnamed, matching every
-  // existing item. The rendered TAX column header always stays the
-  // generic word "TAX" regardless of what individual items are named
-  // (a single column can't show multiple different headers); each row's
-  // own name shows inline next to that row's percentage instead — see
-  // executive_invoice_stationary_layout.dart's rateCell(). The totals
-  // section groups by this name: items sharing a name (or all left
-  // blank) collapse into one "Item Tax" row, differently-named items
-  // each get their own row — see InvoiceData.itemTaxExtraByName below.
   String itemTaxName;
 
-  // TAX NAME PASS: same treatment for Discount — a user-typed label
-  // (e.g. "Trade Discount", "Early Payment") shown next to that row's
-  // discount percentage and used to group the totals section's
-  // "Item Discounts" row(s) the same way itemTaxName groups Item Tax.
   String itemDiscountName;
 
-  // PER-ITEM TAX/DISCOUNT PASS: set when this item currently on an
-  // invoice originated from tapping a SavedInvoiceLineItem container
-  // (below) — lets the Saved-items panel show that container's radio as
-  // "included in this invoice". Null for hand-typed items and for items
-  // added via the (separate) SavedLineItemSet bundle quick-add.
   String? sourceSavedId;
 
   LineItem({
@@ -482,22 +105,6 @@ class LineItem {
 
   double get total => quantity * unitPrice;
 
-  // LINE NET TOTAL PASS: the actual amount THIS row contributes once its
-  // own tax/discount are applied — total minus this item's own discount
-  // plus this item's own signed tax (negative when itemTaxIsAddition is
-  // false, i.e. a withholding tax). Deliberately a SEPARATE getter from
-  // `total`, which stays the plain qty × unitPrice base figure every
-  // other calculation (subtotal, itemDiscountExtra, itemTaxExtra, and
-  // this getter itself) already depends on — redefining `total` itself
-  // would silently change all of those. Only this item's OWN
-  // taxEnabled/discountEnabled apply here; InvoiceData's whole-invoice
-  // taxRate/discountRate are a separate, invoice-level calculation
-  // against the full subtotal (see InvoiceData.taxAmount/
-  // discountAmount) and have no single-row equivalent, so they're
-  // intentionally not folded in here. Anywhere a line item's own Total
-  // column should reflect its own rate (New Item card, Committed Item
-  // row, Saved Item card, the rendered document's TOTAL column) should
-  // read this instead of `total`.
   double get lineNetTotal {
     final discountAmt = discountEnabled ? total * itemDiscountRate / 100 : 0.0;
     final signedTaxAmt =
@@ -570,38 +177,10 @@ class LineItem {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────────────────────
-
 enum PaymentStatus { unpaid, partial, paid, overdue }
 
 enum InvoiceColor { blue, green, purple, orange, red, teal, black, indigo }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Default field-visibility map
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// TEMPLATE FIELD VISIBILITY PASS: mirrors step_templates.dart's
-// _defaultFields() exactly (same key set, same defaults). Used whenever
-// InvoiceData is constructed without an explicit enabledFields map — new
-// invoices with no template selected, or persisted invoices saved before
-// this field existed. Kept as a plain top-level function (not a const)
-// so each caller gets its own fresh, independently-mutable Map instance.
-//
-// PAYMENT INFO / TERMS & CONDITIONS / SIGNATURE PASS: added bankName,
-// accountName, accountNumber, otherPaymentDetails,
-// poNumber, termsAndConditions, signature — one toggle key per new
-// field/block, same as every existing field. All default true so
-// existing behaviour (nothing new to show since the fields are all still
-// empty strings) is unaffected until the person actually fills them in.
-//
-// PAYMENT TERMS REMOVAL PASS: 'paymentTerms' entry removed from this map.
-//
-// AMOUNT DUE PASS: added dueDateSummary and amountDue — gate the new
-// Due Date/Amount Due bar rendered directly under Grand Total. Distinct
-// from the pre-existing 'dueDate' key (which gates the Billed-To meta
-// row's Due Date, a different spot on the document). Both default true.
 Map<String, bool> defaultInvoiceEnabledFields() => {
       'businessName': true, 'businessEmail': true, 'businessPhone': true,
       'businessAddress': true, 'businessWebsite': true, 'businessTaxId': true,
@@ -612,6 +191,12 @@ Map<String, bool> defaultInvoiceEnabledFields() => {
       'customerAddress': true,
       'invoiceNumber': true, 'date': true, 'dueDate': true,
       'barcode': true, 'tax': true, 'discount': true,
+      // SHOW-STATUS-TOGGLE PASS: gates the status badge (UNPAID/PAID/
+      // etc, now rendered under the invoice number in the header — see
+      // doc_header.dart's buildSharedHeaderIdentity) — defaults true
+      // so every existing document keeps showing it exactly as before
+      // this pass.
+      'status': true,
       'notes': true, 'thankYouMessage': true,
       'bankName': true, 'accountName': true, 'accountNumber': true,
       'otherPaymentDetails': true, 'poNumber': true,
@@ -619,52 +204,110 @@ Map<String, bool> defaultInvoiceEnabledFields() => {
       'dueDateSummary': true, 'amountDue': true,
     };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// InvoiceData
-// ─────────────────────────────────────────────────────────────────────────────
-
 class InvoiceData {
   String businessName;
+  String businessTagline;
+  bool businessTaglineEnabled;
+  bool footerTaglinesEnabled;
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text —
+  // adjustable via the Customise step. Clamped in the UI to a
+  // range that, combined with autoFitText's own shrink-to-fit,
+  // cannot overflow the footer band even at max size with 6 items.
+  double footerTaglinesFontSize;
+  List<FooterTaglineItem> footerTaglines;
   String businessEmail;
   String businessPhone;
   String businessAddress;
-  // STRUCTURED ADDRESS PASS: structured six-field address backing
-  // businessAddress above. businessAddress itself is NOT removed — it's
-  // kept in sync (set to businessAddressInfo.singleLine) by whatever
-  // resolves this invoice's business info onto InvoiceData (see
-  // step_create_invoice.dart's _syncSelectedToProvider()), so any code
-  // still reading the flat string keeps working. Falls back to the flat
-  // string in fromJson() when no addressInfo has been persisted yet
-  // (every invoice saved before this pass).
   AddressInfo businessAddressInfo;
   String? businessLogoPath;
 
-  // Logo reposition/zoom/shape — driven by SharedLogoPicker. Only
-  // meaningful when businessLogoPath is set.
+  // SENDER-AS-FROM-CONTACT PASS: sender contact details, synced down
+  // from the selected template's BusinessInfo.senderEmail/senderPhone/
+  // senderAddressInfo (see step_create_invoice.dart's
+  // _syncSelectedToProvider). doc_template_adapter.dart's
+  // invoiceToAdapter() now feeds THESE fields into the FROM block's
+  // email/phone/address slots instead of the business* fields above —
+  // businessEmail/businessPhone/businessAddressInfo/businessAddress
+  // are kept on the model (still written by anything that sets them,
+  // still exported in toJson) but are no longer what renders in the
+  // FROM block on an actual invoice; the sender fields are. This
+  // mirrors the template sheet no longer collecting a separate
+  // business address/email/phone — see step_templates.dart's Business
+  // Information section, now just Name/Tagline/Tax ID/GST.
+  String senderEmail;
+  String senderPhone;
+  AddressInfo senderAddressInfo;
+
+  // TAX-ID-GST-IN-DETAILS PASS: Tax ID / EIN and GST Number, synced down
+  // from the template's BusinessInfo.taxId/gstNumber (see
+  // step_create_invoice.dart's _syncSelectedToProvider). Rendered in the
+  // DETAILS column of the header meta row, below the Issue/Due dates —
+  // see doc_header.dart's buildSharedMetaRow — only when non-empty.
+  String businessTaxId;
+  String businessGst;
+
   double businessLogoOffsetDx;
   double businessLogoOffsetDy;
   double businessLogoScale;
-  String businessLogoShape; // storage name from LogoShape.storageName
+  String businessLogoShape;
 
-  // Rendered logo box size (width/height, px) — driven by the "Logo Size"
-  // slider on the Customise step, independent of businessLogoScale (which
-  // is the zoom/crop level *within* the box).
   double businessLogoDisplaySize;
 
-  // No-logo fallback mark — see LOGO FALLBACK MARK PASS above. Only
-  // meaningful when businessLogoPath is NOT set (once a real logo exists,
-  // these two fields are simply ignored).
   bool businessLogoShowInitial;
   String businessLogoInitialLetter;
+
+  // FREEFORM HEADER LOGO PASS: when Business Name and Tagline are both
+  // switched off, the logo can be freely dragged/enlarged across the
+  // whole header area instead of sitting in the small fixed logo box.
+  // offsetDx/offsetDy are normalised -1..1 (matching Alignment's own
+  // coordinate space, same convention as the background-image offsets
+  // below), scale is a free multiplier applied on top of the image's
+  // natural contain-fit size within the header area — not clamped to
+  // 1..3 like the background images, since enlarging past that IS the
+  // point of this feature. Defaults (0, 0, 1.0) place the logo
+  // centered at its natural size, so every existing persisted invoice
+  // loads and renders unchanged by this pass alone.
+  double headerLogoFreeformOffsetDx;
+  double headerLogoFreeformOffsetDy;
+  double headerLogoFreeformScale;
+
+  // BACKGROUND-IMAGE PASS: header/footer background image path + on/off
+  // toggle for this invoice's document — mirrors the equivalent new
+  // fields on QuoteData/ReceiptData. Both null/false by default, so
+  // every existing persisted invoice loads and renders exactly as
+  // before this pass; opting in is a separate action (an upload +
+  // toggle on the Customise step) that isn't wired up by this model
+  // change alone. See doc_header.dart's withOptionalBackgroundImage for
+  // the render-side treatment (image + translucent scrim, so the
+  // document's existing dark text always stays readable).
+  String? headerBackgroundImagePath;
+  bool headerBackgroundEnabled;
+  double headerBackgroundOpacity;
+  double headerBackgroundOffsetDx;
+  double headerBackgroundOffsetDy;
+  double headerBackgroundScale;
+  String? footerBackgroundImagePath;
+  bool footerBackgroundEnabled;
+  double footerBackgroundOpacity;
+  double footerBackgroundOffsetDx;
+  double footerBackgroundOffsetDy;
+  double footerBackgroundScale;
+
+  // MID-PAGE BACKGROUND PASS: same treatment as header/footer above,
+  // but for the page's body content area (line items + totals). Both
+  // null/false by default, so every existing persisted invoice loads
+  // and renders exactly as before this pass.
+  String? bodyBackgroundImagePath;
+  bool bodyBackgroundEnabled;
+  double bodyBackgroundOpacity;
+  double bodyBackgroundOffsetDx;
+  double bodyBackgroundOffsetDy;
+  double bodyBackgroundScale;
 
   String clientName;
   String clientEmail;
   String clientPhone;
   String clientAddress;
-  // STRUCTURED ADDRESS PASS: same treatment as businessAddressInfo
-  // above, for the Bill-To client address. Kept in sync with
-  // clientAddress (the legacy flat string) by
-  // create_invoice_bottom_sheet.dart's _save().
   AddressInfo clientAddressInfo;
 
   String invoiceNumber;
@@ -673,147 +316,73 @@ class InvoiceData {
   String notes;
   String currency;
 
-  // Free-text currency symbol (e.g. "$", "€", "kr") and how it combines
-  // with `currency` (the code) when rendered — see fmtMoney() in
-  // shared_doc_widgets.dart. Not gated by any hardcoded currency list.
   String currencySymbol;
-  String currencyDisplayMode; // 'code' | 'symbol' | 'both'
+  String currencyDisplayMode;
 
   List<LineItem> lineItems;
 
   double        taxRate;
   double        discountRate;
 
-  // TAX/DISCOUNT NAMING PASS: whole-invoice custom label (e.g. "GST",
-  // "VAT") for the document's own Tax %/Discount % — separate from
-  // LineItem.itemTaxName/itemDiscountName, which name an individual
-  // item's own rate. '' (default) means unnamed, rendering as the plain
-  // "Tax (X%)"/"Discount (X%)" every existing invoice already shows.
   String        taxName;
   String        discountName;
 
-  // WHOLE-INVOICE TAX/DISCOUNT TOGGLE PASS: see file header comment
-  // above for full rationale. Default true so existing invoices are
-  // unaffected until explicitly toggled off.
   bool taxEnabled;
   bool discountEnabled;
 
   PaymentStatus paymentStatus;
   String        fontFamily;
 
-  // TEXT SIZE WIRING FIX: base body-text size (px) for the rendered
-  // document — previously lived only as a disconnected field on
-  // InvoiceProvider that nothing read. Default 14.0 matches that old
-  // field's default exactly, so persisted invoices render unchanged
-  // until the Customise step's "Text Size" slider is actually moved.
   double fontSize;
 
   InvoiceColor  colorScheme;
 
-  // Which visual design (see preview_registry.dart's kInvoiceTemplates /
-  // buildInvoicePreview) this invoice renders with — 1 = Executive, 2 =
-  // Nordic, etc. Set from InvoiceTemplateChooserScreen's selection and
-  // carried through the wizard by StepCreateInvoice._syncToProvider().
   int layoutTemplateId;
 
-  // TEMPLATE FIELD VISIBILITY PASS: which template-defined fields should
-  // actually render on this invoice — keyed by the same field-id strings
-  // used in step_templates.dart's toggle rows (invoiceNumber, date,
-  // dueDate, barcode, tax, discount, notes, thankYouMessage,
-  // customerName/Email/Phone/Address, businessName/Email/Phone/Address/
-  // Logo, bankName/accountName/accountNumber/otherPaymentDetails,
-  // poNumber, termsAndConditions, signature,
-  // dueDateSummary, amountDue, etc — see defaultInvoiceEnabledFields()
-  // above for the full key set). Populated from
-  // InvoiceTemplate.enabledFields when a template is selected (see
-  // StepCreateInvoice._syncToProvider()); read by
-  // executive_invoice_stationary_layout.dart and invoice_pdf_service.dart
-  // via `d.enabledFields[key] ?? true`, so a missing key (older
-  // persisted invoices) always defaults to shown.
   Map<String, bool> enabledFields;
 
-  // System-stamped (not user-typed, unlike issueDate/dueDate) — set the
-  // moment paymentStatus flips to PaymentStatus.paid, cleared if it's ever
-  // changed away from paid. See InvoiceProvider.updateSavedInvoiceStatus.
   DateTime? paidDate;
 
-  // User-set escape hatch for the Reports screen — e.g. test invoices,
-  // duplicates, or anything that shouldn't count toward income/aging/Top
-  // Clients even if it's 100% complete and paid. Reports gating is:
-  // completionPercent == 100 AND !excludeFromReports. See
-  // reports_screen.dart's _isReportable().
   bool excludeFromReports;
 
-  // When true, every card layout hides the colored status chip/pill for
-  // this invoice (see doc_cards.dart) even though paymentStatus still
-  // holds a real value underneath — set via the "None" option in the
-  // status menu. Purely a display toggle; never affects aging, overdue
-  // pushes, or reports gating, which all still read paymentStatus as
-  // normal.
   bool statusHidden;
 
-  // PAYMENT INFO / TERMS & CONDITIONS / SIGNATURE PASS: see the file
-  // header comment above for the full rationale and rendering rules.
-  // Bank details — bankName/accountName/accountNumber are the three
-  // named fields; otherPaymentDetails is a single freeform field for
-  // anything that doesn't fit those three (IBAN, SWIFT/BIC, routing/sort
-  // code, PayPal handle, etc) rather than guessing which of those a
-  // given business needs.
   String bankName;
   String accountName;
   String accountNumber;
   String otherPaymentDetails;
 
-  // PO / Reference Number — deliberately per-invoice (not copied from a
-  // template the way bankName/etc are intended to be), since a PO number
-  // is different on every invoice.
   String poNumber;
 
   String termsAndConditions;
 
-  // Signature — three mutually exclusive modes. 'typed' renders
-  // signatureName as a script-style caption; 'image' renders
-  // signatureImagePath as-is (no crop/shape mask — a scanned signature
-  // usually shouldn't be forced into a circle/square the way a logo is);
-  // 'blank' renders neither, just an empty line reserved for a physical
-  // wet-ink signature.
-  String signatureMode; // 'typed' | 'image' | 'blank'
+  String signatureMode;
   String signatureName;
   String? signatureImagePath;
 
-  // SIGNATURE SIZER PASS: font size (px) for the typed-name signature —
-  // adjustable via a slider on the Customise step's Signature toggle row
-  // (step_customise.dart). Only meaningfully affects signatureMode ==
-  // 'typed'; harmless/unused for 'image' and 'blank'. Default 22.0
-  // matches the size every typed signature rendered at before this
-  // field existed, so persisted invoices look identical until someone
-  // actually moves the slider.
   double signatureFontSize;
 
-  // SIGNATURE FONT FAMILY PASS: which of six google_fonts script
-  // families (see kSignatureFonts in
-  // executive_invoice_payment_terms_signature.dart) a typed signature
-  // renders in. '' (default) means "no family chosen" — every render
-  // site falls back to the pre-existing italic body-font look in that
-  // case, so persisted invoices look identical until someone actually
-  // picks a font chip on the Customise step. Only meaningfully affects
-  // signatureMode == 'typed'.
   String signatureFontFamily;
 
-  // AMOUNT DUE PASS: manual override for the Amount Due figure shown
-  // next to Due Date under Grand Total. Null means "auto" — amountDue
-  // (getter below) always tracks grandTotal live. Once the user
-  // manually edits the Amount Due field on the Create Invoice step,
-  // this holds that fixed value and amountDue stops tracking grandTotal.
   double? amountDueOverride;
 
   InvoiceData({
     this.businessName     = '',
+    this.businessTagline  = '',
+    this.businessTaglineEnabled = true,
+    this.footerTaglinesEnabled = false,
+    this.footerTaglinesFontSize = 8.0,
+    List<FooterTaglineItem>? footerTaglines,
     this.businessEmail    = '',
     this.businessPhone    = '',
     this.businessAddress  = '',
     AddressInfo? businessAddressInfo,
     this.businessLogoPath,
+    this.senderEmail = '',
+    this.senderPhone = '',
+    AddressInfo? senderAddressInfo,
+    this.businessTaxId = '',
+    this.businessGst = '',
     this.businessLogoOffsetDx = 0.0,
     this.businessLogoOffsetDy = 0.0,
     this.businessLogoScale    = 1.0,
@@ -821,6 +390,27 @@ class InvoiceData {
     this.businessLogoDisplaySize = 40.0,
     this.businessLogoShowInitial = true,
     this.businessLogoInitialLetter = '',
+    this.headerLogoFreeformOffsetDx = 0.0,
+    this.headerLogoFreeformOffsetDy = 0.0,
+    this.headerLogoFreeformScale = 1.0,
+    this.headerBackgroundImagePath,
+    this.headerBackgroundEnabled = false,
+    this.headerBackgroundOpacity = 1.0,
+    this.headerBackgroundOffsetDx = 0.0,
+    this.headerBackgroundOffsetDy = 0.0,
+    this.headerBackgroundScale = 1.0,
+    this.footerBackgroundImagePath,
+    this.footerBackgroundEnabled = false,
+    this.footerBackgroundOpacity = 1.0,
+    this.footerBackgroundOffsetDx = 0.0,
+    this.footerBackgroundOffsetDy = 0.0,
+    this.footerBackgroundScale = 1.0,
+    this.bodyBackgroundImagePath,
+    this.bodyBackgroundEnabled = false,
+    this.bodyBackgroundOpacity = 1.0,
+    this.bodyBackgroundOffsetDx = 0.0,
+    this.bodyBackgroundOffsetDy = 0.0,
+    this.bodyBackgroundScale = 1.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -864,37 +454,13 @@ class InvoiceData {
   }) : lineItems = lineItems ?? [],
        enabledFields = enabledFields ?? defaultInvoiceEnabledFields(),
        businessAddressInfo = businessAddressInfo ?? AddressInfo(),
-       clientAddressInfo = clientAddressInfo ?? AddressInfo();
+       senderAddressInfo = senderAddressInfo ?? AddressInfo(),
+       clientAddressInfo = clientAddressInfo ?? AddressInfo(),
+       footerTaglines = footerTaglines ?? [];
 
-  // ── Computed totals ────────────────────────────────────────────────────────
-  //
-  // PER-ITEM TAX/DISCOUNT PASS: itemTaxExtra/itemDiscountExtra are new —
-  // the sum of every line item's OWN tax/discount contribution (only
-  // items with taxEnabled/discountEnabled true contribute, computed
-  // against that item's own total, not the whole subtotal). grandTotal
-  // now folds those in alongside the pre-existing whole-invoice
-  // taxAmount/discountAmount, which are UNCHANGED — global and per-item
-  // rates stack rather than one overriding the other. subtotal itself
-  // is unchanged (still the plain sum of item totals with no rates
-  // applied at all).
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
-  // WHOLE-INVOICE TAX/DISCOUNT TOGGLE PASS: each getter now returns 0
-  // when its switch is off, instead of always applying taxRate/
-  // discountRate against the subtotal. grandTotal below needed no
-  // formula change — it already just adds/subtracts whatever these two
-  // getters return.
   double get discountAmount => discountEnabled ? subtotal * (discountRate / 100) : 0.0;
   double get taxAmount      => taxEnabled ? (subtotal - discountAmount) * (taxRate / 100) : 0.0;
-  // TAX SIGN PASS: itemTaxExtra is now a SIGNED net total — positive
-  // when an item's tax adds to the total (the default), negative when
-  // itemTaxIsAddition is false (a withholding tax that reduces what's
-  // owed). grandTotal's existing `+ itemTaxExtra` needed no formula
-  // change at all — adding a negative number already subtracts
-  // correctly. Every display site that reads this value now has to
-  // handle a possibly-negative number instead of assuming it's always
-  // an addition — see executive_invoice_stationary_layout.dart's
-  // buildFooterSection and create_invoice_item_widgets.dart's
-  // CreateInvoiceTotalsCard for the render-side fix.
   double get itemTaxExtra => lineItems.fold(
       0.0,
       (sum, i) => sum +
@@ -906,18 +472,6 @@ class InvoiceData {
   double get grandTotal =>
       subtotal - discountAmount + taxAmount - itemDiscountExtra + itemTaxExtra;
 
-  // TAX NAME PASS: itemTaxExtra/itemDiscountExtra above (the plain
-  // totals used in grandTotal) stay unchanged — these two are the
-  // display-side breakdown for the footer/totals card, grouping every
-  // taxed/discounted item by its itemTaxName/itemDiscountName ('' counts
-  // as its own group — "unnamed"). When every item shares one name (or
-  // none has one), the map naturally comes back with a single entry, so
-  // the totals section renders one row exactly as before; genuinely
-  // different names each get their own row. Values here are SIGNED for
-  // tax (matching itemTaxExtra's sign convention — negative for a
-  // withholding group) and plain positive magnitudes for discount
-  // (matching itemDiscountExtra, which is always subtracted at the call
-  // site via a fixed `negative: true`).
   Map<String, double> get itemTaxExtraByName {
     final map = <String, double>{};
     for (final i in lineItems) {
@@ -940,21 +494,25 @@ class InvoiceData {
     return map;
   }
 
-  // AMOUNT DUE PASS: the actual "Amount Due" figure rendered on the
-  // document — grandTotal unless the user has manually overridden it
-  // (amountDueOverride != null), e.g. to reflect a partial payment
-  // already received outside the app.
   double get amountDue => amountDueOverride ?? grandTotal;
-
-  // ── Serialisation ──────────────────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
+        'businessTagline':  businessTagline,
+        'businessTaglineEnabled': businessTaglineEnabled,
+        'footerTaglinesEnabled':  footerTaglinesEnabled,
+        'footerTaglinesFontSize': footerTaglinesFontSize,
+        'footerTaglines':   footerTaglinesToJson(footerTaglines),
         'businessEmail':    businessEmail,
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
         'businessAddressInfo': businessAddressInfo.toJson(),
         'businessLogoPath': businessLogoPath,
+        'senderEmail': senderEmail,
+        'senderPhone': senderPhone,
+        'senderAddressInfo': senderAddressInfo.toJson(),
+        'businessTaxId': businessTaxId,
+        'businessGst': businessGst,
         'businessLogoOffsetDx': businessLogoOffsetDx,
         'businessLogoOffsetDy': businessLogoOffsetDy,
         'businessLogoScale':    businessLogoScale,
@@ -962,6 +520,27 @@ class InvoiceData {
         'businessLogoDisplaySize': businessLogoDisplaySize,
         'businessLogoShowInitial': businessLogoShowInitial,
         'businessLogoInitialLetter': businessLogoInitialLetter,
+        'headerLogoFreeformOffsetDx': headerLogoFreeformOffsetDx,
+        'headerLogoFreeformOffsetDy': headerLogoFreeformOffsetDy,
+        'headerLogoFreeformScale': headerLogoFreeformScale,
+        'headerBackgroundImagePath': headerBackgroundImagePath,
+        'headerBackgroundEnabled':   headerBackgroundEnabled,
+        'headerBackgroundOpacity': headerBackgroundOpacity,
+        'headerBackgroundOffsetDx': headerBackgroundOffsetDx,
+        'headerBackgroundOffsetDy': headerBackgroundOffsetDy,
+        'headerBackgroundScale': headerBackgroundScale,
+        'footerBackgroundImagePath': footerBackgroundImagePath,
+        'footerBackgroundEnabled':   footerBackgroundEnabled,
+        'footerBackgroundOpacity': footerBackgroundOpacity,
+        'footerBackgroundOffsetDx': footerBackgroundOffsetDx,
+        'footerBackgroundOffsetDy': footerBackgroundOffsetDy,
+        'footerBackgroundScale': footerBackgroundScale,
+        'bodyBackgroundImagePath': bodyBackgroundImagePath,
+        'bodyBackgroundEnabled':   bodyBackgroundEnabled,
+        'bodyBackgroundOpacity': bodyBackgroundOpacity,
+        'bodyBackgroundOffsetDx': bodyBackgroundOffsetDx,
+        'bodyBackgroundOffsetDy': bodyBackgroundOffsetDy,
+        'bodyBackgroundScale': bodyBackgroundScale,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -1006,16 +585,22 @@ class InvoiceData {
 
   factory InvoiceData.fromJson(Map<String, dynamic> j) => InvoiceData(
         businessName:     j['businessName']     as String? ?? '',
+        businessTagline:  j['businessTagline']  as String? ?? '',
+        businessTaglineEnabled: j['businessTaglineEnabled'] as bool? ?? true,
+        footerTaglinesEnabled:  j['footerTaglinesEnabled']  as bool? ?? false,
+        footerTaglinesFontSize: (j['footerTaglinesFontSize'] as num?)?.toDouble() ?? 8.0,
+        footerTaglines:   footerTaglinesFromJson(j['footerTaglines']),
         businessEmail:    j['businessEmail']    as String? ?? '',
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
-        // STRUCTURED ADDRESS PASS: falls back to the legacy
-        // `businessAddress` string when no `businessAddressInfo` key
-        // exists yet (every invoice saved before this pass) — see
-        // AddressInfo.fromJson's own String-input handling.
         businessAddressInfo: AddressInfo.fromJson(
             j['businessAddressInfo'] ?? j['businessAddress']),
         businessLogoPath: j['businessLogoPath'] as String?,
+        senderEmail: j['senderEmail'] as String? ?? '',
+        senderPhone: j['senderPhone'] as String? ?? '',
+        senderAddressInfo: AddressInfo.fromJson(j['senderAddressInfo']),
+        businessTaxId: j['businessTaxId'] as String? ?? '',
+        businessGst: j['businessGst'] as String? ?? '',
         businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
         businessLogoScale:    (j['businessLogoScale']    as num?)?.toDouble() ?? 1.0,
@@ -1023,12 +608,31 @@ class InvoiceData {
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
         businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
+        headerLogoFreeformOffsetDx: (j['headerLogoFreeformOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        headerLogoFreeformOffsetDy: (j['headerLogoFreeformOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        headerLogoFreeformScale: (j['headerLogoFreeformScale'] as num?)?.toDouble() ?? 1.0,
+        headerBackgroundImagePath: j['headerBackgroundImagePath'] as String?,
+        headerBackgroundEnabled:   j['headerBackgroundEnabled']   as bool?   ?? false,
+        headerBackgroundOpacity: (j['headerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        headerBackgroundOffsetDx: (j['headerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundOffsetDy: (j['headerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundScale: (j['headerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundImagePath: j['footerBackgroundImagePath'] as String?,
+        footerBackgroundEnabled:   j['footerBackgroundEnabled']   as bool?   ?? false,
+        footerBackgroundOpacity: (j['footerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundOffsetDx: (j['footerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundOffsetDy: (j['footerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundScale: (j['footerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundImagePath: j['bodyBackgroundImagePath'] as String?,
+        bodyBackgroundEnabled:   j['bodyBackgroundEnabled']   as bool?   ?? false,
+        bodyBackgroundOpacity: (j['bodyBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundOffsetDx: (j['bodyBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundOffsetDy: (j['bodyBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundScale: (j['bodyBackgroundScale'] as num?)?.toDouble() ?? 1.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
         clientAddress:    j['clientAddress']    as String? ?? '',
-        // STRUCTURED ADDRESS PASS: same fallback as businessAddressInfo
-        // above, for the client (Bill-To) address.
         clientAddressInfo: AddressInfo.fromJson(
             j['clientAddressInfo'] ?? j['clientAddress']),
         invoiceNumber:    j['invoiceNumber']    as String? ?? '',
@@ -1081,50 +685,24 @@ class InvoiceData {
         amountDueOverride:   (j['amountDueOverride']   as num?)?.toDouble(),
       );
 
-  // ── copyWith ───────────────────────────────────────────────────────────────
-  //
-  // clearPaidDate / clearBusinessLogo: explicit clear flags, same reasoning
-  // as SavedInvoice's clearFolderName — a plain `x ?? this.x` copyWith can
-  // never express "set this field to null" once it already has a value.
-  // excludeFromReports/statusHidden are plain bools, so they don't need a
-  // clear flag — `false` passes straight through the `?? this.x` pattern.
-  // enabledFields is copied into a fresh Map instance either way (whether
-  // a new map is passed in or not) so callers never accidentally share a
-  // mutable Map reference between two InvoiceData instances.
-  //
-  // PAYMENT INFO / TERMS & CONDITIONS / SIGNATURE PASS: clearSignatureImage
-  // added for the same reason as clearBusinessLogo/clearPaidDate — needed
-  // to explicitly null out signatureImagePath once it's been set (e.g.
-  // switching signatureMode away from 'image').
-  //
-  // SIGNATURE FONT FAMILY PASS: signatureFontFamily added — same
-  // `?? this.x` pattern as signatureFontSize just above it.
-  //
-  // AMOUNT DUE PASS: clearAmountDueOverride added for the same reason —
-  // needed to explicitly null amountDueOverride back to "auto" (e.g. the
-  // Create Invoice step's "tap to auto-calculate" action).
-  //
-  // TAX/DISCOUNT NAMING COPYWITH FIX: taxName/discountName added here —
-  // previously missing from both the parameter list and the constructor
-  // call below, so any value passed in was silently dropped and every
-  // copy reset both fields back to ''. See file header comment.
-  //
-  // STRUCTURED ADDRESS PASS: businessAddressInfo/clientAddressInfo added
-  // — same `?? this.x` pattern as everything else here.
-  //
-  // PAYMENT TERMS REMOVAL PASS: paymentTerms parameter/assignment removed.
-  //
-  // TEXT SIZE WIRING FIX: fontSize added — same `?? this.x` pattern as
-  // fontFamily just above it.
-
   InvoiceData copyWith({
     String?         businessName,
+    String?         businessTagline,
+    bool?           businessTaglineEnabled,
+    bool?           footerTaglinesEnabled,
+    double?         footerTaglinesFontSize,
+    List<FooterTaglineItem>? footerTaglines,
     String?         businessEmail,
     String?         businessPhone,
     String?         businessAddress,
     AddressInfo?    businessAddressInfo,
     String?         businessLogoPath,
     bool            clearBusinessLogo = false,
+    String?         senderEmail,
+    String?         senderPhone,
+    AddressInfo?    senderAddressInfo,
+    String?         businessTaxId,
+    String?         businessGst,
     double?         businessLogoOffsetDx,
     double?         businessLogoOffsetDy,
     double?         businessLogoScale,
@@ -1132,6 +710,30 @@ class InvoiceData {
     double?         businessLogoDisplaySize,
     bool?           businessLogoShowInitial,
     String?         businessLogoInitialLetter,
+    double?         headerLogoFreeformOffsetDx,
+    double?         headerLogoFreeformOffsetDy,
+    double?         headerLogoFreeformScale,
+    String?         headerBackgroundImagePath,
+    bool            clearHeaderBackgroundImage = false,
+    bool?           headerBackgroundEnabled,
+    double?         headerBackgroundOpacity,
+    double?         headerBackgroundOffsetDx,
+    double?         headerBackgroundOffsetDy,
+    double?         headerBackgroundScale,
+    String?         footerBackgroundImagePath,
+    bool            clearFooterBackgroundImage = false,
+    bool?           footerBackgroundEnabled,
+    double?         footerBackgroundOpacity,
+    double?         footerBackgroundOffsetDx,
+    double?         footerBackgroundOffsetDy,
+    double?         footerBackgroundScale,
+    String?         bodyBackgroundImagePath,
+    bool            clearBodyBackgroundImage = false,
+    bool?           bodyBackgroundEnabled,
+    double?         bodyBackgroundOpacity,
+    double?         bodyBackgroundOffsetDx,
+    double?         bodyBackgroundOffsetDy,
+    double?         bodyBackgroundScale,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -1178,11 +780,21 @@ class InvoiceData {
   }) =>
       InvoiceData(
         businessName:     businessName     ?? this.businessName,
+        businessTagline:  businessTagline  ?? this.businessTagline,
+        businessTaglineEnabled: businessTaglineEnabled ?? this.businessTaglineEnabled,
+        footerTaglinesEnabled:  footerTaglinesEnabled  ?? this.footerTaglinesEnabled,
+        footerTaglinesFontSize: footerTaglinesFontSize ?? this.footerTaglinesFontSize,
+        footerTaglines: footerTaglines ?? List<FooterTaglineItem>.from(this.footerTaglines),
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
         businessAddressInfo: businessAddressInfo ?? this.businessAddressInfo,
         businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
+        senderEmail: senderEmail ?? this.senderEmail,
+        senderPhone: senderPhone ?? this.senderPhone,
+        senderAddressInfo: senderAddressInfo ?? this.senderAddressInfo,
+        businessTaxId: businessTaxId ?? this.businessTaxId,
+        businessGst: businessGst ?? this.businessGst,
         businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
         businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
         businessLogoScale:    businessLogoScale    ?? this.businessLogoScale,
@@ -1190,6 +802,33 @@ class InvoiceData {
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
         businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
+        headerLogoFreeformOffsetDx: headerLogoFreeformOffsetDx ?? this.headerLogoFreeformOffsetDx,
+        headerLogoFreeformOffsetDy: headerLogoFreeformOffsetDy ?? this.headerLogoFreeformOffsetDy,
+        headerLogoFreeformScale: headerLogoFreeformScale ?? this.headerLogoFreeformScale,
+        headerBackgroundImagePath: clearHeaderBackgroundImage
+            ? null
+            : (headerBackgroundImagePath ?? this.headerBackgroundImagePath),
+        headerBackgroundEnabled: headerBackgroundEnabled ?? this.headerBackgroundEnabled,
+        headerBackgroundOpacity: headerBackgroundOpacity ?? this.headerBackgroundOpacity,
+        headerBackgroundOffsetDx: headerBackgroundOffsetDx ?? this.headerBackgroundOffsetDx,
+        headerBackgroundOffsetDy: headerBackgroundOffsetDy ?? this.headerBackgroundOffsetDy,
+        headerBackgroundScale: headerBackgroundScale ?? this.headerBackgroundScale,
+        footerBackgroundImagePath: clearFooterBackgroundImage
+            ? null
+            : (footerBackgroundImagePath ?? this.footerBackgroundImagePath),
+        footerBackgroundEnabled: footerBackgroundEnabled ?? this.footerBackgroundEnabled,
+        footerBackgroundOpacity: footerBackgroundOpacity ?? this.footerBackgroundOpacity,
+        footerBackgroundOffsetDx: footerBackgroundOffsetDx ?? this.footerBackgroundOffsetDx,
+        footerBackgroundOffsetDy: footerBackgroundOffsetDy ?? this.footerBackgroundOffsetDy,
+        footerBackgroundScale: footerBackgroundScale ?? this.footerBackgroundScale,
+        bodyBackgroundImagePath: clearBodyBackgroundImage
+            ? null
+            : (bodyBackgroundImagePath ?? this.bodyBackgroundImagePath),
+        bodyBackgroundEnabled: bodyBackgroundEnabled ?? this.bodyBackgroundEnabled,
+        bodyBackgroundOpacity: bodyBackgroundOpacity ?? this.bodyBackgroundOpacity,
+        bodyBackgroundOffsetDx: bodyBackgroundOffsetDx ?? this.bodyBackgroundOffsetDx,
+        bodyBackgroundOffsetDy: bodyBackgroundOffsetDy ?? this.bodyBackgroundOffsetDy,
+        bodyBackgroundScale: bodyBackgroundScale ?? this.bodyBackgroundScale,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -1236,13 +875,11 @@ class InvoiceData {
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
         enabledFields: Map<String, bool>.from(enabledFields),
         businessAddressInfo: businessAddressInfo.copyWith(),
+        senderAddressInfo: senderAddressInfo.copyWith(),
         clientAddressInfo: clientAddressInfo.copyWith(),
+        footerTaglines: footerTaglines.map((t) => t.copyWith()).toList(),
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedInvoice  — wrapper stored in SharedPreferences
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedInvoice {
   final String      id;
@@ -1304,10 +941,6 @@ class SavedInvoice {
         folderName: j['folderName'] as String?,
       );
 
-  // folderName/clearFolderName — pass a folderName to set it, or pass
-  // clearFolderName: true to explicitly wipe it back to null (needed since
-  // `folderName: null ?? this.folderName` alone can never actually clear an
-  // existing value).
   SavedInvoice copyWith({
     String?      title,
     String?      templateName,
@@ -1329,16 +962,6 @@ class SavedInvoice {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedLineItemSet — a named, reusable bundle of line items, saved from
-// the Create Invoice step's Line Items section and quick-added back onto
-// any future invoice with a tap. Mirrors Customer/InvoiceTemplate's shape
-// (id/name + toJson/fromJson/copyWith) so it persists the same way, via
-// a single JSON-encoded SharedPreferences list — see
-// create_invoice_saved_items_widgets.dart (CreateInvoiceSavedItemSets)
-// for the UI this backs.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class SavedLineItemSet {
   String id;
   String name;
@@ -1351,10 +974,6 @@ class SavedLineItemSet {
   });
 
   int get itemCount => items.length;
-  // LINE NET TOTAL PASS: sums each item's lineNetTotal (own tax/discount
-  // included) rather than the plain base total, so a bundle preview's
-  // total matches what adding those same items to an invoice would
-  // actually add up to.
   double get total => items.fold(0.0, (sum, i) => sum + i.lineNetTotal);
 
   Map<String, dynamic> toJson() => {
@@ -1382,21 +1001,6 @@ class SavedLineItemSet {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedInvoiceLineItem — a single saved line item (as opposed to
-// SavedLineItemSet above, which is a bundle of several). Saved via the
-// bookmark action on any line-item card while building an invoice, and
-// browsed/radio-selected back onto any future invoice from the "Saved"
-// tab of the Line Items section — see
-// create_invoice_saved_line_items_widgets.dart for the UI this backs.
-// Mirrors SavedLineItemSet's shape exactly (id/name + toJson/fromJson/
-// copyWith), persisted the same way via its own single JSON-encoded
-// SharedPreferences list, kept as a fully separate list/type from
-// SavedLineItemSet rather than folding into it, since "one saved item"
-// and "one saved bundle of items" are browsed and edited as genuinely
-// different things in the UI.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class SavedInvoiceLineItem {
   String id;
   String? name;
@@ -1412,9 +1016,6 @@ class SavedInvoiceLineItem {
     required this.lastEditedAt,
   });
 
-  /// What the library card shows as its title — the explicit label if
-  /// one was given, else the item's own description, else a generic
-  /// fallback. Never blank.
   String get displayName {
     if ((name ?? '').trim().isNotEmpty) return name!.trim();
     if (item.description.trim().isNotEmpty) return item.description.trim();
@@ -1453,16 +1054,6 @@ class SavedInvoiceLineItem {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedInvoiceDraft — a named, editable invoice-in-progress. See
-// INVOICE DRAFT LIBRARY PASS note at the top of this file for the full
-// rationale. Stores a complete InvoiceData snapshot of everything
-// editable on the Create Invoice step (customer override, dates,
-// currency, line items, tax/discount, notes) plus a user-facing `name`
-// for the library card, independent of any customer/invoice-number
-// text so a draft can be labelled before either is filled in.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class SavedInvoiceDraft {
   String id;
   String name;
@@ -1470,18 +1061,6 @@ class SavedInvoiceDraft {
   DateTime createdAt;
   DateTime lastEditedAt;
 
-  // CONTAINER LOGO PASS: a small identifying image for this saved draft
-  // container itself — separate from the invoice's own business logo
-  // (InvoiceData.businessLogoPath) — so the library card
-  // (step_create_invoice.dart's _InvoiceDraftCard) can show a real
-  // thumbnail instead of a generic receipt icon, same as
-  // step_templates.dart's saved template cards already do via
-  // BusinessInfo.logoPath. Mirrors that same field set exactly
-  // (offset/scale/shape + show-initial-fallback + optional letter
-  // override), edited via the identical SharedLogoPicker UI in
-  // create_invoice_bottom_sheet.dart's "Container Logo" section.
-  // Defaults (no logo, fallback mark on, auto letter) preserve existing
-  // behaviour for every draft saved before this field existed.
   String? logoPath;
   double logoOffsetDx;
   double logoOffsetDy;
@@ -1505,9 +1084,6 @@ class SavedInvoiceDraft {
     this.logoInitialLetter = '',
   });
 
-  /// What the library card shows as its title — the explicit label if one
-  /// was typed, else the customer name, else the invoice number, else a
-  /// generic fallback. Never blank.
   String get displayName {
     if (name.trim().isNotEmpty) return name.trim();
     if (data.clientName.trim().isNotEmpty) return data.clientName.trim();

@@ -1,6 +1,21 @@
 // lib/screens/invoice_create_section/step_customers.dart
 //
-// SELECTION STATUS PASS (this update): Quote's/Receipt's editor screens
+// CUSTOMER LOGO FALLBACK MARK PASS (this update): _CustomerSheetState
+// gains _logoShowInitial/_logoInitialLetter state, seeded from the new
+// ClientInfo.logoShowInitial/logoInitialLetter fields (see
+// client_info.dart) and written back in _save(). The SharedLogoPicker
+// call now passes showInitialFallback/onShowInitialFallbackChanged/
+// initialLetterOverride/onInitialLetterOverrideChanged — the same four
+// params Create Invoice's Container Logo section already passes — so
+// this sheet's logo section renders identically (the "Show letter mark
+// when there's no logo" switch + optional Letter box), instead of the
+// stripped-down version it showed before (those params were simply never
+// wired up, since ClientInfo had nowhere to store the values). New
+// customers' fallback shape also now defaults to 'roundedSquare' instead
+// of 'circle', matching InvoiceData's own default exactly — existing
+// saved customers keep whatever shape they already have.
+//
+// SELECTION STATUS PASS (earlier): Quote's/Receipt's editor screens
 // (quote_editor_screen.dart / create_receipt_screen.dart) each wrap
 // their customer-step widget with a small colored info container below
 // it — "Select a saved customer, or enter one manually on the next
@@ -949,6 +964,14 @@ class _CustomerCard extends StatelessWidget {
                   ),
                 ),
                 clipBehavior: Clip.antiAlias,
+                // CUSTOMER LOGO FALLBACK MARK PASS: honour
+                // customer.logoShowInitial/logoInitialLetter for the
+                // no-logo fallback, matching how every other logo
+                // fallback in this app (business/template/receipt/
+                // quote) already respects its own show/letter fields —
+                // this card previously always showed a plain first-
+                // letter mark regardless of those settings, since
+                // ClientInfo had nowhere to store them before this pass.
                 child: hasLogo
                     ? SharedLogoThumbnail(
                         logoPath: customer.logoPath!,
@@ -957,16 +980,24 @@ class _CustomerCard extends StatelessWidget {
                         logoShape: shape,
                         boxSize: 46,
                       )
-                    : Center(
-                        child: Text(
-                          customer.name.isNotEmpty ? customer.name[0].toUpperCase() : '?',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                    : (customer.logoShowInitial
+                        ? Center(
+                            child: Text(
+                              customer.logoInitialLetter.trim().isNotEmpty
+                                  ? customer.logoInitialLetter.trim()[0].toUpperCase()
+                                  : (customer.name.isNotEmpty ? customer.name[0].toUpperCase() : '?'),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: isSelected ? _accent : colorScheme.onSurface.withValues(alpha: 0.3),
+                              ),
+                            ),
+                          )
+                        : Icon(
+                            Icons.person_rounded,
                             color: isSelected ? _accent : colorScheme.onSurface.withValues(alpha: 0.3),
-                          ),
-                        ),
-                      ),
+                            size: 22,
+                          )),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1106,7 +1137,11 @@ class _CustomerSheetState extends State<_CustomerSheet> {
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
-  LogoShape _logoShape = LogoShape.circle;
+  LogoShape _logoShape = LogoShape.roundedSquare;
+  // CUSTOMER LOGO FALLBACK MARK PASS: mirrors Create Invoice's/
+  // step_templates.dart's identical state — see file header note above.
+  bool _logoShowInitial = true;
+  String _logoInitialLetter = '';
 
   static const _accent = Color(0xFF2E7D32);
 
@@ -1124,7 +1159,9 @@ class _CustomerSheetState extends State<_CustomerSheet> {
     _logoPath = e?.logoPath;
     _logoOffset = e != null ? Offset(e.logoOffsetDx, e.logoOffsetDy) : Offset.zero;
     _logoScale = e?.logoScale ?? 1.0;
-    _logoShape = logoShapeFromString(e?.logoShape ?? 'circle');
+    _logoShape = logoShapeFromString(e?.logoShape ?? 'roundedSquare');
+    _logoShowInitial = e?.logoShowInitial ?? true;
+    _logoInitialLetter = e?.logoInitialLetter ?? '';
 
     for (final c in [_nameCtrl, _emailCtrl, _phoneCtrl]) {
       c.addListener(() => setState(() {}));
@@ -1160,6 +1197,8 @@ class _CustomerSheetState extends State<_CustomerSheet> {
       logoOffsetDy: _logoOffset.dy,
       logoScale: _logoScale,
       logoShape: _logoShape.storageName,
+      logoShowInitial: _logoShowInitial,
+      logoInitialLetter: _logoInitialLetter.trim(),
       defaultTaxRate: _defaultTaxRate,
     ));
     Navigator.pop(context);
@@ -1279,6 +1318,16 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                         ),
                         const SizedBox(height: 20),
                         _sectionLabel('Customer Logo'),
+                        // CUSTOMER LOGO FALLBACK MARK PASS: the four
+                        // showInitialFallback/onShowInitialFallbackChanged/
+                        // initialLetterOverride/onInitialLetterOverrideChanged
+                        // params are now wired up — the same four Create
+                        // Invoice's Container Logo section already passes
+                        // — so this section renders identically (switch +
+                        // optional Letter box), instead of the stripped
+                        // version it showed before (those params were
+                        // simply never provided, since ClientInfo had
+                        // nowhere to store the values until this pass).
                         SharedLogoPicker(
                           logoPath: _logoPath,
                           logoOffset: _logoOffset,
@@ -1291,6 +1340,12 @@ class _CustomerSheetState extends State<_CustomerSheet> {
                             _logoScale = s;
                             _logoShape = shape;
                           }),
+                          showInitialFallback: _logoShowInitial,
+                          onShowInitialFallbackChanged: (v) =>
+                              setState(() => _logoShowInitial = v),
+                          initialLetterOverride: _logoInitialLetter,
+                          onInitialLetterOverrideChanged: (v) =>
+                              setState(() => _logoInitialLetter = v),
                         ),
                         const SizedBox(height: 20),
                         _sectionLabel('Customer Details'),

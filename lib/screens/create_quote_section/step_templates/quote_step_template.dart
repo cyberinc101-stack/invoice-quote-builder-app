@@ -1,6 +1,14 @@
 // lib/screens/create_quote_section/step_templates/quote_step_template.dart
 //
-// SAVED-ITEMS CAP + FILTERS PASS (this update): _kMaxQuoteTemplates
+// TAGLINE PASS (this update): QuoteTemplate gains `tagline` (String,
+// default '') — mirrors BusinessInfo.tagline / InvoiceTemplate's
+// business tagline exactly, a short line rendered under the business
+// name in the document header (e.g. "TECHNOLOGY | WEBSITES |
+// SUPPORT"). Edited via a new field in the "Business Information"
+// section, right after Business Name. Synced onto QuoteData.
+// businessTagline wherever a QuoteTemplate is applied.
+//
+// SAVED-ITEMS CAP + FILTERS PASS (earlier): _kMaxQuoteTemplates
 // raised from 10 to 100, matching the cap used elsewhere in this app's
 // saved-item libraries. Since a library of up to 100 saved templates is
 // unusable without a way to narrow it down, this pass also adds the
@@ -99,8 +107,10 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../models/quote_data.dart' show defaultQuoteEnabledFields;
 import '../../../models/address_info.dart';
+import '../../../models/footer_tagline.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import '../../../widgets/shared_address_field_group.dart';
+import '../../../widgets/footer_taglines_editor.dart';
 
 part 'quote_step_template_payment.dart';
 part 'quote_step_template_terms.dart';
@@ -125,12 +135,20 @@ class QuoteTemplate {
 
   // ── Business ────────────────────────────────────────────────────────────
   String businessName;
+  // TAGLINE PASS: short line rendered under the business name in the
+  // document header — mirrors BusinessInfo.tagline exactly.
+  String tagline;
   String businessEmail;
   String businessPhone;
   String businessAddress; // legacy flat address — kept in sync from
                            // addressInfo.singleLine by the sheet's _save().
   AddressInfo addressInfo;
   String? website;
+  // FOOTER TAGLINES PASS: 3–6 icon+text items authored here on the
+  // template; the Customise-step "Footer Taglines" switch (backed by
+  // QuoteData.footerTaglinesEnabled) controls whether they actually
+  // render — this list is just the content.
+  List<FooterTaglineItem> footerTaglines;
   String? logoPath;
   double logoOffsetDx;
   double logoOffsetDy;
@@ -177,11 +195,13 @@ class QuoteTemplate {
     required this.id,
     this.name = '',
     this.businessName = '',
+    this.tagline = '',
     this.businessEmail = '',
     this.businessPhone = '',
     this.businessAddress = '',
     AddressInfo? addressInfo,
     this.website,
+    List<FooterTaglineItem>? footerTaglines,
     this.logoPath,
     this.logoOffsetDx = 0.0,
     this.logoOffsetDy = 0.0,
@@ -209,7 +229,8 @@ class QuoteTemplate {
     this.signatureImagePath,
   })  : enabledFields = enabledFields ?? defaultQuoteEnabledFields(),
         addressInfo = addressInfo ?? AddressInfo(),
-        senderAddressInfo = senderAddressInfo ?? AddressInfo();
+        senderAddressInfo = senderAddressInfo ?? AddressInfo(),
+        footerTaglines = footerTaglines ?? [];
 
   Offset get logoOffset => Offset(logoOffsetDx, logoOffsetDy);
   LogoShape get shape => logoShapeFromString(logoShape);
@@ -218,11 +239,13 @@ class QuoteTemplate {
         'id': id,
         'name': name,
         'businessName': businessName,
+        'tagline': tagline,
         'businessEmail': businessEmail,
         'businessPhone': businessPhone,
         'businessAddress': businessAddress,
         'addressInfo': addressInfo.toJson(),
         'website': website,
+        'footerTaglines': footerTaglinesToJson(footerTaglines),
         'logoPath': logoPath,
         'logoOffsetDx': logoOffsetDx,
         'logoOffsetDy': logoOffsetDy,
@@ -254,12 +277,14 @@ class QuoteTemplate {
         id: j['id'] as String,
         name: j['name'] as String? ?? '',
         businessName: j['businessName'] as String? ?? '',
+        tagline: j['tagline'] as String? ?? '',
         businessEmail: j['businessEmail'] as String? ?? '',
         businessPhone: j['businessPhone'] as String? ?? '',
         businessAddress: j['businessAddress'] as String? ?? '',
         addressInfo:
             AddressInfo.fromJson(j['addressInfo'] ?? j['businessAddress']),
         website: j['website'] as String?,
+        footerTaglines: footerTaglinesFromJson(j['footerTaglines']),
         logoPath: j['logoPath'] as String?,
         logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
@@ -497,11 +522,13 @@ class _QuoteStepTemplateSectionState extends State<QuoteStepTemplateSection> {
       id: const Uuid().v4(),
       name: '${o.name} (Copy)',
       businessName: o.businessName,
+      tagline: o.tagline,
       businessEmail: o.businessEmail,
       businessPhone: o.businessPhone,
       businessAddress: o.businessAddress,
       addressInfo: o.addressInfo.copyWith(),
       website: o.website,
+      footerTaglines: o.footerTaglines.map((t) => t.copyWith()).toList(),
       logoPath: o.logoPath,
       logoOffsetDx: o.logoOffsetDx,
       logoOffsetDy: o.logoOffsetDy,
@@ -1290,10 +1317,15 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
 
   // Business
   late TextEditingController _bizNameCtrl;
+  late TextEditingController _bizTaglineCtrl;
   late TextEditingController _bizEmailCtrl;
   late TextEditingController _bizPhoneCtrl;
   late AddressFieldControllers _bizAddressControllers;
   late TextEditingController _websiteCtrl;
+  // FOOTER TAGLINES PASS: plain list state (not a TextEditingController
+  // per field) — FooterTaglinesEditor manages its own controllers
+  // internally and reports the current list back via onChanged.
+  List<FooterTaglineItem> _footerTaglines = [];
   String? _logoPath;
   Offset _logoOffset = Offset.zero;
   double _logoScale = 1.0;
@@ -1338,10 +1370,12 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
     _currency = e?.currency ?? 'USD';
 
     _bizNameCtrl = TextEditingController(text: e?.businessName ?? '');
+    _bizTaglineCtrl = TextEditingController(text: e?.tagline ?? '');
     _bizEmailCtrl = TextEditingController(text: e?.businessEmail ?? '');
     _bizPhoneCtrl = TextEditingController(text: e?.businessPhone ?? '');
     _bizAddressControllers = AddressFieldControllers.seeded(e?.addressInfo);
     _websiteCtrl = TextEditingController(text: e?.website ?? '');
+    _footerTaglines = e?.footerTaglines.map((t) => t.copyWith()).toList() ?? [];
     _logoPath = e?.logoPath;
     _logoOffset = e?.logoOffset ?? Offset.zero;
     _logoScale = e?.logoScale ?? 1.0;
@@ -1375,6 +1409,7 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
     for (final c in [
       _nameCtrl,
       _bizNameCtrl,
+      _bizTaglineCtrl,
       _bizEmailCtrl,
       _bizPhoneCtrl,
       _websiteCtrl,
@@ -1398,6 +1433,7 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
     for (final c in [
       _nameCtrl,
       _bizNameCtrl,
+      _bizTaglineCtrl,
       _bizEmailCtrl,
       _bizPhoneCtrl,
       _websiteCtrl,
@@ -1445,6 +1481,7 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
           ? 'Thank you for your business!'
           : _thankYouCtrl.text.trim(),
       businessName: _bizNameCtrl.text.trim(),
+      tagline: _bizTaglineCtrl.text.trim(),
       businessEmail: _bizEmailCtrl.text.trim(),
       businessPhone: _bizPhoneCtrl.text.trim(),
       businessAddress: bizAddressInfo.singleLine,
@@ -1452,6 +1489,7 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
       website: _websiteCtrl.text.trim().isEmpty
           ? null
           : _websiteCtrl.text.trim(),
+      footerTaglines: _footerTaglines.map((t) => t.copyWith()).toList(),
       logoPath: _logoPath,
       logoOffsetDx: _logoOffset.dx,
       logoOffsetDy: _logoOffset.dy,
@@ -1634,6 +1672,16 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
                               _counter(context, _bizNameCtrl.text.length, 40),
                               const SizedBox(height: 12),
                               QuoteFieldLite(
+                                ctrl: _bizTaglineCtrl,
+                                label: 'Tagline',
+                                hint: 'e.g. Technology | Websites | Support',
+                                icon: Icons.short_text_rounded,
+                                max: 60,
+                                accent: accent,
+                              ),
+                              _counter(context, _bizTaglineCtrl.text.length, 60),
+                              const SizedBox(height: 12),
+                              QuoteFieldLite(
                                 ctrl: _bizEmailCtrl,
                                 label: 'Business Email',
                                 hint: 'e.g. hello@novastudio.com',
@@ -1672,6 +1720,18 @@ class _QuoteTemplateSheetState extends State<_QuoteTemplateSheet> {
                               ),
                               _counter(context, _websiteCtrl.text.length, 50),
                             ],
+                          ),
+                        ),
+
+                        _CollapsibleGroup(
+                          label: 'Footer Taglines',
+                          icon: Icons.share_rounded,
+                          accent: accent,
+                          sectionKey: 'footer_taglines',
+                          child: FooterTaglinesEditor(
+                            initialItems: _footerTaglines,
+                            accent: accent,
+                            onChanged: (items) => _footerTaglines = items,
                           ),
                         ),
 

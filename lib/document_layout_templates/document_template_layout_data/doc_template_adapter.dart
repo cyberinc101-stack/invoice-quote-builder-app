@@ -1,102 +1,100 @@
-// doc_template_adapter.dart
-// lib/document_layout_templates/document_template_layout_data/doc_template_adapter.dart
-//
-// TEXT-SIZE WIRING FIX (this update): added `fontSize` to the adapter
-// itself, populated from InvoiceData.fontSize / QuoteData.fontSize /
-// ReceiptData.fontSize in each conversion function below. Previously
-// this value existed on every doc-type model (the "Text Size" slider in
-// every customize screen writes it) but was NEVER carried across into
-// DocTemplateAdapter at all — every template's TextStyle uses a
-// hardcoded pixel fontSize with zero reference to this field, so the
-// slider visibly moved while nothing in the actual rendered document
-// ever changed. Rather than rewriting every hardcoded fontSize across
-// all 10 templates (fragile, huge diff, easy to miss one), this value
-// is turned into a single text-scale multiplier applied uniformly via
-// A4Paginator's textScale param (see template_document.dart) — one
-// change point, every template affected consistently, no template file
-// needed touching.
-//
-// MERGE PASS (earlier): three additions that close the gap between
-// this adapter and the (now-deleted) per-type editable stationary-layout
-// files:
-//
-//   1. taxNameActual / discountNameActual — the user-typed label (e.g.
-//      "GST", "Trade Discount") for the document's own whole-document
-//      Tax %/Discount %. Previously only the RATE existed on this
-//      adapter (taxRate/discountRate); the NAME never made it across
-//      from InvoiceData.taxName/discountName (and QuoteData/ReceiptData's
-//      identical fields), which is why every template except Executive
-//      (which read InvoiceData directly) rendered "Tax (10%)" instead of
-//      "GST (10%)". Named "*Actual" rather than reusing "taxName"/
-//      "discountName" to avoid colliding with anything a future pass
-//      might want for a different purpose; still just a plain field.
-//
-//   2. dueDateSummaryValue / amountDueValue — the Due Date/Amount Due bar
-//      rendered directly under Grand Total (invoice-only; both null for
-//      quote/receipt, same pattern metaLabel2/metaValue2 already uses
-//      for doc-type-specific fields). Ported from InvoiceData's
-//      dueDateSummary/amountDue enabledFields keys + amountDue getter.
-//
-//   3. quoteToAdapter()/receiptToAdapter() now actually populate
-//      bankName/accountName/accountNumber/otherPaymentDetails/
-//      termsAndConditions/signatureMode/signatureName/
-//      signatureImagePath/signatureFontSize/signatureFontFamily instead
-//      of leaving them at empty defaults.
-//
-// (All comments from the previous version describe work already done
-// and still apply to the fields they mention; trimmed here to keep this
-// header focused on what changed in this pass.)
-
 import 'package:flutter/material.dart';
 import '../../models/invoice_data.dart';
 import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
+import '../../models/address_info.dart';
+import '../../models/footer_tagline.dart';
 import '../../document_layout_templates/01_executive/executive_template.dart'
     show invoiceAccent, quoteAccent, receiptAccent;
 
 class DocTemplateAdapter {
-  // ── Document identity ────────────────────────────────────────────────────
-  final String docTypeLabel;       // 'INVOICE' | 'QUOTE' | 'RECEIPT'
+  final String docTypeLabel;
   final String docNumber;
-  final String continuationSuffix; // e.g. '(continued)'
-  final String recipientLabel;     // 'BILLED TO' | 'PREPARED FOR' | 'RECEIVED FROM'
+  final String continuationSuffix;
+  final String recipientLabel;
 
-  // ── Business identity ────────────────────────────────────────────────────
   final String businessName;
+  final String businessTagline;
+  final bool businessTaglineEnabled;
+  final bool footerTaglinesEnabled;
+  final double footerTaglinesFontSize;
+  final List<FooterTaglineItem> footerTaglines;
   final String businessEmail;
   final String businessPhone;
   final String businessAddress;
+  final String businessTaxId;
+  final String businessGstNumber;
+  final AddressInfo businessAddressInfo;
   final String? businessLogoPath;
 
   final double businessLogoOffsetDx;
   final double businessLogoOffsetDy;
   final double businessLogoScale;
-  final String businessLogoShape; // storage name from LogoShape.storageName
+  final String businessLogoShape;
   final double businessLogoDisplaySize;
 
   final bool businessLogoShowInitial;
   final String businessLogoInitialLetter;
 
-  // ── Client / recipient ───────────────────────────────────────────────────
+  // FREEFORM HEADER LOGO PASS: mirrors InvoiceData's identically-named
+  // fields — see that model's doc comment. Defaults keep Quote/Receipt
+  // adapters (whose own data models don't yet carry these fields)
+  // rendering exactly as before this pass; the invoice-only wiring
+  // happens in invoiceToAdapter() below.
+  final double headerLogoFreeformOffsetDx;
+  final double headerLogoFreeformOffsetDy;
+  final double headerLogoFreeformScale;
+
+  // BACKGROUND-IMAGE PASS: header/footer background image path +
+  // on/off toggle, mirroring InvoiceData/QuoteData/ReceiptData's
+  // identically-named new fields. Null path or enabled=false means
+  // "no background" — every existing document loads and renders
+  // exactly as before this pass, since both default to
+  // null/false. See doc_header.dart's withOptionalBackgroundImage()
+  // for the actual render-side handling (image + translucent scrim,
+  // so existing dark text always stays readable — no color picker
+  // needed).
+  final String? headerBackgroundImagePath;
+  final bool headerBackgroundEnabled;
+  final double headerBackgroundOpacity;
+  final double headerBackgroundOffsetDx;
+  final double headerBackgroundOffsetDy;
+  final double headerBackgroundScale;
+  final String? footerBackgroundImagePath;
+  final bool footerBackgroundEnabled;
+  final double footerBackgroundOpacity;
+  final double footerBackgroundOffsetDx;
+  final double footerBackgroundOffsetDy;
+  final double footerBackgroundScale;
+
+  // MID-PAGE BACKGROUND PASS: same treatment for the page body area
+  // (line items + totals) — see doc_header.dart's
+  // withOptionalBackgroundImage and a4_paginator.dart's own
+  // bodyBackgroundImagePath/bodyBackgroundEnabled for the render side.
+  final String? bodyBackgroundImagePath;
+  final bool bodyBackgroundEnabled;
+  final double bodyBackgroundOpacity;
+  final double bodyBackgroundOffsetDx;
+  final double bodyBackgroundOffsetDy;
+  final double bodyBackgroundScale;
+
   final String clientName;
   final String clientEmail;
   final String clientPhone;
   final String clientAddress;
+  final AddressInfo clientAddressInfo;
 
-  // ── Meta row ──────────────────────────────────────────────────────────────
   final String metaLabel1;
   final String metaValue1;
   final String metaLabel2;
   final String metaValue2;
 
-  // ── Status badge ──────────────────────────────────────────────────────────
   final String statusLabel;
   final Color statusColor;
 
-  // ── Money ─────────────────────────────────────────────────────────────────
   final String currency;
   final String currencySymbol;
-  final String currencyDisplayMode; // 'code' | 'symbol' | 'both'
+  final String currencyDisplayMode;
   final List<LineItem> lineItems;
   final double subtotal;
   final double discountRate;
@@ -108,7 +106,7 @@ class DocTemplateAdapter {
   final Map<String, double> itemTaxExtraByName;
   final Map<String, double> itemDiscountExtraByName;
   final double total;
-  final String totalLabel; // 'Grand Total' | 'Total' | 'Amount Paid'
+  final String totalLabel;
 
   final String taxNameActual;
   final String discountNameActual;
@@ -116,28 +114,19 @@ class DocTemplateAdapter {
   final String? dueDateSummaryValue;
   final double? amountDueValue;
 
-  // ── Payment details / terms & conditions / signature ────────────────────
   final String bankName;
   final String accountName;
   final String accountNumber;
   final String otherPaymentDetails;
   final String termsAndConditions;
-  final String signatureMode; // 'typed' | 'image' | 'blank' | '' (none)
+  final String signatureMode;
   final String signatureName;
   final String? signatureImagePath;
   final double signatureFontSize;
   final String signatureFontFamily;
 
-  // ── Misc ──────────────────────────────────────────────────────────────────
   final String notes;
   final String fontFamily;
-  // TEXT-SIZE WIRING FIX: the "Text Size" slider in every customize screen
-  // writes InvoiceData.fontSize / QuoteData.fontSize / ReceiptData.fontSize
-  // — but this adapter never carried that value across, and every
-  // template's TextStyle uses a hardcoded pixel size with no reference
-  // to it at all. Default 12.0 matches the slider's own midpoint (range
-  // is 10–16 in every customize screen) — see template_document.dart for
-  // how this becomes an actual text-scale multiplier at render time.
   final double fontSize;
   final Color accent;
   final String thankYouLabel;
@@ -150,9 +139,17 @@ class DocTemplateAdapter {
     required this.continuationSuffix,
     required this.recipientLabel,
     required this.businessName,
+    this.businessTagline = '',
+    this.businessTaglineEnabled = true,
+    this.footerTaglinesEnabled = false,
+    this.footerTaglinesFontSize = 8.0,
+    this.footerTaglines = const [],
     required this.businessEmail,
     required this.businessPhone,
     required this.businessAddress,
+    this.businessTaxId = '',
+    this.businessGstNumber = '',
+    required this.businessAddressInfo,
     this.businessLogoPath,
     this.businessLogoOffsetDx = 0.0,
     this.businessLogoOffsetDy = 0.0,
@@ -161,10 +158,32 @@ class DocTemplateAdapter {
     this.businessLogoDisplaySize = 40.0,
     this.businessLogoShowInitial = true,
     this.businessLogoInitialLetter = '',
+    this.headerLogoFreeformOffsetDx = 0.0,
+    this.headerLogoFreeformOffsetDy = 0.0,
+    this.headerLogoFreeformScale = 1.0,
+    this.headerBackgroundImagePath,
+    this.headerBackgroundEnabled = false,
+    this.headerBackgroundOpacity = 1.0,
+    this.headerBackgroundOffsetDx = 0.0,
+    this.headerBackgroundOffsetDy = 0.0,
+    this.headerBackgroundScale = 1.0,
+    this.footerBackgroundImagePath,
+    this.footerBackgroundEnabled = false,
+    this.footerBackgroundOpacity = 1.0,
+    this.footerBackgroundOffsetDx = 0.0,
+    this.footerBackgroundOffsetDy = 0.0,
+    this.footerBackgroundScale = 1.0,
+    this.bodyBackgroundImagePath,
+    this.bodyBackgroundEnabled = false,
+    this.bodyBackgroundOpacity = 1.0,
+    this.bodyBackgroundOffsetDx = 0.0,
+    this.bodyBackgroundOffsetDy = 0.0,
+    this.bodyBackgroundScale = 1.0,
     required this.clientName,
     required this.clientEmail,
     required this.clientPhone,
     required this.clientAddress,
+    required this.clientAddressInfo,
     required this.metaLabel1,
     required this.metaValue1,
     required this.metaLabel2,
@@ -281,19 +300,40 @@ String _paymentMethodLabel(PaymentMethod m) => switch (m) {
   PaymentMethod.other        => 'Other',
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Conversion functions — one per doc type.
-// ─────────────────────────────────────────────────────────────────────────────
-
-DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
+// SENDER-AS-FROM-CONTACT PASS (this update): the FROM block's
+// email/phone/address slots on this adapter are generic — they don't
+// care WHERE the caller sources them from. For invoices specifically,
+// they're now fed from InvoiceData's senderEmail/senderPhone/
+// senderAddressInfo (synced down from the selected template's
+// BusinessInfo.sender* fields — see step_create_invoice.dart) instead
+// of the business* fields, since the template sheet's own Business
+// Information section no longer collects a separate business address/
+// email/phone (see step_templates.dart) — Sender / Contact Person is
+// now the single source of "who do I contact about this document".
+// businessName still comes from d.businessName (the FROM block's name
+// line is unchanged). Quote and Receipt are NOT touched by this pass —
+// their own data models don't have sender* fields, so they keep
+// sourcing the FROM block from their own business* fields exactly as
+// before.
+DocTemplateAdapter invoiceToAdapter(InvoiceData d) {
+  return DocTemplateAdapter(
       docTypeLabel: 'INVOICE',
       docNumber: d.invoiceNumber,
       continuationSuffix: '(continued)',
       recipientLabel: 'BILLED TO',
       businessName: d.businessName,
-      businessEmail: d.businessEmail,
-      businessPhone: d.businessPhone,
-      businessAddress: d.businessAddress,
+      businessTagline: d.businessTagline,
+      businessTaglineEnabled: d.businessTaglineEnabled,
+      footerTaglinesEnabled: d.footerTaglinesEnabled,
+      footerTaglinesFontSize: d.footerTaglinesFontSize,
+      footerTaglines: d.footerTaglines,
+      // SENDER-AS-FROM-CONTACT PASS: sender-sourced, not business-sourced.
+      businessEmail: d.senderEmail,
+      businessPhone: d.senderPhone,
+      businessAddress: d.senderAddressInfo.singleLine,
+      businessTaxId: d.businessTaxId,
+      businessGstNumber: d.businessGst,
+      businessAddressInfo: d.senderAddressInfo,
       businessLogoPath: d.businessLogoPath,
       businessLogoOffsetDx: d.businessLogoOffsetDx,
       businessLogoOffsetDy: d.businessLogoOffsetDy,
@@ -302,10 +342,32 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       businessLogoDisplaySize: d.businessLogoDisplaySize,
       businessLogoShowInitial: d.businessLogoShowInitial,
       businessLogoInitialLetter: d.businessLogoInitialLetter,
+      headerLogoFreeformOffsetDx: d.headerLogoFreeformOffsetDx,
+      headerLogoFreeformOffsetDy: d.headerLogoFreeformOffsetDy,
+      headerLogoFreeformScale: d.headerLogoFreeformScale,
+      headerBackgroundImagePath: d.headerBackgroundImagePath,
+      headerBackgroundEnabled: d.headerBackgroundEnabled,
+      headerBackgroundOpacity: d.headerBackgroundOpacity,
+      headerBackgroundOffsetDx: d.headerBackgroundOffsetDx,
+      headerBackgroundOffsetDy: d.headerBackgroundOffsetDy,
+      headerBackgroundScale: d.headerBackgroundScale,
+      footerBackgroundImagePath: d.footerBackgroundImagePath,
+      footerBackgroundEnabled: d.footerBackgroundEnabled,
+      footerBackgroundOpacity: d.footerBackgroundOpacity,
+      footerBackgroundOffsetDx: d.footerBackgroundOffsetDx,
+      footerBackgroundOffsetDy: d.footerBackgroundOffsetDy,
+      footerBackgroundScale: d.footerBackgroundScale,
+      bodyBackgroundImagePath: d.bodyBackgroundImagePath,
+      bodyBackgroundEnabled: d.bodyBackgroundEnabled,
+      bodyBackgroundOpacity: d.bodyBackgroundOpacity,
+      bodyBackgroundOffsetDx: d.bodyBackgroundOffsetDx,
+      bodyBackgroundOffsetDy: d.bodyBackgroundOffsetDy,
+      bodyBackgroundScale: d.bodyBackgroundScale,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
       clientAddress: d.clientAddress,
+      clientAddressInfo: d.clientAddressInfo,
       metaLabel1: 'Issue Date',
       metaValue1: d.issueDate,
       metaLabel2: 'Due Date',
@@ -343,16 +405,14 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) => DocTemplateAdapter(
       signatureFontFamily: d.signatureFontFamily,
       notes: d.notes,
       fontFamily: d.fontFamily,
-      // TEXT-SIZE WIRING FIX: previously dropped entirely — this is what
-      // makes the Text Size slider in step_customise.dart actually do
-      // something to the rendered document.
       fontSize: d.fontSize,
       accent: invoiceAccent(d),
-      thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for your business — ${d.businessEmail}'
+      thankYouLabel: d.senderEmail.isNotEmpty
+          ? 'Thank you for your business — ${d.senderEmail}'
           : 'Thank you for your business',
       enabledFields: d.enabledFields,
     );
+}
 
 DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       docTypeLabel: 'QUOTE',
@@ -360,9 +420,15 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       continuationSuffix: '(continued)',
       recipientLabel: 'PREPARED FOR',
       businessName: d.businessName,
+      businessTagline: d.businessTagline,
+      businessTaglineEnabled: d.businessTaglineEnabled,
+      footerTaglinesEnabled: d.footerTaglinesEnabled,
+      footerTaglinesFontSize: d.footerTaglinesFontSize,
+      footerTaglines: d.footerTaglines,
       businessEmail: d.businessEmail,
       businessPhone: d.businessPhone,
       businessAddress: d.businessAddress,
+      businessAddressInfo: d.businessAddressInfo,
       businessLogoPath: d.businessLogoPath,
       businessLogoOffsetDx: d.businessLogoOffsetDx,
       businessLogoOffsetDy: d.businessLogoOffsetDy,
@@ -371,10 +437,29 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       businessLogoDisplaySize: d.businessLogoDisplaySize,
       businessLogoShowInitial: d.businessLogoShowInitial,
       businessLogoInitialLetter: d.businessLogoInitialLetter,
+      headerBackgroundImagePath: d.headerBackgroundImagePath,
+      headerBackgroundEnabled: d.headerBackgroundEnabled,
+      headerBackgroundOpacity: d.headerBackgroundOpacity,
+      headerBackgroundOffsetDx: d.headerBackgroundOffsetDx,
+      headerBackgroundOffsetDy: d.headerBackgroundOffsetDy,
+      headerBackgroundScale: d.headerBackgroundScale,
+      footerBackgroundImagePath: d.footerBackgroundImagePath,
+      footerBackgroundEnabled: d.footerBackgroundEnabled,
+      footerBackgroundOpacity: d.footerBackgroundOpacity,
+      footerBackgroundOffsetDx: d.footerBackgroundOffsetDx,
+      footerBackgroundOffsetDy: d.footerBackgroundOffsetDy,
+      footerBackgroundScale: d.footerBackgroundScale,
+      bodyBackgroundImagePath: d.bodyBackgroundImagePath,
+      bodyBackgroundEnabled: d.bodyBackgroundEnabled,
+      bodyBackgroundOpacity: d.bodyBackgroundOpacity,
+      bodyBackgroundOffsetDx: d.bodyBackgroundOffsetDx,
+      bodyBackgroundOffsetDy: d.bodyBackgroundOffsetDy,
+      bodyBackgroundScale: d.bodyBackgroundScale,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
       clientAddress: d.clientAddress,
+      clientAddressInfo: d.clientAddressInfo,
       metaLabel1: 'Issue Date',
       metaValue1: d.issueDate,
       metaLabel2: 'Valid Until',
@@ -412,8 +497,6 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       signatureFontFamily: d.signatureFontFamily,
       notes: d.notes,
       fontFamily: d.fontFamily,
-      // TEXT-SIZE WIRING FIX: see invoiceToAdapter()'s note above — same
-      // gap existed for Quote.
       fontSize: d.fontSize,
       accent: quoteAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
@@ -428,9 +511,15 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       continuationSuffix: '(continued)',
       recipientLabel: 'RECEIVED FROM',
       businessName: d.businessName,
+      businessTagline: d.businessTagline,
+      businessTaglineEnabled: d.businessTaglineEnabled,
+      footerTaglinesEnabled: d.footerTaglinesEnabled,
+      footerTaglinesFontSize: d.footerTaglinesFontSize,
+      footerTaglines: d.footerTaglines,
       businessEmail: d.businessEmail,
       businessPhone: d.businessPhone,
       businessAddress: d.businessAddress,
+      businessAddressInfo: d.businessAddressInfo,
       businessLogoPath: d.businessLogoPath,
       businessLogoOffsetDx: d.businessLogoOffsetDx,
       businessLogoOffsetDy: d.businessLogoOffsetDy,
@@ -439,10 +528,29 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       businessLogoDisplaySize: d.businessLogoDisplaySize,
       businessLogoShowInitial: d.businessLogoShowInitial,
       businessLogoInitialLetter: d.businessLogoInitialLetter,
+      headerBackgroundImagePath: d.headerBackgroundImagePath,
+      headerBackgroundEnabled: d.headerBackgroundEnabled,
+      headerBackgroundOpacity: d.headerBackgroundOpacity,
+      headerBackgroundOffsetDx: d.headerBackgroundOffsetDx,
+      headerBackgroundOffsetDy: d.headerBackgroundOffsetDy,
+      headerBackgroundScale: d.headerBackgroundScale,
+      footerBackgroundImagePath: d.footerBackgroundImagePath,
+      footerBackgroundEnabled: d.footerBackgroundEnabled,
+      footerBackgroundOpacity: d.footerBackgroundOpacity,
+      footerBackgroundOffsetDx: d.footerBackgroundOffsetDx,
+      footerBackgroundOffsetDy: d.footerBackgroundOffsetDy,
+      footerBackgroundScale: d.footerBackgroundScale,
+      bodyBackgroundImagePath: d.bodyBackgroundImagePath,
+      bodyBackgroundEnabled: d.bodyBackgroundEnabled,
+      bodyBackgroundOpacity: d.bodyBackgroundOpacity,
+      bodyBackgroundOffsetDx: d.bodyBackgroundOffsetDx,
+      bodyBackgroundOffsetDy: d.bodyBackgroundOffsetDy,
+      bodyBackgroundScale: d.bodyBackgroundScale,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
       clientAddress: d.clientAddress,
+      clientAddressInfo: d.clientAddressInfo,
       metaLabel1: 'Payment Date',
       metaValue1: d.paymentDate,
       metaLabel2: 'Payment Method',
@@ -475,8 +583,6 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       signatureFontFamily: d.signatureFontFamily,
       notes: d.notes,
       fontFamily: d.fontFamily,
-      // TEXT-SIZE WIRING FIX: see invoiceToAdapter()'s note above — same
-      // gap existed for Receipt.
       fontSize: d.fontSize,
       accent: receiptAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty

@@ -1,33 +1,6 @@
-// receipt_data.dart
-// lib/models/receipt_data.dart
-//
-// SIGNATURE PASS (this update): ReceiptData gains a three-mode
-// Signature block, mirroring InvoiceData's/QuoteData's own signature
-// fields exactly:
-//   - signatureMode ('typed' | 'image' | 'blank' | '' deselected)
-//   - signatureName / signatureImagePath / signatureFontSize (22.0) /
-//     signatureFontFamily ('' — default italic look, or one of the six
-//     google_fonts script families)
-//   - showSignature (bool, default true) — Receipt uses individual
-//     show* booleans rather than an enabledFields map, so the show/hide
-//     toggle for Signature follows that same pattern.
-// All new fields default to '' / 'blank' / null / 22.0 / '' / true so
-// every persisted receipt loads exactly as before this pass. Rendered
-// by executive_receipt_stationary_layout.dart's buildFooterSection via
-// a new buildSignatureBlock() call and exported by
-// receipt_pdf_service.dart's Executive PDF builder.
-//
-// All earlier passes (PER-ITEM TAX/DISCOUNT, TAX/DISCOUNT TOGGLE + NAME,
-// CREATE-RECEIPT PARITY, CASHIER NAME TOGGLE, THANK YOU MESSAGE TOGGLE,
-// RECEIPT DRAFT LIBRARY, FONT SIZE, LOGO FALLBACK MARK, WEBSITE +
-// SOCIAL, PAPER FORMAT, THERMAL FIELDS, CURRENCY DISPLAY) — see prior
-// header comments; unaffected by this update.
-
 import 'invoice_data.dart' show LineItem;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────────────────────
+import 'address_info.dart';
+import 'footer_tagline.dart';
 
 enum ReceiptStatus { issued, refunded }
 
@@ -35,15 +8,21 @@ enum ReceiptColor { blue, green, purple, orange, red, teal, black, indigo }
 
 enum PaymentMethod { cash, card, bankTransfer, other }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ReceiptData
-// ─────────────────────────────────────────────────────────────────────────────
-
 class ReceiptData {
   String businessName;
+  String businessTagline;
+  bool businessTaglineEnabled;
+  bool footerTaglinesEnabled;
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text —
+  // adjustable via the Customise step. Clamped in the UI to a
+  // range that, combined with autoFitText's own shrink-to-fit,
+  // cannot overflow the footer band even at max size with 6 items.
+  double footerTaglinesFontSize;
+  List<FooterTaglineItem> footerTaglines;
   String businessEmail;
   String businessPhone;
   String businessAddress;
+  AddressInfo businessAddressInfo;
   String? businessLogoPath;
 
   double businessLogoOffsetDx;
@@ -55,10 +34,37 @@ class ReceiptData {
   bool businessLogoShowInitial;
   String businessLogoInitialLetter;
 
+  // BACKGROUND-IMAGE PASS: mirrors InvoiceData's identical new fields —
+  // see that file's header comment for the full rationale. Both
+  // null/false by default, so every existing persisted receipt loads
+  // and renders exactly as before this pass.
+  String? headerBackgroundImagePath;
+  bool headerBackgroundEnabled;
+  double headerBackgroundOpacity;
+  double headerBackgroundOffsetDx;
+  double headerBackgroundOffsetDy;
+  double headerBackgroundScale;
+  String? footerBackgroundImagePath;
+  bool footerBackgroundEnabled;
+  double footerBackgroundOpacity;
+  double footerBackgroundOffsetDx;
+  double footerBackgroundOffsetDy;
+  double footerBackgroundScale;
+
+  // MID-PAGE BACKGROUND PASS: mirrors InvoiceData's identical new
+  // fields — see that file's header comment for the full rationale.
+  String? bodyBackgroundImagePath;
+  bool bodyBackgroundEnabled;
+  double bodyBackgroundOpacity;
+  double bodyBackgroundOffsetDx;
+  double bodyBackgroundOffsetDy;
+  double bodyBackgroundScale;
+
   String clientName;
   String clientEmail;
   String clientPhone;
   String clientAddress;
+  AddressInfo clientAddressInfo;
 
   String receiptNumber;
   String paymentDate;
@@ -129,13 +135,10 @@ class ReceiptData {
 
   bool excludeFromReports;
 
-  // SIGNATURE PASS: three mutually exclusive modes, mirrors
-  // InvoiceData's/QuoteData's identical fields exactly. showSignature
-  // is Receipt's own show* boolean toggle (this model has no
-  // enabledFields map), mirroring showThankYouMessage's identical
-  // pattern.
+  bool statusHidden;
+
   bool showSignature;
-  String signatureMode; // 'typed' | 'image' | 'blank' | ''
+  String signatureMode;
   String signatureName;
   String? signatureImagePath;
   double signatureFontSize;
@@ -143,9 +146,15 @@ class ReceiptData {
 
   ReceiptData({
     this.businessName     = '',
+    this.businessTagline  = '',
+    this.businessTaglineEnabled = true,
+    this.footerTaglinesEnabled = false,
+    this.footerTaglinesFontSize = 8.0,
+    List<FooterTaglineItem>? footerTaglines,
     this.businessEmail    = '',
     this.businessPhone    = '',
     this.businessAddress  = '',
+    AddressInfo? businessAddressInfo,
     this.businessLogoPath,
     this.businessLogoOffsetDx = 0.0,
     this.businessLogoOffsetDy = 0.0,
@@ -154,10 +163,29 @@ class ReceiptData {
     this.businessLogoDisplaySize = 40.0,
     this.businessLogoShowInitial = true,
     this.businessLogoInitialLetter = '',
+    this.headerBackgroundImagePath,
+    this.headerBackgroundEnabled = false,
+    this.headerBackgroundOpacity = 1.0,
+    this.headerBackgroundOffsetDx = 0.0,
+    this.headerBackgroundOffsetDy = 0.0,
+    this.headerBackgroundScale = 1.0,
+    this.footerBackgroundImagePath,
+    this.footerBackgroundEnabled = false,
+    this.footerBackgroundOpacity = 1.0,
+    this.footerBackgroundOffsetDx = 0.0,
+    this.footerBackgroundOffsetDy = 0.0,
+    this.footerBackgroundScale = 1.0,
+    this.bodyBackgroundImagePath,
+    this.bodyBackgroundEnabled = false,
+    this.bodyBackgroundOpacity = 1.0,
+    this.bodyBackgroundOffsetDx = 0.0,
+    this.bodyBackgroundOffsetDy = 0.0,
+    this.bodyBackgroundScale = 1.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
     this.clientAddress    = '',
+    AddressInfo? clientAddressInfo,
     this.receiptNumber    = '',
     this.paymentDate      = '',
     this.notes            = '',
@@ -209,13 +237,17 @@ class ReceiptData {
     this.showTwitter          = false,
     this.twitterHandle        = '',
     this.excludeFromReports = false,
+    this.statusHidden         = false,
     this.showSignature       = true,
     this.signatureMode       = 'blank',
     this.signatureName       = '',
     this.signatureImagePath,
     this.signatureFontSize   = 22.0,
     this.signatureFontFamily = '',
-  }) : lineItems = lineItems ?? [];
+  }) : lineItems = lineItems ?? [],
+       businessAddressInfo = businessAddressInfo ?? AddressInfo(),
+       clientAddressInfo = clientAddressInfo ?? AddressInfo(),
+       footerTaglines = footerTaglines ?? [];
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
   double get discountAmount => discountEnabled ? subtotal * (discountRate / 100) : 0.0;
@@ -259,9 +291,15 @@ class ReceiptData {
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
+        'businessTagline':  businessTagline,
+        'businessTaglineEnabled': businessTaglineEnabled,
+        'footerTaglinesEnabled':  footerTaglinesEnabled,
+        'footerTaglinesFontSize': footerTaglinesFontSize,
+        'footerTaglines':   footerTaglinesToJson(footerTaglines),
         'businessEmail':    businessEmail,
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
+        'businessAddressInfo': businessAddressInfo.toJson(),
         'businessLogoPath': businessLogoPath,
         'businessLogoOffsetDx': businessLogoOffsetDx,
         'businessLogoOffsetDy': businessLogoOffsetDy,
@@ -270,10 +308,29 @@ class ReceiptData {
         'businessLogoDisplaySize': businessLogoDisplaySize,
         'businessLogoShowInitial': businessLogoShowInitial,
         'businessLogoInitialLetter': businessLogoInitialLetter,
+        'headerBackgroundImagePath': headerBackgroundImagePath,
+        'headerBackgroundEnabled':   headerBackgroundEnabled,
+        'headerBackgroundOpacity': headerBackgroundOpacity,
+        'headerBackgroundOffsetDx': headerBackgroundOffsetDx,
+        'headerBackgroundOffsetDy': headerBackgroundOffsetDy,
+        'headerBackgroundScale': headerBackgroundScale,
+        'footerBackgroundImagePath': footerBackgroundImagePath,
+        'footerBackgroundEnabled':   footerBackgroundEnabled,
+        'footerBackgroundOpacity': footerBackgroundOpacity,
+        'footerBackgroundOffsetDx': footerBackgroundOffsetDx,
+        'footerBackgroundOffsetDy': footerBackgroundOffsetDy,
+        'footerBackgroundScale': footerBackgroundScale,
+        'bodyBackgroundImagePath': bodyBackgroundImagePath,
+        'bodyBackgroundEnabled':   bodyBackgroundEnabled,
+        'bodyBackgroundOpacity': bodyBackgroundOpacity,
+        'bodyBackgroundOffsetDx': bodyBackgroundOffsetDx,
+        'bodyBackgroundOffsetDy': bodyBackgroundOffsetDy,
+        'bodyBackgroundScale': bodyBackgroundScale,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
         'clientAddress':    clientAddress,
+        'clientAddressInfo': clientAddressInfo.toJson(),
         'receiptNumber':    receiptNumber,
         'paymentDate':      paymentDate,
         'notes':            notes,
@@ -325,6 +382,7 @@ class ReceiptData {
         'showTwitter':          showTwitter,
         'twitterHandle':        twitterHandle,
         'excludeFromReports': excludeFromReports,
+        'statusHidden':         statusHidden,
         'showSignature':        showSignature,
         'signatureMode':        signatureMode,
         'signatureName':        signatureName,
@@ -335,9 +393,16 @@ class ReceiptData {
 
   factory ReceiptData.fromJson(Map<String, dynamic> j) => ReceiptData(
         businessName:     j['businessName']     as String? ?? '',
+        businessTagline:  j['businessTagline']  as String? ?? '',
+        businessTaglineEnabled: j['businessTaglineEnabled'] as bool? ?? true,
+        footerTaglinesEnabled:  j['footerTaglinesEnabled']  as bool? ?? false,
+        footerTaglinesFontSize: (j['footerTaglinesFontSize'] as num?)?.toDouble() ?? 8.0,
+        footerTaglines:   footerTaglinesFromJson(j['footerTaglines']),
         businessEmail:    j['businessEmail']    as String? ?? '',
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
+        businessAddressInfo: AddressInfo.fromJson(
+            j['businessAddressInfo'] ?? j['businessAddress']),
         businessLogoPath: j['businessLogoPath'] as String?,
         businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
@@ -346,10 +411,30 @@ class ReceiptData {
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
         businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
+        headerBackgroundImagePath: j['headerBackgroundImagePath'] as String?,
+        headerBackgroundEnabled:   j['headerBackgroundEnabled']   as bool?   ?? false,
+        headerBackgroundOpacity: (j['headerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        headerBackgroundOffsetDx: (j['headerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundOffsetDy: (j['headerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundScale: (j['headerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundImagePath: j['footerBackgroundImagePath'] as String?,
+        footerBackgroundEnabled:   j['footerBackgroundEnabled']   as bool?   ?? false,
+        footerBackgroundOpacity: (j['footerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundOffsetDx: (j['footerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundOffsetDy: (j['footerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundScale: (j['footerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundImagePath: j['bodyBackgroundImagePath'] as String?,
+        bodyBackgroundEnabled:   j['bodyBackgroundEnabled']   as bool?   ?? false,
+        bodyBackgroundOpacity: (j['bodyBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundOffsetDx: (j['bodyBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundOffsetDy: (j['bodyBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundScale: (j['bodyBackgroundScale'] as num?)?.toDouble() ?? 1.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
         clientAddress:    j['clientAddress']    as String? ?? '',
+        clientAddressInfo: AddressInfo.fromJson(
+            j['clientAddressInfo'] ?? j['clientAddress']),
         receiptNumber:    j['receiptNumber']    as String? ?? '',
         paymentDate:      j['paymentDate']      as String? ?? '',
         notes:            j['notes']            as String? ?? '',
@@ -412,6 +497,7 @@ class ReceiptData {
         showTwitter:     j['showTwitter']     as bool?   ?? false,
         twitterHandle:   j['twitterHandle']   as String? ?? '',
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
+        statusHidden:        j['statusHidden']        as bool?   ?? false,
         showSignature:       j['showSignature']       as bool?   ?? true,
         signatureMode:       j['signatureMode']        as String? ?? 'blank',
         signatureName:       j['signatureName']        as String? ?? '',
@@ -422,9 +508,15 @@ class ReceiptData {
 
   ReceiptData copyWith({
     String?         businessName,
+    String?         businessTagline,
+    bool?           businessTaglineEnabled,
+    bool?           footerTaglinesEnabled,
+    double?         footerTaglinesFontSize,
+    List<FooterTaglineItem>? footerTaglines,
     String?         businessEmail,
     String?         businessPhone,
     String?         businessAddress,
+    AddressInfo?    businessAddressInfo,
     String?         businessLogoPath,
     bool            clearBusinessLogo = false,
     double?         businessLogoOffsetDx,
@@ -434,10 +526,32 @@ class ReceiptData {
     double?         businessLogoDisplaySize,
     bool?           businessLogoShowInitial,
     String?         businessLogoInitialLetter,
+    String?         headerBackgroundImagePath,
+    bool            clearHeaderBackgroundImage = false,
+    bool?           headerBackgroundEnabled,
+    double?         headerBackgroundOpacity,
+    double?         headerBackgroundOffsetDx,
+    double?         headerBackgroundOffsetDy,
+    double?         headerBackgroundScale,
+    String?         footerBackgroundImagePath,
+    bool            clearFooterBackgroundImage = false,
+    bool?           footerBackgroundEnabled,
+    double?         footerBackgroundOpacity,
+    double?         footerBackgroundOffsetDx,
+    double?         footerBackgroundOffsetDy,
+    double?         footerBackgroundScale,
+    String?         bodyBackgroundImagePath,
+    bool            clearBodyBackgroundImage = false,
+    bool?           bodyBackgroundEnabled,
+    double?         bodyBackgroundOpacity,
+    double?         bodyBackgroundOffsetDx,
+    double?         bodyBackgroundOffsetDy,
+    double?         bodyBackgroundScale,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
     String?         clientAddress,
+    AddressInfo?    clientAddressInfo,
     String?         receiptNumber,
     String?         paymentDate,
     String?         notes,
@@ -489,6 +603,7 @@ class ReceiptData {
     bool?           showTwitter,
     String?         twitterHandle,
     bool?           excludeFromReports,
+    bool?           statusHidden,
     bool?           showSignature,
     String?         signatureMode,
     String?         signatureName,
@@ -499,9 +614,15 @@ class ReceiptData {
   }) =>
       ReceiptData(
         businessName:     businessName     ?? this.businessName,
+        businessTagline:  businessTagline  ?? this.businessTagline,
+        businessTaglineEnabled: businessTaglineEnabled ?? this.businessTaglineEnabled,
+        footerTaglinesEnabled:  footerTaglinesEnabled  ?? this.footerTaglinesEnabled,
+        footerTaglinesFontSize: footerTaglinesFontSize ?? this.footerTaglinesFontSize,
+        footerTaglines: footerTaglines ?? List<FooterTaglineItem>.from(this.footerTaglines),
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
+        businessAddressInfo: businessAddressInfo ?? this.businessAddressInfo,
         businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
         businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
         businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
@@ -510,10 +631,35 @@ class ReceiptData {
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
         businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
+        headerBackgroundImagePath: clearHeaderBackgroundImage
+            ? null
+            : (headerBackgroundImagePath ?? this.headerBackgroundImagePath),
+        headerBackgroundEnabled: headerBackgroundEnabled ?? this.headerBackgroundEnabled,
+        headerBackgroundOpacity: headerBackgroundOpacity ?? this.headerBackgroundOpacity,
+        headerBackgroundOffsetDx: headerBackgroundOffsetDx ?? this.headerBackgroundOffsetDx,
+        headerBackgroundOffsetDy: headerBackgroundOffsetDy ?? this.headerBackgroundOffsetDy,
+        headerBackgroundScale: headerBackgroundScale ?? this.headerBackgroundScale,
+        footerBackgroundImagePath: clearFooterBackgroundImage
+            ? null
+            : (footerBackgroundImagePath ?? this.footerBackgroundImagePath),
+        footerBackgroundEnabled: footerBackgroundEnabled ?? this.footerBackgroundEnabled,
+        footerBackgroundOpacity: footerBackgroundOpacity ?? this.footerBackgroundOpacity,
+        footerBackgroundOffsetDx: footerBackgroundOffsetDx ?? this.footerBackgroundOffsetDx,
+        footerBackgroundOffsetDy: footerBackgroundOffsetDy ?? this.footerBackgroundOffsetDy,
+        footerBackgroundScale: footerBackgroundScale ?? this.footerBackgroundScale,
+        bodyBackgroundImagePath: clearBodyBackgroundImage
+            ? null
+            : (bodyBackgroundImagePath ?? this.bodyBackgroundImagePath),
+        bodyBackgroundEnabled: bodyBackgroundEnabled ?? this.bodyBackgroundEnabled,
+        bodyBackgroundOpacity: bodyBackgroundOpacity ?? this.bodyBackgroundOpacity,
+        bodyBackgroundOffsetDx: bodyBackgroundOffsetDx ?? this.bodyBackgroundOffsetDx,
+        bodyBackgroundOffsetDy: bodyBackgroundOffsetDy ?? this.bodyBackgroundOffsetDy,
+        bodyBackgroundScale: bodyBackgroundScale ?? this.bodyBackgroundScale,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
         clientAddress:    clientAddress    ?? this.clientAddress,
+        clientAddressInfo: clientAddressInfo ?? this.clientAddressInfo,
         receiptNumber:    receiptNumber    ?? this.receiptNumber,
         paymentDate:      paymentDate      ?? this.paymentDate,
         notes:            notes            ?? this.notes,
@@ -565,6 +711,7 @@ class ReceiptData {
         showTwitter:      showTwitter      ?? this.showTwitter,
         twitterHandle:    twitterHandle    ?? this.twitterHandle,
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
+        statusHidden:        statusHidden        ?? this.statusHidden,
         showSignature:       showSignature       ?? this.showSignature,
         signatureMode:       signatureMode       ?? this.signatureMode,
         signatureName:       signatureName       ?? this.signatureName,
@@ -575,12 +722,11 @@ class ReceiptData {
 
   ReceiptData deepCopy() => copyWith(
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
+        businessAddressInfo: businessAddressInfo.copyWith(),
+        clientAddressInfo: clientAddressInfo.copyWith(),
+        footerTaglines: footerTaglines.map((t) => t.copyWith()).toList(),
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedReceipt  — wrapper stored in SharedPreferences
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedReceipt {
   final String      id;
@@ -662,10 +808,6 @@ class SavedReceipt {
         folderName: clearFolderName ? null : (folderName ?? this.folderName),
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedReceiptDraft
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedReceiptDraft {
   String id;
@@ -776,10 +918,6 @@ class SavedReceiptDraft {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedReceiptLineItem
-// ─────────────────────────────────────────────────────────────────────────────
-
 class SavedReceiptLineItem {
   String id;
   String? name;
@@ -831,10 +969,6 @@ class SavedReceiptLineItem {
         lastEditedAt: lastEditedAt ?? this.lastEditedAt,
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedReceiptLineItemSet
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedReceiptLineItemSet {
   String id;

@@ -1,127 +1,9 @@
-// invoice_provider.dart
-// lib/providers/invoice_provider.dart
-//
-// TEXT SIZE WIRING FIX (this update): the old `fontSize`
-// getter/`updateFontSize()` pair used to live entirely on this provider
-// as a plain, unsaved field (`double _fontSize = 14.0`) — it was never
-// read by InvoiceData, never persisted, and never reached the
-// renderer/PDF. `fontSize` now lives on InvoiceData itself (see that
-// file's own TEXT SIZE WIRING FIX note) and this provider is a thin
-// pass-through to it, exactly like every other single-field update
-// method here (updateFontFamily, updateBusinessLogoSize, etc). The
-// public getter/method signatures (`provider.fontSize`,
-// `provider.updateFontSize(v)`) are UNCHANGED, so step_customise.dart's
-// `_SizeSection` needs no changes at all — it already reads/writes
-// through exactly this API.
-//
-// SIGNATURE FONT FAMILY PASS (earlier): added updateSignatureFontFamily(),
-// mirroring updateSignatureFontSize()'s exact shape — a thin pass-through
-// to InvoiceData.copyWith. Backs the new font-chip row that appears
-// beneath the Signature toggle's Size slider on the Customise step
-// (step_customise.dart), only while that toggle is on. Lets the person
-// pick one of six google_fonts script families (Dancing Script, Great
-// Vibes, Sacramento, Pacifico, Alex Brush, Caveat) for a typed signature
-// instead of the default italic body-font look.
-//
-// TAX/DISCOUNT NAMING PASS (earlier): updateInvoiceDetails() gained
-// taxName/discountName params, mirroring how taxRate/discountRate are
-// already threaded through — a thin pass-through to InvoiceData.
-// copyWith. Backs the new "Tax Name"/"Discount Name" fields on the
-// Create Invoice sheet (create_invoice_bottom_sheet.dart), so a custom
-// label like "GST" or "VAT" can be set the same way the rate itself is.
-//
-// SIGNATURE SIZER PASS (earlier update): added updateSignatureFontSize(),
-// mirroring updateFontSize()'s exact shape — a thin pass-through to
-// InvoiceData.copyWith. Backs the new "Size" slider that appears
-// beneath the Signature toggle row on the Customise step
-// (step_customise.dart), only while that toggle is on.
-//
-// HISTORY LOGGING PASS (earlier update): saveCurrentInvoice(),
-// addConvertedInvoice(), and deleteInvoice() each gained an optional
-// [historyProvider] param. When passed:
-//  - saveCurrentInvoice / addConvertedInvoice log a `created` event
-//    (fire-and-forget, unawaited — logging to History should never block
-//    or fail the actual save).
-//  - deleteInvoice logs a `deleted` event, using the invoice's data
-//    captured BEFORE it's removed from _savedInvoices (removeWhere leaves
-//    nothing to read from afterwards).
-// Omitted (null) is a no-op on all three — every existing call site that
-// doesn't pass historyProvider behaves exactly as before this pass.
-//
-// FIELD VISIBILITY RELOCATION PASS (earlier update): added
-// updateEnabledFields(), mirroring updateColorScheme()/updateFontFamily()'s
-// shape — a thin pass-through to InvoiceData.copyWith. Backs the new
-// "Invoice Fields"/"Customer Fields" toggle section on the Customise step
-// (step_customise.dart's _FieldVisibilitySection), which replaces the
-// same toggles that used to live on the "New Template"/"Edit Template"
-// sheet (step_templates.dart) and only ever wrote to
-// InvoiceTemplate.enabledFields — a value that was copied onto the actual
-// invoice once, on first template selection, and never again (see
-// step_create_invoice.dart's own pass note). Field visibility is now a
-// genuine per-invoice setting.
-//
-// ALERTPREFS PUSH WIRING (earlier pass): added applyOverdueAlertsEnabled()
-// and applyDraftAlertsEnabled() — called from alert_type_toggles.dart's
-// "Overdue Invoices"/"Drafts" switches and settings_screen.dart's master
-// Alerts switch whenever the effective enabled state (alertsEnabled &&
-// the per-type flag) changes, so turning a category off actually cancels
-// its real push notifications instead of only hiding it from the in-app
-// Alerts screen/bell badge. Both iterate every saved invoice and either
-// resync (allowImmediateFire: false — see document_alert_scheduler.dart's
-// header comment for why) or cancel that invoice's notification for the
-// category.
-//
-// NO-DUPLICATE-PUSH FIX (earlier pass): _resyncDocumentAlerts(),
-// updateSavedInvoice(), and renameInvoice() now pass
-// allowImmediateFire: false to syncOverdueInvoiceAlert(). Previously an
-// already-overdue invoice would get a fresh "Invoice overdue" push
-// notification ~5 seconds after EVERY app launch (via the resync safety
-// net below) and after every unrelated edit/rename — because the
-// scheduler always substituted "fire in 5 seconds" whenever the due
-// date had already passed. Only genuine new-transition moments (first
-// save, an explicit status change via updateSavedInvoiceStatus) still
-// allow that immediate fire — see document_alert_scheduler.dart for the
-// actual fix.
-//
-// STATUS HIDDEN PASS (earlier update): updateSavedInvoiceStatus now also
-// clears statusHidden back to false whenever a real status is selected
-// (picking any of Unpaid/Partial/Paid/Overdue in the status menu implies
-// "show the chip again"). New method updateSavedInvoiceStatusHidden(id,
-// hidden) powers the "None" option in the status menu — it flips
-// InvoiceData.statusHidden without touching paymentStatus, so aging/
-// overdue/reports logic (all of which read paymentStatus) is completely
-// unaffected; only the card-face chip in doc_cards.dart is gated on this.
-//
-// TEMPLATE + LOGO SIZER PASS (earlier): two new methods —
-// updateLayoutTemplateId() and updateBusinessLogo() — mirror the pattern
-// every other data-mutation method here already uses (copyWith the active
-// draft, notifyListeners). See invoice_data.dart for the new fields these
-// write to.
-//
-// PUSH ALERTS (earlier pass): every mutation that can change whether an
-// invoice is overdue-eligible or a draft now calls into
-// DocumentAlertScheduler right after persisting, mirroring the pattern
-// ReminderProvider already uses for custom reminders. Specifically:
-//  - saveCurrentInvoice / addConvertedInvoice / updateSavedInvoice: sync
-//    both the overdue alert and the draft nudge (a save can change either
-//    condition — a newly-added due date, a completed field pushing
-//    completionPercent to 100, etc).
-//  - updateSavedInvoiceStatus: sync just the overdue alert (status is the
-//    only thing that changes here, but a status flip can also affect
-//    invoiceIsDraft() if your app ever ties completion to status — sync's
-//    included defensively, it's a cheap no-op cancel+reschedule if nothing
-//    changed).
-//  - deleteInvoice: cancel everything scheduled for that id so a deleted
-//    invoice can never still push a notification later.
-// All calls are fire-and-forget (unawaited) — scheduling a local
-// notification should never block the UI or fail loudly; failures are
-// already swallowed/logged inside NotificationService.
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/invoice_data.dart';
+import '../models/footer_tagline.dart';
 import '../models/history_event.dart' show HistoryDocType;
 import '../alerts/notifications/document_alert_scheduler.dart';
 import 'history_provider.dart';
@@ -134,14 +16,28 @@ class InvoiceProvider extends ChangeNotifier {
   final List<SavedInvoice> _savedInvoices = [];
   String? _activeInvoiceId;
 
+  // DRAFT-SYNC PASS: tracks which Create-Invoice "draft" (if any) the
+  // current session originated from — set by
+  // step_create_invoice.dart's _syncSelectedToProvider() when the user
+  // continues from a selected draft into Customise. This is what lets
+  // step_customise.dart's _handleSave() write Customise-only fields
+  // (Footer Taglines, the business logo, etc.) back onto that draft
+  // when saving — those fields are never touched by
+  // CreateInvoiceBottomSheet itself, so without this the draft library
+  // never learns about changes made further down the flow, and
+  // re-selecting the same draft later silently reverts them. Cleared
+  // whenever the session is no longer "coming from a draft" — a fresh
+  // reset, or loading an already-finished saved invoice for editing.
+  String? _sourceDraftId;
+  String? get sourceDraftId => _sourceDraftId;
+  void setSourceDraftId(String? id) => _sourceDraftId = id;
+
   bool _loading = true;
   bool get isLoading => _loading;
 
   InvoiceData        get invoiceData      => _invoiceData;
   List<SavedInvoice> get savedInvoices    => List.unmodifiable(_savedInvoices);
   String?            get activeInvoiceId  => _activeInvoiceId;
-
-  // ── Persistence ────────────────────────────────────────────────────────────
 
   Future<void> loadPersistedInvoices() async {
     try {
@@ -167,10 +63,6 @@ class InvoiceProvider extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
-      // Re-arms every saved invoice's overdue/draft push notifications
-      // against the OS scheduler on every launch — same "repair itself on
-      // open" safety net ReminderProvider.resyncScheduledNotifications()
-      // uses, in case an OEM battery manager killed the scheduled alarms.
       unawaited(_resyncDocumentAlerts());
     }
   }
@@ -178,15 +70,9 @@ class InvoiceProvider extends ChangeNotifier {
   Future<void> _resyncDocumentAlerts() async {
     for (final inv in _savedInvoices) {
       try {
-        // allowImmediateFire: false — this runs on every app launch, so an
-        // invoice that's already overdue must NOT re-fire a fresh "notify
-        // now" push every single time the app opens. Only re-arms alarms
-        // whose natural due-date fire time is still in the future.
         await DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv, allowImmediateFire: false);
         await DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv);
-      } catch (_) {
-        // Best-effort — one bad invoice shouldn't stop the rest resyncing.
-      }
+      } catch (_) {}
     }
   }
 
@@ -200,8 +86,6 @@ class InvoiceProvider extends ChangeNotifier {
     }
   }
 
-  // HISTORY LOGGING PASS: shared helper so saveCurrentInvoice and
-  // addConvertedInvoice don't duplicate the same logCreated(...) call.
   void _logCreated(HistoryProvider? historyProvider, SavedInvoice inv) {
     if (historyProvider == null) return;
     unawaited(historyProvider.logCreated(
@@ -214,15 +98,6 @@ class InvoiceProvider extends ChangeNotifier {
     ));
   }
 
-  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
-  // Called from alert_type_toggles.dart / settings_screen.dart whenever the
-  // EFFECTIVE enabled state for a category (alertsEnabled && the per-type
-  // flag) changes. `enabled: true` resyncs every saved invoice's push for
-  // that category (allowImmediateFire: false — re-enabling isn't a fresh
-  // "just became overdue" moment); `enabled: false` cancels it outright.
-  // These never touch the in-app Alerts list — that's driven live by
-  // buildAlerts() reading AlertPrefs directly on every rebuild.
-
   Future<void> applyOverdueAlertsEnabled(bool enabled) async {
     for (final inv in _savedInvoices) {
       try {
@@ -231,9 +106,7 @@ class InvoiceProvider extends ChangeNotifier {
         } else {
           await DocumentAlertScheduler.instance.cancelOverdueInvoiceAlert(inv.id);
         }
-      } catch (_) {
-        // Best-effort — one bad invoice shouldn't stop the rest applying.
-      }
+      } catch (_) {}
     }
   }
 
@@ -245,17 +118,15 @@ class InvoiceProvider extends ChangeNotifier {
         } else {
           await DocumentAlertScheduler.instance.cancelInvoiceDraftNudge(inv.id);
         }
-      } catch (_) {
-        // Best-effort — one bad invoice shouldn't stop the rest applying.
-      }
+      } catch (_) {}
     }
   }
-
-  // ── Active session ─────────────────────────────────────────────────────────
 
   void resetInvoiceData() {
     _invoiceData    = InvoiceData();
     _activeInvoiceId = null;
+    // DRAFT-SYNC PASS: a fresh session isn't "from" any draft any more.
+    _sourceDraftId = null;
     notifyListeners();
   }
 
@@ -263,6 +134,9 @@ class InvoiceProvider extends ChangeNotifier {
     final inv = _savedInvoices.firstWhere((i) => i.id == id);
     _invoiceData     = inv.data.deepCopy();
     _activeInvoiceId = inv.id;
+    // DRAFT-SYNC PASS: editing an already-finished saved invoice, not a
+    // draft — nothing to write back to a draft library entry here.
+    _sourceDraftId = null;
     notifyListeners();
   }
 
@@ -271,21 +145,47 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── CRUD ───────────────────────────────────────────────────────────────────
-
-  // HISTORY LOGGING PASS: [historyProvider] is optional so every existing
-  // call site keeps working unchanged. Pass
-  // historyProvider: context.read<HistoryProvider>() from a normal
-  // "create new invoice" save flow to log a `created` History event.
+  // UPDATE-IN-PLACE FIX: this used to unconditionally insert a brand-new
+  // SavedInvoice on every call, even when _activeInvoiceId was already
+  // pointing at a real saved invoice (i.e. you opened an existing one via
+  // Home -> tap card -> Edit). That meant re-saving an edit created a
+  // duplicate with the new data, while the original entry — the one still
+  // sitting on the Home screen, the one you'd tap next time — was never
+  // touched. Now: if there's an active invoice and it still exists in
+  // _savedInvoices, overwrite that entry (same id/createdAt) instead of
+  // inserting a new one. Only a genuinely new invoice (no active id, or a
+  // stale id that no longer exists) creates a fresh SavedInvoice.
   SavedInvoice saveCurrentInvoice({
     required String title,
     required String templateName,
     HistoryProvider? historyProvider,
   }) {
     final now = DateTime.now();
+    final trimmedTitle = title.trim().isEmpty ? 'Invoice' : title.trim();
+
+    final existingIndex = _activeInvoiceId == null
+        ? -1
+        : _savedInvoices.indexWhere((i) => i.id == _activeInvoiceId);
+
+    if (existingIndex != -1) {
+      final updated = _savedInvoices[existingIndex].copyWith(
+        title:             trimmedTitle,
+        templateName:      templateName,
+        data:              _invoiceData.deepCopy(),
+        lastEditedAt:      now,
+        completionPercent: _calcCompletion(),
+      );
+      _savedInvoices[existingIndex] = updated;
+      _persist();
+      notifyListeners();
+      unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated, allowImmediateFire: false));
+      unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
+      return updated;
+    }
+
     final inv = SavedInvoice(
       id:                '${now.millisecondsSinceEpoch}',
-      title:             title.trim().isEmpty ? 'Invoice' : title.trim(),
+      title:             trimmedTitle,
       templateName:      templateName,
       data:              _invoiceData.deepCopy(),
       createdAt:         now,
@@ -296,23 +196,12 @@ class InvoiceProvider extends ChangeNotifier {
     _activeInvoiceId = inv.id;
     _persist();
     notifyListeners();
-    // First save of this invoice — a genuine new-transition moment, so
-    // an already-past due date is still allowed to fire almost
-    // immediately (default allowImmediateFire: true).
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     _logCreated(historyProvider, inv);
     return inv;
   }
 
-  // Saves a converted InvoiceData (e.g. built from a quote via
-  // convertQuoteDataToInvoiceData) directly as a new saved invoice, WITHOUT
-  // touching the active editor draft — unlike saveCurrentInvoice(), which
-  // always saves whatever's currently in _invoiceData. Used by the
-  // "Convert to Invoice" action in saved_document_detail_screen.dart.
-  //
-  // HISTORY LOGGING PASS: [historyProvider] is optional, same as
-  // saveCurrentInvoice above — logs a `created` event when passed.
   SavedInvoice addConvertedInvoice({
     required InvoiceData data,
     required String title,
@@ -332,7 +221,6 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices.insert(0, inv);
     _persist();
     notifyListeners();
-    // First save of this invoice — see saveCurrentInvoice()'s comment.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(inv));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(inv));
     _logCreated(historyProvider, inv);
@@ -350,9 +238,6 @@ class InvoiceProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
     final updated = _savedInvoices[index];
-    // Routine content edit, not a fresh "just became overdue" moment —
-    // allowImmediateFire: false so editing e.g. a line item on an
-    // already-overdue invoice doesn't re-push a duplicate notification.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
@@ -365,18 +250,11 @@ class InvoiceProvider extends ChangeNotifier {
     _savedInvoices[index] = _savedInvoices[index].copyWith(title: trimmed);
     _persist();
     notifyListeners();
-    // Title changed -> re-sync so a pending notification's body text
-    // (which embeds the title) doesn't go stale. Not a fresh transition —
-    // allowImmediateFire: false, same reasoning as updateSavedInvoice.
     final updated = _savedInvoices[index];
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(updated, allowImmediateFire: false));
     unawaited(DocumentAlertScheduler.instance.syncInvoiceDraftNudge(updated));
   }
 
-  // HISTORY LOGGING PASS: [historyProvider] is optional — logs a
-  // `deleted` event using the invoice's data captured BEFORE removal
-  // (removeWhere leaves nothing to read afterwards). Omitted (null) is a
-  // no-op, so every existing call site behaves exactly as before.
   void deleteInvoice(String id, {HistoryProvider? historyProvider}) {
     final deleted = getInvoiceById(id);
     _savedInvoices.removeWhere((i) => i.id == id);
@@ -401,23 +279,6 @@ class InvoiceProvider extends ChangeNotifier {
       return null;
     }
   }
-
-  // ── Status ─────────────────────────────────────────────────────────────────
-  // Powers the tappable status chip in saved_document_detail_screen.dart.
-  // Updates the SAVED entry's status directly (not the active draft), same
-  // pattern as ReceiptProvider.updateSavedReceiptStatus.
-  //
-  // Also stamps/clears InvoiceData.paidDate —
-  //   - Freshly moved TO paid (wasn't paid before)   -> stamp paidDate = now
-  //   - Moved AWAY from paid                          -> clear paidDate
-  //   - Re-set to paid while already paid (no-op flip)-> leave existing
-  //     paidDate untouched, so re-tapping the same status doesn't reset the
-  //     original paid timestamp.
-  //
-  // Picking any real status here also clears statusHidden back to false —
-  // choosing Unpaid/Partial/Paid/Overdue implies "show the chip again",
-  // the opposite of the "None" option (see updateSavedInvoiceStatusHidden
-  // below).
 
   void updateSavedInvoiceStatus(String id, PaymentStatus status) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
@@ -450,21 +311,9 @@ class InvoiceProvider extends ChangeNotifier {
     );
     _persist();
     notifyListeners();
-    // A status flip is exactly the case that most needs a resync — e.g.
-    // marking paid must cancel a pending overdue push immediately, not
-    // wait for the next app launch's resync pass. It's also a genuine
-    // new transition (e.g. flipping to Overdue), so this keeps the
-    // default allowImmediateFire: true.
     unawaited(DocumentAlertScheduler.instance.syncOverdueInvoiceAlert(_savedInvoices[index]));
   }
 
-  // Toggles whether the status chip renders on this invoice's cards,
-  // WITHOUT touching paymentStatus itself — powers the "None" option in
-  // the status menu (document_status_menu.dart). paymentStatus keeps
-  // whatever real value it already held, so aging/overdue/reports logic
-  // (which all read paymentStatus, not this flag) is completely
-  // unaffected; only the card-face chip in doc_cards.dart is gated on
-  // statusHidden.
   void updateSavedInvoiceStatusHidden(String id, bool hidden) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
     if (index == -1) return;
@@ -475,11 +324,6 @@ class InvoiceProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
   }
-
-  // ── Folder ─────────────────────────────────────────────────────────────────
-  // Assigns or clears the organizational folder for a saved invoice.
-  // Pass null to remove it from whatever folder it's currently in. Updates
-  // the SAVED entry directly, same pattern as updateSavedInvoiceStatus.
 
   void updateInvoiceFolder(String id, String? folderName) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
@@ -493,11 +337,6 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Reports exclusion ─────────────────────────────────────────────────────
-  // Powers an "Exclude from Reports" action in saved_document_detail_screen.
-  // dart. Updates the SAVED entry directly, same pattern as
-  // updateInvoiceFolder — doesn't touch the active draft.
-
   void updateInvoiceExcludeFromReports(String id, bool exclude) {
     final index = _savedInvoices.indexWhere((i) => i.id == id);
     if (index == -1) return;
@@ -508,8 +347,6 @@ class InvoiceProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
   }
-
-  // ── Data mutations ─────────────────────────────────────────────────────────
 
   void updateInvoiceData(InvoiceData data) {
     _invoiceData = data;
@@ -533,12 +370,6 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Business logo path + reposition/zoom/shape, all in one call so a
-  // single SharedLogoPicker.onChanged callback (which always hands back
-  // all four values together) maps directly onto one provider call. Pass
-  // path: null to clear the logo entirely — that's the only way to
-  // actually blank businessLogoPath, since InvoiceData.copyWith's plain
-  // `?? this.x` pattern can't express "set to null" on its own.
   void updateBusinessLogo({
     required String? path,
     required Offset offset,
@@ -556,11 +387,115 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Logo display size (box width/height in px, default 44.0) — separate
-  // from updateBusinessLogo() so the "Logo Size" slider on the Customise
-  // step can update just this one field.
   void updateBusinessLogoSize(double size) {
     _invoiceData = _invoiceData.copyWith(businessLogoDisplaySize: size);
+    notifyListeners();
+  }
+
+  // FREEFORM HEADER LOGO PASS: position/scale for the logo when it's
+  // rendered freely across the header (Business Name + Tagline both
+  // off) instead of the normal fixed logo box. Same thin
+  // pass-through-to-copyWith shape as every other update* method here
+  // — any param left null keeps its current stored value.
+  void updateHeaderLogoFreeform({
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      headerLogoFreeformOffsetDx: offsetDx,
+      headerLogoFreeformOffsetDy: offsetDy,
+      headerLogoFreeformScale: scale,
+    );
+    notifyListeners();
+  }
+
+  // BACKGROUND-IMAGE PASS: thin pass-throughs to InvoiceData.copyWith,
+  // same shape as updateBusinessLogo above. `path: null` clears the
+  // image (via clearHeaderBackgroundImage/clearFooterBackgroundImage)
+  // rather than leaving a stale path behind while enabled is false.
+  void updateHeaderBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      headerBackgroundImagePath: path,
+      clearHeaderBackgroundImage: path == null,
+      headerBackgroundEnabled: enabled,
+      headerBackgroundOpacity: opacity,
+      headerBackgroundOffsetDx: offsetDx,
+      headerBackgroundOffsetDy: offsetDy,
+      headerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateFooterBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      footerBackgroundImagePath: path,
+      clearFooterBackgroundImage: path == null,
+      footerBackgroundEnabled: enabled,
+      footerBackgroundOpacity: opacity,
+      footerBackgroundOffsetDx: offsetDx,
+      footerBackgroundOffsetDy: offsetDy,
+      footerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  // MID-PAGE BACKGROUND PASS: mirrors the two methods above, for the
+  // page's body content area (line items + totals).
+  void updateBodyBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      bodyBackgroundImagePath: path,
+      clearBodyBackgroundImage: path == null,
+      bodyBackgroundEnabled: enabled,
+      bodyBackgroundOpacity: opacity,
+      bodyBackgroundOffsetDx: offsetDx,
+      bodyBackgroundOffsetDy: offsetDy,
+      bodyBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateBusinessTaglineEnabled(bool enabled) {
+    _invoiceData = _invoiceData.copyWith(businessTaglineEnabled: enabled);
+    notifyListeners();
+  }
+
+  void updateFooterTaglinesEnabled(bool enabled) {
+    _invoiceData = _invoiceData.copyWith(footerTaglinesEnabled: enabled);
+    notifyListeners();
+  }
+
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text.
+  void updateFooterTaglinesFontSize(double size) {
+    _invoiceData = _invoiceData.copyWith(footerTaglinesFontSize: size);
+    notifyListeners();
+  }
+
+  void updateFooterTaglines(List<FooterTaglineItem> items) {
+    _invoiceData = _invoiceData.copyWith(
+      footerTaglines: items.map((i) => i.copyWith()).toList(),
+    );
     notifyListeners();
   }
 
@@ -579,9 +514,6 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // TAX/DISCOUNT NAMING PASS: taxName/discountName added alongside
-  // taxRate/discountRate — same thin pass-through to copyWith. Backs the
-  // "Tax Name"/"Discount Name" fields on the Create Invoice sheet.
   void updateInvoiceDetails({
     String? invoiceNumber,
     String? issueDate,
@@ -642,16 +574,6 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // FIELD VISIBILITY RELOCATION PASS: writes the Invoice Fields/Customer
-  // Fields toggle selections onto InvoiceData.enabledFields. Mirrors
-  // updateColorScheme/updateFontFamily's shape — a thin pass-through to
-  // copyWith. Called from step_customise.dart's _FieldVisibilitySection,
-  // which replaces the toggle sheet that used to live on
-  // step_templates.dart (that sheet only ever wrote to
-  // InvoiceTemplate.enabledFields, a value StepCreateInvoice copied onto
-  // the actual invoice once and never again — see that file's own pass
-  // note). This is the single place InvoiceData.enabledFields is now
-  // written from user interaction.
   void updateEnabledFields(Map<String, bool> enabledFields) {
     _invoiceData = _invoiceData.copyWith(
       enabledFields: Map<String, bool>.from(enabledFields),
@@ -659,55 +581,29 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Which visual design (Executive/Nordic/Vibrant/etc — see
-  // preview_registry.dart) this invoice renders with. Set once from
-  // InvoiceTemplateChooserScreen's selection (via StepCreateInvoice), and
-  // changeable again later if a template picker is ever added to the
-  // Customise step.
   void updateLayoutTemplateId(int id) {
     _invoiceData = _invoiceData.copyWith(layoutTemplateId: id);
     notifyListeners();
   }
 
-  // SIGNATURE SIZER PASS: writes the typed-name signature's font size,
-  // driven by the "Size" slider that appears beneath the Signature
-  // toggle row on the Customise step (step_customise.dart), only while
-  // that toggle is on. Mirrors updateFontFamily/updateBusinessLogoSize's
-  // shape — a thin pass-through to InvoiceData.copyWith.
   void updateSignatureFontSize(double size) {
     _invoiceData = _invoiceData.copyWith(signatureFontSize: size);
     notifyListeners();
   }
 
-  // SIGNATURE FONT FAMILY PASS: writes the typed-name signature's script
-  // font family (one of kSignatureFonts — Dancing Script/Great Vibes/
-  // Sacramento/Pacifico/Alex Brush/Caveat — see
-  // executive_invoice_payment_terms_signature.dart), driven by the new
-  // font-chip row beneath the Signature toggle's Size slider on the
-  // Customise step. Mirrors updateSignatureFontSize's exact shape.
   void updateSignatureFontFamily(String family) {
     _invoiceData = _invoiceData.copyWith(signatureFontFamily: family);
     notifyListeners();
   }
 
-  // TEXT SIZE WIRING FIX: fontSize now reads/writes straight through to
-  // InvoiceData.fontSize (via copyWith) instead of a local, unsaved
-  // `_fontSize` field. The getter/method signatures are unchanged so no
-  // call site (step_customise.dart's _SizeSection) needs updating —
-  // moving the slider now actually persists with the invoice and reaches
-  // every renderer that reads data.fontSize.
   double get fontSize => _invoiceData.fontSize;
   void updateFontSize(double size) {
     _invoiceData = _invoiceData.copyWith(fontSize: size);
     notifyListeners();
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
   int _calcCompletion() => _calcCompletionFor(_invoiceData);
 
-  // Pulled out of _calcCompletion() so addConvertedInvoice() can score
-  // a converted InvoiceData that isn't the active draft.
   int _calcCompletionFor(InvoiceData data) {
     int score = 0;
     if (data.businessName.isNotEmpty)  score++;

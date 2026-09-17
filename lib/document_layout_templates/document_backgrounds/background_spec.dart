@@ -15,7 +15,18 @@
 // background_render.dart (the other new file in this folder) is the
 // ONE place that actually draws it — header/footer/body all call the
 // same function now instead of reimplementing it.
+//
+// EXISTS-CHECK RESTORATION FIX (this update): hasVisibleImage below now
+// also requires File(imagePath).existsSync() — see that getter's own
+// doc comment for why this was missing and what it fixes. Confirmed via
+// a full read-through of every background render/preview call site
+// (executive_template.dart's header path, a4_paginator.dart's body
+// path, and customise_background_section.dart's thumbnail preview,
+// which has its own separate inline existence handling via Image.file
+// directly rather than going through this spec) that this is the only
+// place the check needed restoring.
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 // ZOOM-OUT RANGE PASS (this update): the floor a person can zoom a
@@ -98,14 +109,35 @@ class BackgroundSpec {
   });
 
   /// True whenever there's actually an image to draw — enabled AND a
-  /// non-empty path. OPACITY-INVERSION FIX: this no longer requires
-  /// opacity > 0 — opacity 0 is now a normal, VISIBLE state (raw,
-  /// undimmed image, no wash), not a hidden one. `enabled` is the only
-  /// on/off switch. Every render site should gate on this (or let
+  /// non-empty path AND the file still exists on disk.
+  ///
+  /// OPACITY-INVERSION FIX: this no longer requires opacity > 0 —
+  /// opacity 0 is now a normal, VISIBLE state (raw, undimmed image, no
+  /// wash), not a hidden one.
+  ///
+  /// EXISTS-CHECK RESTORATION FIX: the original withOptionalBackgroundImage
+  /// this spec replaced (formerly in doc_header.dart, now deleted —
+  /// see that file's own note) always checked
+  /// File(imagePath).existsSync() before treating an image as visible.
+  /// That check was dropped when this class was first written, which
+  /// meant `enabled: true` with a stale or deleted path (e.g. left over
+  /// from before the Header/Footer Background cards were hidden from
+  /// the Customise UI, or a file the user removed outside the app)
+  /// would still be treated as "has a visible image", reach
+  /// background_render.dart's Image.file(), and paint Flutter's
+  /// broken-image error box instead of silently falling back to
+  /// `child` the way every other "no background" state does. Restored
+  /// here so every render site (header/footer/body, all of which read
+  /// this getter rather than re-deriving the condition themselves)
+  /// gets the fix in one place.
+  ///
+  /// Every render site should gate on this (or let
   /// renderDocumentBackground's own internal check do it) rather than
   /// re-deriving the same condition themselves.
   bool get hasVisibleImage =>
-      enabled && (imagePath?.isNotEmpty ?? false);
+      enabled &&
+      (imagePath?.isNotEmpty ?? false) &&
+      File(imagePath!).existsSync();
 
   Alignment get alignment =>
       Alignment(offsetDx.clamp(-1.0, 1.0), offsetDy.clamp(-1.0, 1.0));

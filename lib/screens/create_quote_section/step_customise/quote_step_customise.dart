@@ -1,80 +1,19 @@
 // lib/screens/create_quote_section/step_customise/quote_step_customise.dart
 //
-// MERGE PASS (this update): imports redirected off the three deleted
-// executive_quote_logic_data.dart / executive_quote_stationary_
-// layout.dart / executive_invoice_payment_terms_signature.dart files.
-// ExecutiveQuotePreview, quoteAccent, and kSignatureFonts now all come
-// from executive_template.dart (the merged, adapter-based file that
-// replaces all three — see that file's own MERGE PASS header comment),
-// and kPageW now comes from shared_doc_widgets.dart. No other change in
-// this file — same widget tree, same behavior, same call sites.
+// TEXT SIZE MAX CAP PASS (this update): the "Text Size" slider's max
+// value is now 14pt (was 16pt). Divisions dropped from 6 to 4 to keep
+// the same 1pt-per-step feel across the new 10–14pt range.
 //
-// DEBUG PASS (earlier): added a one-line debugPrint at the top of
-// _QuotePreviewCardState._buildPreviewWidget() to diagnose why terms/
-// signature aren't rendering on the Live Preview for brand-new quotes.
-// Prints QuoteData.signatureMode, termsAndConditions, and both relevant
-// enabledFields flags every time the preview widget builds. Safe to
-// remove once the underlying bug is found — has no effect on behavior,
-// only console output.
+// FOOTER TAGLINES PASS (earlier): mirrors Invoice's identical pass in
+// step_customise.dart exactly — the "Header & Meta" field group gains
+// two new toggle rows, "Business Tagline" and "Footer Taglines",
+// special-cased (via _specialFieldValue/_setSpecialField) to read/write
+// QuoteData.businessTaglineEnabled/footerTaglinesEnabled directly
+// through the new QuoteProvider methods, instead of the enabledFields
+// map every other row here uses.
 //
-// TERMS & SIGNATURE PASS (earlier): "Terms & Signature" is now a
-// real toggle group (termsAndConditions alongside Signature) —
-// QuoteData has a matching termsAndConditions field
-// (quote_data.dart's own PAYMENT INFO + TERMS PASS). Text entry still
-// happens on the template sheet, not here — Customise only toggles
-// visibility, same as every other field. Payment Info was deliberately
-// left off Quote's Customise (and off its template sheet) — a quote
-// isn't collecting payment, that belongs on the Invoice it converts
-// into — even though QuoteData still carries bankName/etc harmlessly
-// unused.
-//
-// FONT FIX PASS (earlier): _kFonts previously listed "Source Sans
-// Pro" (never bundled) and was missing Lora/Nunito/Raleway/Space
-// Grotesk — the same stale-list bug Invoice's step_customise.dart had
-// before its own FONT FAMILY LIST FIX. Selecting "Source Sans Pro" set
-// QuoteData.fontFamily to a string that resolves to nothing, silently
-// falling back to the platform default everywhere fontFamily is read.
-// _kFonts now exactly mirrors Invoice's/pubspec's bundled family names.
-// The Font Family chips also now preview each chip's own label IN that
-// font (fontFamily: previewFamily), matching Invoice's identical chip
-// fix and the Signature Font chips just below on this same screen.
-// 'Default' deliberately maps to fontFamily: null (platform default)
-// rather than the literal string 'Default'.
-//
-// SIGNATURE PASS (earlier): added a new _SignatureSection between
-// _FieldsSection and _LogoSection — Quote's Signature toggle now lives
-// here (previously QuoteData had no signature fields at all, and the
-// only signature UI in the app was quote_step_template_signature.dart's
-// _QuoteSignatureSection, which wrote to QuoteTemplate, not the live
-// QuoteData). Three mode chips (Upload/Type/Blank) mirror
-// _QuoteSignatureSection's own chip row exactly; picking 'typed' reveals
-// a name field, an inline Size slider, and six google_fonts script-font
-// chips (Dancing Script/Great Vibes/Sacramento/Pacifico/Alex Brush/
-// Caveat — kSignatureFonts, now imported from executive_template.dart so
-// all three doc types share one canonical list); picking 'image' reveals
-// an upload tile. Tapping the already-selected mode chip deselects back
-// to '' (no signature at all), matching Invoice's deselect convention.
-// Wired to QuoteProvider's new updateSignatureMode/Name/ImagePath/
-// FontSize/FontFamily methods (quote_provider.dart's SIGNATURE PASS),
-// which write straight onto the live QuoteData via copyWith — same
-// layer every other control on this screen already writes to. The
-// section itself is wrapped so it only shows once 'signature' is on in
-// enabledFields; a small toggle at the top of the section controls that
-// field the same way every other _FieldsSection row does, kept separate
-// here (rather than folded into _FieldsSection's Quote Details group)
-// since it needs its own multi-row conditional UI that a plain
-// SwitchListTile can't hold.
-//
-// PREVIEW BUTTON PARITY PASS (earlier): added an inline "Preview &
-// Download" call-to-action button, matching Receipt's/Invoice's
-// identical additions.
-//
-// LAYOUT PARITY PASS (earlier): full rebuild to match Invoice's
-// step_customise.dart structure and file layout.
-//
-// FIELD GROUPS (earlier) — see prior header comment for the full
-// rationale; unaffected by this update except that 'signature' now has
-// its own dedicated section rather than living in _FieldsSection.
+// (All other header comments from the previous version describe work
+// already done and unaffected by this pass — see project history.)
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -89,26 +28,13 @@ import '../../../widgets/shared_logo_picker.dart';
 import '../quote_edit_widgets.dart' show QuoteField, QuoteTotalsCard, QuoteColorPicker;
 import '../../saved_invoice_details_section/saved_document_detail_screen.dart';
 import 'quote_full_preview_screen.dart';
-// MERGE PASS: all three symbols now come from the merged
-// executive_template.dart instead of the deleted
-// executive_quote_logic_data.dart / executive_quote_stationary_
-// layout.dart / executive_invoice_payment_terms_signature.dart.
 import '../../../document_layout_templates/01_executive/executive_template.dart'
     show ExecutiveQuotePreview, quoteAccent, kSignatureFonts;
-// MERGE PASS: kPageW now lives on the shared widgets file.
 import '../../../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW;
 import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 import '../quote_template_chooser_01/preview_registry.dart' show buildQuotePreview;
 
-// FONT FIX PASS: this list now exactly mirrors the family names
-// actually registered in pubspec.yaml's flutter: fonts: section (the
-// same set Invoice's step_customise.dart offers), plus the 'Default'
-// sentinel, which deliberately doesn't match any registered family — it
-// falls through to the platform default on purpose. Previously included
-// "Source Sans Pro" (never bundled at all) and never offered
-// Lora/Nunito/Raleway/Space Grotesk even though those were already
-// bundled and unused.
 const List<String> _kFonts = [
   'Default',
   'Roboto',
@@ -802,6 +728,10 @@ class _FontSection extends StatelessWidget {
 
 // =============================================================================
 // Size section
+//
+// TEXT SIZE MAX CAP PASS: max lowered from 16 to 14; divisions lowered
+// from 6 to 4 so the slider still steps in whole points across the new
+// 10–14pt range.
 // =============================================================================
 
 class _SizeSection extends StatelessWidget {
@@ -837,8 +767,8 @@ class _SizeSection extends StatelessWidget {
                   child: Slider(
                     value: size,
                     min: 10,
-                    max: 16,
-                    divisions: 6,
+                    max: 14,
+                    divisions: 4,
                     onChanged: (v) => provider.updateFontSize(v),
                   ),
                 ),
@@ -864,12 +794,6 @@ class _SizeSection extends StatelessWidget {
 // Summary section
 // =============================================================================
 
-// TAX/DISCOUNT NAME REMOVAL PASS: the "Tax Name (Optional)"/
-// "Discount Name (Optional)" fields have been removed from this
-// section entirely — QuoteData.taxName/discountName still exist on the
-// model (harmless, unused from here) but are no longer editable from
-// Customise. Simplified back to a StatelessWidget since no
-// TextEditingControllers are needed anymore.
 class _SummarySection extends StatelessWidget {
   const _SummarySection();
 
@@ -908,6 +832,10 @@ class _SummarySection extends StatelessWidget {
 
 // =============================================================================
 // Fields section
+//
+// FOOTER TAGLINES PASS: 'businessTaglineEnabled'/'footerTaglinesEnabled'
+// are special-cased keys — see _specialFieldValue/_setSpecialField
+// below, mirroring Invoice's identical pass in step_customise.dart.
 // =============================================================================
 
 class _FieldToggleSpec {
@@ -930,6 +858,9 @@ const _kFieldGroups = <_FieldGroupSpec>[
     _FieldToggleSpec('date', 'Issue Date', Icons.calendar_today_rounded),
     _FieldToggleSpec('dueDate', 'Valid Until', Icons.event_rounded),
     _FieldToggleSpec('businessLogo', 'Business Logo', Icons.image_rounded),
+    // FOOTER TAGLINES PASS: special-cased keys — see _specialFieldValue.
+    _FieldToggleSpec('businessTaglineEnabled', 'Business Tagline', Icons.short_text_rounded),
+    _FieldToggleSpec('footerTaglinesEnabled', 'Footer Taglines', Icons.share_rounded),
   ]),
   _FieldGroupSpec('Client Details', Icons.person_rounded, [
     _FieldToggleSpec('customerName', 'Client Name', Icons.person_outline_rounded),
@@ -952,6 +883,26 @@ const _kFieldGroups = <_FieldGroupSpec>[
 ];
 
 const _kFieldGroupExpandedPrefPrefix = 'quote_customise_field_group_expanded_';
+
+// FOOTER TAGLINES PASS: mirrors Invoice's identical helpers exactly.
+bool? _specialFieldValue(QuoteData data, String key) => switch (key) {
+      'businessTaglineEnabled' => data.businessTaglineEnabled,
+      'footerTaglinesEnabled' => data.footerTaglinesEnabled,
+      _ => null,
+    };
+
+bool _setSpecialField(QuoteProvider provider, String key, bool v) {
+  switch (key) {
+    case 'businessTaglineEnabled':
+      provider.updateBusinessTaglineEnabled(v);
+      return true;
+    case 'footerTaglinesEnabled':
+      provider.updateFooterTaglinesEnabled(v);
+      return true;
+    default:
+      return false;
+  }
+}
 
 class _FieldsSection extends StatefulWidget {
   const _FieldsSection();
@@ -984,13 +935,22 @@ class _FieldsSectionState extends State<_FieldsSection> {
     await prefs.setBool('$_kFieldGroupExpandedPrefPrefix$groupLabel', value);
   }
 
+  bool _fieldValue(QuoteData data, String key) {
+    final special = _specialFieldValue(data, key);
+    if (special != null) return special;
+    if (key == 'tax') return data.taxEnabled;
+    if (key == 'discount') return data.discountEnabled;
+    return data.enabledFields[key] ?? true;
+  }
+
   bool _groupIsOn(QuoteData data, _FieldGroupSpec group) {
-    return group.fields.every((f) => data.enabledFields[f.key] ?? true);
+    return group.fields.every((f) => _fieldValue(data, f.key));
   }
 
   void _toggleGroup(QuoteProvider provider, _FieldGroupSpec group, bool v) {
     final updated = Map<String, bool>.from(provider.quoteData.enabledFields);
     for (final f in group.fields) {
+      if (_setSpecialField(provider, f.key, v)) continue;
       updated[f.key] = v;
     }
     provider.updateEnabledFields(updated);
@@ -1015,11 +975,8 @@ class _FieldsSectionState extends State<_FieldsSection> {
     final accent = _colorForScheme(provider.quoteData.colorScheme);
     final data = provider.quoteData;
 
-    final isRateRow = f.key == 'tax' || f.key == 'discount';
     final isSignatureRow = f.key == 'signature';
-    final value = isRateRow
-        ? (f.key == 'tax' ? data.taxEnabled : data.discountEnabled)
-        : (data.enabledFields[f.key] ?? true);
+    final value = _fieldValue(data, f.key);
     final sigSize = data.signatureFontSize;
     final sigFamily = data.signatureFontFamily;
 
@@ -1054,10 +1011,11 @@ class _FieldsSectionState extends State<_FieldsSection> {
             value: value,
             activeThumbColor: accent,
             onChanged: (v) {
+              if (_setSpecialField(provider, f.key, v)) return;
               final updated = Map<String, bool>.from(data.enabledFields);
               updated[f.key] = v;
               provider.updateEnabledFields(updated);
-              if (isRateRow) {
+              if (f.key == 'tax' || f.key == 'discount') {
                 provider.updateQuoteData(provider.quoteData.copyWith(
                   taxEnabled: f.key == 'tax' ? v : data.taxEnabled,
                   discountEnabled: f.key == 'discount' ? v : data.discountEnabled,
@@ -1150,11 +1108,7 @@ class _FieldsSectionState extends State<_FieldsSection> {
     final data = provider.quoteData;
     final groupOn = _groupIsOn(data, group);
     final isExpanded = _expanded[group.label] ?? false;
-    final onCount = group.fields.where((f) {
-      if (f.key == 'tax') return data.taxEnabled;
-      if (f.key == 'discount') return data.discountEnabled;
-      return data.enabledFields[f.key] ?? true;
-    }).length;
+    final onCount = group.fields.where((f) => _fieldValue(data, f.key)).length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

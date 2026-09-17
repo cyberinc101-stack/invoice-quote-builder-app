@@ -1,6 +1,35 @@
 // lib/screens/invoice_create_section/step_create_invoice/create_invoice_bottom_sheet.dart
 //
-// SAVED-ITEMS CAP ENFORCEMENT PASS (this update): _saveDraftItem() now
+// SAVE DATA-LOSS FIX (this update): _save() used to build its InvoiceData
+// with a bare `InvoiceData(...)` constructor call listing only the fields
+// this sheet itself collects (client details, line items, currency, tax/
+// discount, notes, due date, amount due). Every OTHER field on the model —
+// business branding (name/tagline/logo/its offset+scale+shape), footer
+// taglines and their enabled flag and font size, header/footer/body
+// background images and all their opacity/offset/scale settings, freeform
+// header-logo position, payment info, terms, signature, font/colour
+// scheme, enabledFields, payment status — has no default in a bare
+// constructor call other than the CLASS's own defaults. That meant every
+// time this sheet was used to edit an EXISTING draft (tap the pencil icon
+// on a saved invoice card), saving silently wiped all of that back to
+// defaults, even though none of it was ever shown or touched in this
+// sheet. This is what was actually behind the reported "Footer Taglines
+// keeps turning off" bug — editing a draft's client/item details reset it
+// to false every time, invisibly.
+//
+// Fixed by building off `(existingData ?? InvoiceData()).copyWith(...)`
+// instead of a bare constructor: every field this sheet doesn't explicitly
+// set now carries forward from the draft being edited (or falls back to
+// the class defaults only for a genuinely brand-new draft, where there's
+// nothing yet to lose). Only the fields this sheet actually owns are
+// passed to copyWith. amountDueOverride needed its own explicit
+// clearAmountDueOverride flag — copyWith treats a bare `null` as "leave
+// unchanged", not "clear", so the not-manually-set case needs the real
+// clear flag to correctly null it out (the old bare-constructor call
+// didn't need this, since a fresh constructor call has no prior value to
+// leave behind).
+//
+// SAVED-ITEMS CAP ENFORCEMENT PASS (earlier): _saveDraftItem() now
 // checks the saved single-item library against
 // kMaxSavedInvoiceLineItems (create_invoice_saved_line_items_widgets.dart,
 // lowered to 100 in that file's own pass) before adding a new entry —
@@ -764,17 +793,24 @@ class _CreateInvoiceBottomSheetState extends State<CreateInvoiceBottomSheet> {
   }
 
   // ---------------------------------------------------------------------------
-  // Save — validates, builds an InvoiceData off the already-committed
-  // _items list (nothing to flush any more — every entry is final the
-  // moment it's added), wraps it in a SavedInvoiceDraft (preserving id/
-  // createdAt when editing), hands it to the parent via onSaved(), and
-  // closes the sheet.
+  // Save — validates, then builds this draft's InvoiceData off
+  // `(existingData ?? InvoiceData()).copyWith(...)` rather than a bare
+  // `InvoiceData(...)` constructor call. See SAVE DATA-LOSS FIX at the
+  // top of this file for why: only the fields this sheet actually
+  // collects are passed to copyWith below — every other field (business
+  // branding, footer taglines, header/footer/body backgrounds, freeform
+  // logo position, payment info, signature, font/colour scheme,
+  // enabledFields, payment status, etc.) now correctly carries forward
+  // from the draft being edited instead of silently resetting to the
+  // model's bare defaults on every save.
   //
   // AMOUNT DUE PASS: amountDueOverride is only set when the person
-  // actually typed their own Amount Due value (_amountDueManuallySet);
-  // otherwise it stays null so InvoiceData.amountDue keeps auto-tracking
-  // grandTotal on the document, not a stale snapshot of _total taken at
-  // save time.
+  // actually typed their own Amount Due value (_amountDueManuallySet).
+  // copyWith treats a bare `null` argument as "leave unchanged" (not
+  // "clear"), so the not-manually-set case now needs the explicit
+  // clearAmountDueOverride flag to correctly null it out — a bare
+  // constructor call didn't need this, since it has no prior value to
+  // leave behind in the first place.
   //
   // STRUCTURED ADDRESS PASS: clientAddressInfo comes straight from the
   // selected Customer (widget.selectedCustomer!.addressInfo) when one
@@ -798,7 +834,14 @@ class _CreateInvoiceBottomSheetState extends State<CreateInvoiceBottomSheet> {
           postalCode: _custZipCtrl.text.trim(),
         );
 
-    final data = InvoiceData(
+    final existingData = widget.existing?.data;
+
+    // SAVE DATA-LOSS FIX: copyWith on the existing draft's data (or a
+    // fresh InvoiceData() for a brand-new draft, where there's nothing
+    // yet to preserve) instead of a bare constructor call — every field
+    // below is one this sheet actually owns and is meant to overwrite;
+    // everything else on the model carries forward untouched.
+    final data = (existingData ?? InvoiceData()).copyWith(
       clientName: _custNameCtrl.text.trim(),
       clientEmail: _custEmailCtrl.text.trim(),
       clientPhone: _custPhoneCtrl.text.trim(),
@@ -823,6 +866,7 @@ class _CreateInvoiceBottomSheetState extends State<CreateInvoiceBottomSheet> {
       amountDueOverride: _amountDueManuallySet
           ? (double.tryParse(_amountDueCtrl.text) ?? _total)
           : null,
+      clearAmountDueOverride: !_amountDueManuallySet,
     );
 
     final now = DateTime.now();

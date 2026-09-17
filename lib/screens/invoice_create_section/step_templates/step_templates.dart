@@ -1,166 +1,59 @@
 // lib/screens/invoice_create_section/step_templates/step_templates.dart
 //
-// SELECTION STATUS PASS (this update): Quote's/Receipt's editor screens
-// (quote_editor_screen.dart / create_receipt_screen.dart) each wrap
-// their template-step widget with a small colored info container below
-// it — "Select or add a template above to continue." when nothing's
-// selected, or "Using 'Name' for this quote/receipt." once something
-// is — via their own _selectionStatus() helper. Invoice's EditorScreen
-// has no equivalent wrapper at all; it renders StepTemplates directly
-// with nothing appended after it, so this box never showed on the
-// invoice flow. Since StepTemplates is a fully self-contained widget
-// (unlike Quote's/Receipt's template-step widgets, which get wrapped by
-// their editor screen from the outside), the fix lives here instead —
-// same approach as step_customers.dart's own SELECTION STATUS PASS: a
-// new _SelectionStatus widget, added as the final sliver in this same
-// CustomScrollView so it always renders regardless of loading/empty
-// state, matching the visual style and copy pattern of Quote's version
-// exactly (just with this screen's own blue accent and "invoice"
-// wording). Unselected copy is identical to Quote's verbatim — it
-// doesn't mention "quote"/"invoice" at all. Selected copy reads
-// `_library[_selectedIndex!].name` directly with no empty-name
-// fallback (unlike Quote's `name.isNotEmpty ? name : businessName`),
-// since InvoiceTemplate.name is a hard-required field here (see
-// _SheetField's validator below) and _TemplateCard already renders it
-// with no fallback anywhere else in this file.
+// BUSINESS INFO TRIM PASS (this update): the "Business Information"
+// section's child Column now collects ONLY Business Name, Tagline, Tax
+// ID / EIN, and GST Number — Business Email, Business Phone, the whole
+// "Business Address" sub-section, and Website have been removed from
+// this UI. The underlying controllers (_bizEmailCtrl, _bizPhoneCtrl,
+// _bizAddressControllers, _bizWebsiteCtrl) are UNCHANGED and still
+// exist, still get initialized/listened-to/disposed, and are still
+// written into the BusinessInfo(...) constructor call in _save() below
+// — they'll simply always save as empty, since there's no UI left to
+// type into them. This keeps the change surgical (no risk of missing a
+// reference elsewhere that reads BusinessInfo.email/phone/address/
+// website) while accomplishing the actual ask: Sender / Contact Person
+// (already further down this sheet, unchanged) is now the SINGLE place
+// that collects address/email/phone — see doc_template_adapter.dart's
+// invoiceToAdapter(), which now sources the FROM block's email/phone/
+// address from BusinessInfo.senderEmail/senderPhone/senderAddressInfo
+// (via InvoiceData.senderEmail/senderPhone/senderAddressInfo — see that
+// model and step_create_invoice.dart's sync step) instead of the
+// business* fields this pass just stopped collecting.
 //
-// SCAFFOLD PARITY FIX (earlier): same root cause and same fix as
-// step_create_invoice.dart's SCAFFOLD PARITY FIX pass — this widget's
-// StepNavBar was just the last child of a plain Column, sitting inside
-// EditorScreen's body (editor_screen.dart), and EditorScreen's own
-// Scaffold has no `bottomNavigationBar` set at all. Any SnackBar shown
-// via `ScaffoldMessenger.of(context)` from in here resolved to
-// EditorScreen's Scaffold, which has nothing to dock above — so it just
-// sat at the literal bottom of the screen, on top of wherever this
-// widget's own StepNavBar happened to be rendered.
+// SECTIONS REMOVAL PASS (earlier): removed the "Business Logo",
+// "Header Style", and "Footer Background Image" _CollapsibleGroup
+// sections from the template sheet's build() method. The underlying
+// state fields (_logoPath/_logoOffset/_logoScale/_logoShape/
+// _logoShowInitial/_logoInitialLetter, _headerMode/_headerImagePath,
+// _footerBackgroundEnabled/_footerBackgroundImagePath) and the
+// BusinessInfo(...) constructor call in _save() are UNCHANGED, so any
+// template that already has a saved logo, header image, or footer
+// background keeps that data — there just isn't a UI section on this
+// sheet to edit it anymore. _TemplateCard's thumbnail (which reads
+// logoPath/logoShape) and _duplicateTemplate() are also unaffected.
 //
-// Fix: this widget now wraps itself in its own `ScaffoldMessenger` +
-// `Scaffold`, with its StepNavBar registered as that Scaffold's real
-// `bottomNavigationBar` instead of being a plain trailing Column child.
-// SnackBars in this file (the "Maximum templates reached"/"duplicated"
-// toasts in _duplicateTemplate(), and the "Maximum of X templates
-// reached" toast on the Add button) are now shown via a local
-// `GlobalKey<ScaffoldMessengerState>` (`_messengerKey`) instead of
-// `ScaffoldMessenger.of(context)`, so they resolve to THIS widget's own
-// ScaffoldMessenger — which now has a real bottomNavigationBar to dock
-// above. The stray `behavior: SnackBarBehavior.floating` on all three is
-// also dropped for consistency, matching the fixed/docked look used
-// elsewhere. The "Business Name is required" SnackBar inside
-// _TemplateSheet (the modal bottom sheet, a separate State/context) is
-// deliberately left untouched — it's shown from within a
-// showModalBottomSheet route, which has no bottom nav bar of its own to
-// dock above, so `floating` is already the right look there.
+// HEADER STYLE / FOOTER BACKGROUND IMAGE PASS (earlier): added a new
+// "Header Style" section (mode selector: Built-in / Full Image / Logo +
+// Text, wired to BusinessInfo.headerMode/headerImagePath) right after
+// Business Logo, and a new "Footer Background Image" section (toggle +
+// image upload, wired to BusinessInfo.footerBackgroundEnabled/
+// footerBackgroundImagePath) right after Footer Taglines. Both live in
+// the new part file step_templates_header.dart. UI/model plumbing only —
+// not yet wired into any renderer or the Customise-step switches, and
+// scoped to this (Executive) template sheet only, per plan. Tagline
+// itself is UNCHANGED — logoText header mode reuses the existing
+// businessInfo.tagline field rather than adding a separate short field.
 //
-// SAVED-ITEMS FILTERS PASS (earlier): adds the same search field +
-// Recent/A-Z/Z-A sort selector already used on Quote's
-// quote_step_template.dart and Receipt's receipt_step_template.dart
-// (both of which mirror the Customer step) — new _TemplateSearchField /
-// _TemplateSortSelector widgets near the bottom of this file, matching
-// relevance against InvoiceTemplate's name/businessInfo.name. The
-// "Saved Templates" header/count/Hide-Show row is unchanged; the search
-// field + sort selector sit directly beneath it, above the card list,
-// as their own slivers. The template-card SliverList now iterates
-// `_visibleIndices` instead of the previous hardcoded
-// `_library.length - 1 - displayIdx` reversal — "Recent" (the default
-// sort mode) reproduces that exact same newest-first order, so nothing
-// changes visually until a person actually searches or picks a
-// different sort. _kMaxTemplates was already 100 (unlike Quote's/
-// Receipt's cap, which this same pass raised from 10 to 100 on those
-// two files) — unchanged here.
+// TAGLINE PASS (earlier): adds a Tagline input field to the
+// "Business Information" section, right after Business Name —
+// BusinessInfo.tagline itself already exists on the model (see
+// client_info.dart), so this pass is UI-only: a new _bizTaglineCtrl
+// wired into initState/dispose/the listener-registration loop, a new
+// _SheetField for it, and `tagline: _bizTaglineCtrl.text.trim()` added
+// to the BusinessInfo(...) constructor call in _save().
 //
-// PAYMENT TERMS REMOVAL PASS (earlier): the "Payment Terms / Due
-// Note" field is gone from the Terms & Conditions section —
-// _paymentTermsCtrl removed entirely (declaration, initState seeding,
-// listener registration, dispose, _duplicateTemplate's copy, and the
-// BusinessInfo(...) constructor call in _save()). _TermsSection
-// (step_templates_terms.dart) now only takes termsAndConditionsCtrl.
-// Matches the corresponding removal in client_info.dart
-// (BusinessInfo.paymentTerms), invoice_data.dart (InvoiceData.paymentTerms),
-// step_customise.dart (the toggle row), step_create_invoice.dart (the
-// sync step), and the two render sites
-// (executive_invoice_payment_terms_signature.dart,
-// invoice_pdf_extra_sections.dart).
-//
-// STRUCTURED ADDRESS WIRING PASS (earlier): Business Address and
-// Sender Address are now each a six-field AddressFieldGroup (Line 1,
-// Line 2, City, State/Province, Country, ZIP/Postal Code — see
-// address_info.dart / shared_address_field_group.dart) instead of a
-// single free-text field. `_bizAddressCtrl`/`_senderAddressCtrl` are
-// gone, replaced by `_bizAddressControllers`/`_senderAddressControllers`
-// (AddressFieldControllers). _save() now writes BOTH the legacy
-// `address`/`senderAddress` strings (kept in sync as
-// addressInfo.singleLine / senderAddressInfo.singleLine, for anything
-// that still reads them as plain text) AND the new structured
-// `addressInfo`/`senderAddressInfo` onto BusinessInfo.
-// _duplicateTemplate() is also updated to copy both new structured
-// fields — it was previously missing them entirely (they didn't exist
-// on BusinessInfo yet when that method was last touched), so duplicating
-// a template would silently drop its structured address data.
-//
-// CURRENCY REMOVAL PASS (earlier): the Currency Code input has been
-// removed from the Template sheet entirely — same reasoning as the
-// customer-sheet currency removal (see client_info.dart /
-// step_customers.dart): it was redundant, and templates already carry a
-// currency value with no per-template way to usefully act on it either.
-// InvoiceTemplate.currency is UNTOUCHED as a model field (still read by
-// _TemplateCard's badge, _duplicateTemplate, PDF/export code, etc.) — a
-// new template still gets 'USD', and an EXISTING template being edited
-// keeps whatever currency it already had (read once into `_currency` in
-// initState and written back unchanged in _save()). There's just no way
-// to change it from this sheet anymore. _currencyCtrl and its field/
-// counter are gone.
-//
-// PERSISTED COLLAPSE STATE PASS (earlier): every optional section
-// (Business Logo, Business Information, Sender/Contact, Thank You
-// Message, Payment Info, Terms & Conditions, Signature) now defaults to
-// COLLAPSED the first time this sheet is ever opened, and after that
-// remembers whatever expand/collapse state the person leaves it in —
-// via SharedPreferences, keyed per section (see _CollapsibleGroup's
-// `sectionKey` param below) — independent of which template is being
-// created/edited. This replaces the previous behaviour where a section
-// auto-expanded if it already had data in it (the _hasLogo/
-// _hasSenderInfo/etc. getters are gone).
-//
-// SAFETY GUARD: Business Information holds the required Business Name
-// field. If that section is collapsed, its TextFormField isn't mounted,
-// so Form validation silently skips it — someone could otherwise save a
-// template with an empty business name without ever seeing an error.
-// _save() now checks _bizNameCtrl directly before validating the rest of
-// the form; if it's empty, the Business Information section is force-
-// expanded (via _businessInfoExpanded, a ValueNotifier passed to that
-// one _CollapsibleGroup as `expandedOverride`) and a snackbar explains
-// why, instead of silently saving or silently failing.
-//
-// AUTO-SCROLL-ON-FOCUS PASS (earlier): _SheetField's focus-triggered
-// Scrollable.ensureVisible() call now retries at several points during
-// the keyboard's rise animation (80/200/350/500ms after focus) instead
-// of a single fixed-delay guess — the single-delay version could
-// undershoot if the keyboard/sheet hadn't finished resizing yet. Matches
-// the identical strengthened pass applied to step_customers.dart.
-//
-// GROUPED SECTIONS PASS (earlier update): the Template sheet's optional
-// sections are each wrapped in _CollapsibleGroup (defined near the
-// bottom of this file). Tapping the header row toggles expand/collapse
-// the same as flipping the switch. This is a pure layout change: every
-// controller, every _SheetField, every save-time BusinessInfo field is
-// unchanged.
-//
-// PAYMENT INFO / TERMS & SIGNATURE INPUT UI PASS (earlier): the actual
-// data-entry UI for the fields step_customise.dart has show/hide
-// toggles for. This is a Dart part-file library — see the `part`
-// directives below:
-//   step_templates.dart              // library root (this file)
-//   step_templates_payment.dart      // part; Payment Info section
-//   step_templates_terms.dart        // part; Terms & Conditions section
-//   step_templates_signature.dart    // part; Signature section (3-mode)
-// Deliberately does NOT add a poNumber field here — that's per-invoice
-// only (see client_info.dart's BusinessInfo header comment) and belongs
-// on the invoice itself, not the template.
-//
-// LOGO FALLBACK MARK WIRING PASS (earlier): the "show letter mark
-// when there's no logo" switch + optional letter override is wired to
-// SharedLogoPicker's showInitialFallback/onShowInitialFallbackChanged/
-// initialLetterOverride/onInitialLetterOverrideChanged params.
+// (All other header comments from the previous version describe work
+// already done and unaffected by this pass — see project history.)
 
 import 'dart:convert';
 import 'dart:io';
@@ -174,14 +67,17 @@ import 'package:path_provider/path_provider.dart';
 import '../../../models/invoice_models.dart';
 import '../../../models/invoice_data.dart' show defaultInvoiceEnabledFields;
 import '../../../models/address_info.dart';
+import '../../../models/footer_tagline.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/shared_logo_picker.dart';
 import '../../../widgets/shared_address_field_group.dart';
+import '../../../widgets/footer_taglines_editor.dart';
 import '../invoice_edit_widgets.dart';
 
 part 'step_templates_payment.dart';
 part 'step_templates_terms.dart';
 part 'step_templates_signature.dart';
+part 'step_templates_header.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -247,19 +143,10 @@ class _StepTemplatesState extends State<StepTemplates> {
   int? _selectedIndex;
   bool _showLibraryPanel = true;
 
-  // SAVED-ITEMS FILTERS PASS: search + sort state, matching Quote's/
-  // Receipt's/Customer's identical pattern.
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   _TemplateSortMode _sortMode = _TemplateSortMode.recent;
 
-  // SCAFFOLD PARITY FIX: this widget's own ScaffoldMessenger, so
-  // SnackBars shown from here (_duplicateTemplate()'s two toasts, the
-  // "Maximum templates reached" tap on the Add button) dock above THIS
-  // widget's own StepNavBar — now registered as this widget's own
-  // nested Scaffold's `bottomNavigationBar` in build() below — instead
-  // of resolving to EditorScreen's ambient Scaffold, which has no
-  // `bottomNavigationBar` to dock above at all.
   final GlobalKey<ScaffoldMessengerState> _messengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -296,8 +183,6 @@ class _StepTemplatesState extends State<StepTemplates> {
     });
   }
 
-  // SAVED-ITEMS FILTERS PASS: relevance tier against template name /
-  // business name. 3 means "doesn't match" and gets filtered out.
   int _relevance(int i, String q) {
     final t = _library[i];
     final name = t.name.toLowerCase();
@@ -308,12 +193,6 @@ class _StepTemplatesState extends State<StepTemplates> {
     return 3;
   }
 
-  // Real _library indices for what's currently displayed — same
-  // relevance-vs-sort behaviour as Quote's/Receipt's/Customer's own
-  // _visibleIndices. "Recent" reproduces the exact same newest-first
-  // order the SliverList previously got via the hardcoded
-  // `_library.length - 1 - displayIdx` reversal, so the default view is
-  // unchanged.
   List<int> get _visibleIndices {
     final q = _searchQuery.trim().toLowerCase();
     var indices = List<int>.generate(_library.length, (i) => i);
@@ -389,10 +268,6 @@ class _StepTemplatesState extends State<StepTemplates> {
     );
   }
 
-  // SCAFFOLD PARITY FIX: both SnackBars below now go through
-  // `_messengerKey` instead of `ScaffoldMessenger.of(context)`, and drop
-  // the stray `behavior: SnackBarBehavior.floating` — see this file's
-  // header comment for why.
   void _duplicateTemplate(int index) {
     if (_library.length >= _kMaxTemplates) {
       _messengerKey.currentState?.showSnackBar(
@@ -408,6 +283,9 @@ class _StepTemplatesState extends State<StepTemplates> {
       name: '${orig.name} (Copy)',
       businessInfo: BusinessInfo(
         name: orig.businessInfo.name,
+        tagline: orig.businessInfo.tagline,
+        headerMode: orig.businessInfo.headerMode,
+        headerImagePath: orig.businessInfo.headerImagePath,
         email: orig.businessInfo.email,
         phone: orig.businessInfo.phone,
         address: orig.businessInfo.address,
@@ -429,6 +307,9 @@ class _StepTemplatesState extends State<StepTemplates> {
         senderAddress: orig.businessInfo.senderAddress,
         senderAddressInfo: orig.businessInfo.senderAddressInfo,
         senderWebsite: orig.businessInfo.senderWebsite,
+        footerTaglines: orig.businessInfo.footerTaglines.map((t) => t.copyWith()).toList(),
+        footerBackgroundEnabled: orig.businessInfo.footerBackgroundEnabled,
+        footerBackgroundImagePath: orig.businessInfo.footerBackgroundImagePath,
         bankName: orig.businessInfo.bankName,
         accountName: orig.businessInfo.accountName,
         accountNumber: orig.businessInfo.accountNumber,
@@ -475,25 +356,15 @@ class _StepTemplatesState extends State<StepTemplates> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final atMax = _library.length >= _kMaxTemplates;
-    // SAVED-ITEMS FILTERS PASS
     final visible = _visibleIndices;
     final isSearching = _searchQuery.trim().isNotEmpty;
 
-    // SCAFFOLD PARITY FIX: this widget now returns its OWN
-    // ScaffoldMessenger + Scaffold, with the StepNavBar registered as
-    // that Scaffold's real `bottomNavigationBar` — instead of being a
-    // plain trailing Column child inside EditorScreen's body. This is
-    // what actually gives SnackBars shown via `_messengerKey` something
-    // correct to dock above. `backgroundColor: Colors.transparent` keeps
-    // this a pure layout/messenger change with no visual difference —
-    // EditorScreen's own background still shows through underneath.
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: CustomScrollView(
           slivers: [
-            // ── Header ──────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
@@ -557,7 +428,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Info banner
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
@@ -593,14 +463,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Add button
-                    // SCAFFOLD PARITY FIX: routed through _messengerKey
-                    // instead of ScaffoldMessenger.of(context); the
-                    // stray `behavior: SnackBarBehavior.floating` here
-                    // is dropped for consistency — the SnackBar default
-                    // (fixed) now docks above this widget's own
-                    // StepNavBar exactly like the other toasts in this
-                    // file.
                     GestureDetector(
                       onTap: atMax
                           ? () => _messengerKey.currentState?.showSnackBar(
@@ -670,7 +532,6 @@ class _StepTemplatesState extends State<StepTemplates> {
               ),
             ),
 
-            // ── Library header ───────────────────────────────────────────
             if (!_loading && _library.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -765,11 +626,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                 ),
               ),
 
-            // ── Search + sort (SAVED-ITEMS FILTERS PASS) ─────────────────
-            // Same placement/behaviour as Quote's/Receipt's/Customer's
-            // template & customer steps: sits directly beneath the
-            // library header, above the card list, and hides along
-            // with the cards when the panel is collapsed.
             if (!_loading && _showLibraryPanel && _library.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -812,7 +668,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                 ),
               ),
 
-            // ── Template cards ───────────────────────────────────────────
             if (!_loading && _showLibraryPanel && _library.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -835,7 +690,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                 ),
               ),
 
-            // ── No search results ────────────────────────────────────────
             if (!_loading &&
                 _showLibraryPanel &&
                 _library.isNotEmpty &&
@@ -854,7 +708,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                 ),
               ),
 
-            // ── Empty state ──────────────────────────────────────────────
             if (!_loading && _library.isEmpty)
               SliverFillRemaining(
                 child: EmptyState(
@@ -871,13 +724,6 @@ class _StepTemplatesState extends State<StepTemplates> {
                         color: colorScheme.primary)),
               ),
 
-            // SELECTION STATUS PASS: the box Quote's/Receipt's editor
-            // screens add via their own _selectionStatus() wrapper —
-            // added here instead since StepTemplates has no outer
-            // wrapper of its own. Always shown once loading is done,
-            // regardless of whether the library is empty or a search is
-            // active, matching Quote's/Receipt's "always visible"
-            // placement at the very end of the step.
             if (!_loading)
               SliverToBoxAdapter(
                 child: Padding(
@@ -893,12 +739,6 @@ class _StepTemplatesState extends State<StepTemplates> {
               ),
           ],
         ),
-
-        // SCAFFOLD PARITY FIX: this is now the nested Scaffold's real
-        // `bottomNavigationBar` — the piece that actually makes SnackBars
-        // shown via `_messengerKey` dock correctly above it, instead of
-        // being just another trailing Column child with nothing for a
-        // fixed-behavior SnackBar to dock above.
         bottomNavigationBar: SafeArea(
           top: false,
           bottom: true,
@@ -912,12 +752,6 @@ class _StepTemplatesState extends State<StepTemplates> {
     );
   }
 }
-
-// =============================================================================
-// SELECTION STATUS PASS: matches Quote's/Receipt's _selectionStatus()
-// exactly in shape and styling — a bordered, tinted container with a
-// check-circle (selected) or info (unselected) icon and a short label.
-// =============================================================================
 
 class _SelectionStatus extends StatelessWidget {
   final bool selected;
@@ -960,12 +794,6 @@ class _SelectionStatus extends StatelessWidget {
     );
   }
 }
-
-// =============================================================================
-// SAVED-ITEMS FILTERS PASS: search field for the saved-template list.
-// Functionally identical to Quote's/Receipt's/Customer's own search
-// field, duplicated here since those widgets are file-private.
-// =============================================================================
 
 class _TemplateSearchField extends StatelessWidget {
   final TextEditingController controller;
@@ -1024,12 +852,6 @@ class _TemplateSearchField extends StatelessWidget {
     );
   }
 }
-
-// =============================================================================
-// SAVED-ITEMS FILTERS PASS: sort selector (segmented chips) for the
-// saved-template list. Same shape as Quote's/Receipt's/Customer's own
-// sort selector.
-// =============================================================================
 
 class _TemplateSortSelector extends StatelessWidget {
   final _TemplateSortMode value;
@@ -1169,7 +991,6 @@ class _TemplateCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Radio indicator
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 22,
@@ -1192,7 +1013,6 @@ class _TemplateCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Logo / fallback mark
               Container(
                 width: 46,
                 height: 46,
@@ -1234,7 +1054,6 @@ class _TemplateCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1317,7 +1136,6 @@ class _TemplateCard extends StatelessWidget {
                 ),
               ),
 
-              // Action buttons (edit, duplicate, delete)
               Column(
                 children: [
                   GestureDetector(
@@ -1377,11 +1195,6 @@ class _TemplateCard extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// _CardFallbackMark — rotated-square initial mark shown when no logo is
-// set and logoShowInitial is on.
-// =============================================================================
-
 class _CardFallbackMark extends StatelessWidget {
   final InvoiceTemplate template;
   final Color accent;
@@ -1429,17 +1242,27 @@ class _TemplateSheet extends StatefulWidget {
 class _TemplateSheetState extends State<_TemplateSheet> {
   final _formKey = GlobalKey<FormState>();
 
-  // Template meta
   late TextEditingController _nameCtrl;
 
   late final String _currency;
 
-  // Business info
   late TextEditingController _bizNameCtrl;
+  late TextEditingController _bizTaglineCtrl;
   late TextEditingController _bizEmailCtrl;
   late TextEditingController _bizPhoneCtrl;
 
   late AddressFieldControllers _bizAddressControllers;
+  List<FooterTaglineItem> _footerTaglines = [];
+
+  // HEADER STYLE / FOOTER BACKGROUND IMAGE PASS: state for the Header
+  // Style and Footer Background Image sections. SECTIONS REMOVAL PASS:
+  // no longer editable from this sheet's UI, but kept here (and still
+  // written into BusinessInfo(...) in _save()) so existing templates
+  // don't lose already-saved header/footer-background data.
+  String _headerMode = 'built';
+  String? _headerImagePath;
+  bool _footerBackgroundEnabled = false;
+  String? _footerBackgroundImagePath;
 
   late TextEditingController _bizTaxIdCtrl;
   late TextEditingController _bizGstCtrl;
@@ -1454,7 +1277,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
   late TextEditingController _thankYouCtrl;
 
-  // Sender info
   late TextEditingController _senderNameCtrl;
   late TextEditingController _senderPositionCtrl;
   late TextEditingController _senderEmailCtrl;
@@ -1464,8 +1286,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
   late TextEditingController _senderWebsiteCtrl;
 
-  // PAYMENT INFO / TERMS & SIGNATURE INPUT UI PASS
-  // PAYMENT TERMS REMOVAL PASS: _paymentTermsCtrl removed.
   late TextEditingController _bankNameCtrl;
   late TextEditingController _accountNameCtrl;
   late TextEditingController _accountNumberCtrl;
@@ -1491,9 +1311,15 @@ class _TemplateSheetState extends State<_TemplateSheet> {
 
     final b = e?.businessInfo ?? BusinessInfo();
     _bizNameCtrl = TextEditingController(text: b.name);
+    _bizTaglineCtrl = TextEditingController(text: b.tagline);
     _bizEmailCtrl = TextEditingController(text: b.email);
     _bizPhoneCtrl = TextEditingController(text: b.phone);
     _bizAddressControllers = AddressFieldControllers.seeded(b.addressInfo);
+    _footerTaglines = b.footerTaglines.map((t) => t.copyWith()).toList();
+    _headerMode = b.headerMode;
+    _headerImagePath = b.headerImagePath;
+    _footerBackgroundEnabled = b.footerBackgroundEnabled;
+    _footerBackgroundImagePath = b.footerBackgroundImagePath;
     _bizTaxIdCtrl = TextEditingController(text: b.taxId);
     _bizGstCtrl = TextEditingController(text: b.gstNumber ?? '');
     _bizWebsiteCtrl = TextEditingController(text: b.website ?? '');
@@ -1530,7 +1356,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
         : defaultInvoiceEnabledFields();
 
     for (final c in [
-      _nameCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _nameCtrl, _bizNameCtrl, _bizTaglineCtrl, _bizEmailCtrl, _bizPhoneCtrl,
       _bizTaxIdCtrl, _bizGstCtrl, _bizWebsiteCtrl,
       _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
       _senderPhoneCtrl, _senderWebsiteCtrl,
@@ -1548,7 +1374,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
   @override
   void dispose() {
     for (final c in [
-      _nameCtrl, _bizNameCtrl, _bizEmailCtrl, _bizPhoneCtrl,
+      _nameCtrl, _bizNameCtrl, _bizTaglineCtrl, _bizEmailCtrl, _bizPhoneCtrl,
       _bizTaxIdCtrl, _bizGstCtrl, _bizWebsiteCtrl,
       _senderNameCtrl, _senderPositionCtrl, _senderEmailCtrl,
       _senderPhoneCtrl, _senderWebsiteCtrl,
@@ -1568,11 +1394,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
   void _save() {
     if (_bizNameCtrl.text.trim().isEmpty) {
       _businessInfoExpanded.value = true;
-      // SCAFFOLD PARITY FIX: deliberately left as ScaffoldMessenger.of
-      // (context) with `behavior: floating` — this fires from inside a
-      // showModalBottomSheet route, which has no bottom nav bar of its
-      // own to dock above, so `floating` is already the correct look
-      // here (see this file's header comment).
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Business Name is required.'),
@@ -1596,6 +1417,9 @@ class _TemplateSheetState extends State<_TemplateSheet> {
           : _thankYouCtrl.text.trim(),
       businessInfo: BusinessInfo(
         name: _bizNameCtrl.text.trim(),
+        tagline: _bizTaglineCtrl.text.trim(),
+        headerMode: _headerMode,
+        headerImagePath: _headerImagePath,
         email: _bizEmailCtrl.text.trim(),
         phone: _bizPhoneCtrl.text.trim(),
         address: bizAddressInfo.singleLine,
@@ -1633,6 +1457,9 @@ class _TemplateSheetState extends State<_TemplateSheet> {
         senderWebsite: _senderWebsiteCtrl.text.trim().isEmpty
             ? null
             : _senderWebsiteCtrl.text.trim(),
+        footerTaglines: _footerTaglines.map((t) => t.copyWith()).toList(),
+        footerBackgroundEnabled: _footerBackgroundEnabled,
+        footerBackgroundImagePath: _footerBackgroundImagePath,
         bankName: _bankNameCtrl.text.trim(),
         accountName: _accountNameCtrl.text.trim(),
         accountNumber: _accountNumberCtrl.text.trim(),
@@ -1689,7 +1516,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Title row
                         Row(
                           children: [
                             Expanded(
@@ -1742,6 +1568,25 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                         _counter(context, _nameCtrl.text.length, 50),
                         const SizedBox(height: 20),
 
+                        // BUSINESS LOGO SECTION RESTORED (this update):
+                        // the "Business Logo" _CollapsibleGroup was
+                        // dropped entirely in an earlier SECTIONS
+                        // REMOVAL PASS, but the underlying state
+                        // (_logoPath/_logoOffset/_logoScale/_logoShape/
+                        // _logoShowInitial/_logoInitialLetter) was never
+                        // removed and is still written into
+                        // BusinessInfo(...) in _save() below — so this
+                        // is a pure UI restoration, not a model change.
+                        // Uses the same full-mode SharedLogoPicker call
+                        // (Gallery/Camera/Reposition/Remove chips + the
+                        // "Show letter mark" switch/Letter box) Create
+                        // Invoice's Container Logo section uses, so all
+                        // three sheets (Customer/Template/Create
+                        // Invoice) now render this section identically.
+                        // Wrapped in _CollapsibleGroup like every other
+                        // section on this sheet, so it can be opened/
+                        // closed the same way Business Information,
+                        // Footer Taglines, etc. already can.
                         _CollapsibleGroup(
                           label: 'Business Logo',
                           icon: Icons.image_rounded,
@@ -1768,6 +1613,13 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           ),
                         ),
 
+                        // BUSINESS INFO TRIM PASS: this collapsible group's
+                        // child now collects ONLY Business Name, Tagline,
+                        // Tax ID / EIN, and GST Number. See this file's
+                        // header comment for the full rationale — Sender /
+                        // Contact Person (further down this sheet) is now
+                        // the single place that collects address/email/
+                        // phone.
                         _CollapsibleGroup(
                           label: 'Business Information',
                           icon: Icons.business_rounded,
@@ -1789,43 +1641,14 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                               _counter(context, _bizNameCtrl.text.length, 40),
                               const SizedBox(height: 12),
                               _SheetField(
-                                ctrl: _bizEmailCtrl,
-                                label: 'Business Email',
-                                hint: 'e.g. hello@acme.com',
-                                icon: Icons.email_rounded,
+                                ctrl: _bizTaglineCtrl,
+                                label: 'Tagline',
+                                hint: 'e.g. Technology | Websites | Support',
+                                icon: Icons.short_text_rounded,
                                 max: 60,
-                                keyboard: TextInputType.emailAddress,
                                 accent: _accent,
                               ),
-                              _counter(context, _bizEmailCtrl.text.length, 60),
-                              const SizedBox(height: 12),
-                              _SheetField(
-                                ctrl: _bizPhoneCtrl,
-                                label: 'Business Phone',
-                                hint: 'e.g. +1 555 000 1234',
-                                icon: Icons.phone_rounded,
-                                max: 20,
-                                keyboard: TextInputType.phone,
-                                accent: _accent,
-                              ),
-                              _counter(context, _bizPhoneCtrl.text.length, 20),
-                              const SizedBox(height: 16),
-                              _sectionLabel(context, 'Business Address', _accent),
-                              AddressFieldGroup(
-                                controllers: _bizAddressControllers,
-                                accent: _accent,
-                              ),
-                              const SizedBox(height: 12),
-                              _SheetField(
-                                ctrl: _bizWebsiteCtrl,
-                                label: 'Website',
-                                hint: 'e.g. acme.com',
-                                icon: Icons.language_rounded,
-                                max: 50,
-                                keyboard: TextInputType.url,
-                                accent: _accent,
-                              ),
-                              _counter(context, _bizWebsiteCtrl.text.length, 50),
+                              _counter(context, _bizTaglineCtrl.text.length, 60),
                               const SizedBox(height: 12),
                               _SheetField(
                                 ctrl: _bizTaxIdCtrl,
@@ -1847,6 +1670,18 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                               ),
                               _counter(context, _bizGstCtrl.text.length, 30),
                             ],
+                          ),
+                        ),
+
+                        _CollapsibleGroup(
+                          label: 'Footer Taglines',
+                          icon: Icons.share_rounded,
+                          accent: _accent,
+                          sectionKey: 'footer_taglines',
+                          child: FooterTaglinesEditor(
+                            initialItems: _footerTaglines,
+                            accent: _accent,
+                            onChanged: (items) => _footerTaglines = items,
                           ),
                         ),
 

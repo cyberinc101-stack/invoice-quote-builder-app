@@ -1,86 +1,22 @@
 // document_filter_bar.dart
 // lib/widgets/document_filter_bar.dart
 //
-// INVOICE/RECEIPT DRAFT FILTER PASS (this update): the Invoice Status and
-// Receipt Status dropdowns in the Filters sheet only ever looped over their
-// real status enums (PaymentStatus: unpaid/partial/paid/overdue;
-// ReceiptStatus: issued/refunded) -- neither enum has a "draft" value at
-// all. "Draft" for invoices/receipts has always meant something different
-// from a payment/issuance status: it's completionPercent < 100 (see
-// invoiceIsDraft()/receiptIsDraft() in filter_logic.dart), which is exactly
-// what the existing "Drafts" quick-filter chip already uses. That concept
-// just wasn't reachable from the Invoice Status / Receipt Status dropdowns
-// themselves.
-//
-// Fixed by adding a 6th/4th item, "Draft", to each of those two dropdowns
-// (Quote Status is untouched -- QuoteStatus already has a real `draft`
-// enum value, so its dropdown already includes it via
-// QuoteStatus.values). Two small private superset enums,
-// _InvoiceStatusFilterOption and _ReceiptStatusFilterOption, are used
-// ONLY as the dropdown's value type -- they add an "any" pseudo-state
-// (maps to null, same as before) and a "draft" pseudo-state (maps to no
-// real status at all) on top of the real enum values. Two new
-// independent widget fields per type -- invoiceDraftSelected/
-// onInvoiceDraftChanged, receiptDraftSelected/onReceiptDraftChanged --
-// carry "is Draft selected instead of a real status", mirroring exactly
-// how a real status selection and "Draft" can never both be active at
-// once (selecting either one always clears the other, same guarantee as
-// the existing "Any status" / real-status exclusivity).
-//
-// _hasActiveAdvancedFilters and "Clear all" both now also account for
-// invoiceDraftSelected/receiptDraftSelected, so the Filters button's
-// active-dot and Clear all behave correctly when Draft is the active
-// selection. No dropdown's item COUNT or LAYOUT changed beyond the one
-// added row each -- same _SheetDropdown widget, same _SheetSection
-// wrapper, same position in the sheet.
-//
-// AUTO-CENTER PILL PASS (earlier): tapping a type pill (All/Invoices/
-// Quotes/Receipts/Expenses) selects it but previously left the horizontal
-// scroll position untouched — on a narrow screen, selecting a pill near
-// the right edge (e.g. "Receipts") could leave it partially under the
-// fade mask or off the visible area entirely, with no indication where
-// the newly-selected pill went. Each type pill now carries its own
-// GlobalKey (_pillKeys, one per DocTypeFilter); didUpdateWidget detects
-// a selectedType change and, on the next frame (once the new pill's
-// RenderBox exists), calls Scrollable.ensureVisible(alignment: 0.5) to
-// smoothly scroll the row so the selected pill centers itself in the
-// visible strip. _Pill now accepts and forwards `key` so these GlobalKeys
-// can actually attach to the right widget instance. Quick-filter chips
-// and the Folders/Drafts chips are unaffected — this only centers the
-// five main type pills, which is what was asked for.
-//
-// BOTTOM SAFE-AREA FIX (earlier pass): the Filters bottom sheet's content
-// padding was a fixed EdgeInsets.fromLTRB(20, 12, 20, 24) -- on devices
-// with an on-screen (gesture or 3-button) Android nav bar, that fixed
-// 24px wasn't enough to clear it, so the "Done" button at the bottom of
-// the sheet sat partially behind the nav bar. Now adds
-// MediaQuery.of(context).padding.bottom on top of the fixed 24px, same
-// fix applied to the "Move to Folder" sheet in
-// saved_documents_section.dart. The existing
-// Padding(bottom: viewInsets.bottom) wrapping the whole sheet is
-// unchanged -- that one handles the on-screen keyboard, this handles the
-// nav bar; they're two different insets and both are needed.
-//
-// SWIPE-FADE (earlier pass): the single scrollable row of type pills
-// (All/Invoices/Quotes/Receipts/Expenses) + quick-filter chips + Folders +
-// Drafts previously gave no visual cue that it scrolls horizontally --
-// Jesse felt it wasn't obvious more content was swipable off to the
-// right, and wanted the row's pills to always render in full rather than
-// looking potentially cut off. The ListView itself was never actually
-// clipping a pill mid-render (each pill sizes to its own content), but
-// with no scroll affordance the trailing pill sitting flush against the
-// screen edge read as "cut off" even when it wasn't.
-//
-// Fix: wrap the row in a ShaderMask that fades opacity to zero over the
-// last ~28px on the right edge only (left edge stays fully opaque, since
-// the row always starts scrolled to the left with nothing hidden behind
-// it). This uses BlendMode.dstIn against a horizontal gradient going
-// white -> transparent -- a widely-used, lightweight signal that a
-// horizontal list continues off-screen. Purely visual: doesn't change
-// hit-testing, scroll physics, or any pill's actual layout. A trailing
-// SizedBox(width: 24) was also added after the last chip so it clears the
-// fade zone with room to spare, rather than the fade eating into the last
-// real chip right at the end of the row.
+// CLEARABLE FILTERS BADGE PASS (this update): the small dot that used to
+// appear on the Filters button (_FiltersButton) whenever any advanced
+// filter was active was purely decorative -- it told you filters were on,
+// but clearing them still meant opening the Filters sheet and tapping
+// "Clear all". That dot is now a small tappable "×" badge sitting in the
+// button's top-right corner, OUTSIDE the button's own square (Positioned
+// at top: -6, right: -6 against an outer Stack that wraps the button
+// rather than sitting inside it, so it visually reads as an overlay
+// badge, not part of the button face). Tapping it calls the same
+// clear-everything logic the Filters sheet's own "Clear all" link uses --
+// pulled out into a new _DocumentFilterBarState._clearAllFilters() method
+// so both call sites share one implementation instead of duplicating the
+// nine reset calls. The badge only renders when
+// _hasActiveAdvancedFilters is true, same condition that already drove
+// the old dot and the button's own highlighted/active visual state.
+// _FiltersButton gained a new required onClear callback to carry this.
 
 import 'package:flutter/material.dart';
 import '../models/invoice_data.dart' show PaymentStatus;
@@ -352,6 +288,29 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
       widget.maxAmount != null ||
       widget.selectedFolder != null;
 
+  // CLEARABLE FILTERS BADGE PASS: pulled out of the Filters sheet's
+  // "Clear all" onTap so both that link and the new "×" badge on
+  // _FiltersButton (outside the sheet entirely) share one implementation
+  // instead of duplicating the same nine reset calls. Resets every
+  // advanced filter this bar tracks back to its default/off state --
+  // type pill, quick filter, and search query are deliberately left
+  // alone, same as the sheet's own "Clear all" always did (those aren't
+  // considered "advanced filters").
+  void _clearAllFilters() {
+    widget.onPaymentStatusChanged(null);
+    widget.onInvoiceDraftChanged(false);
+    widget.onQuoteStatusChanged(null);
+    widget.onReceiptStatusChanged(null);
+    widget.onReceiptDraftChanged(false);
+    widget.onDateRangeChanged(DateRangePreset.values.first);
+    widget.onCustomRangeChanged(null, null);
+    _minController.clear();
+    _maxController.clear();
+    widget.onAmountRangeChanged(null, null);
+    widget.onFolderChanged(null);
+    setState(() {});
+  }
+
   Future<void> _pickCustomRange(void Function(void Function()) setSheetState) async {
     final now = DateTime.now();
     final picked = await showDateRangePicker(
@@ -431,18 +390,15 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                         ),
                         if (_hasActiveAdvancedFilters)
                           GestureDetector(
+                            // CLEARABLE FILTERS BADGE PASS: now calls the
+                            // shared _clearAllFilters() instead of
+                            // inlining the same nine reset calls; the
+                            // sheet still needs its own setSheetState
+                            // after, since _clearAllFilters()'s setState
+                            // only rebuilds the outer DocumentFilterBar,
+                            // not this modal sheet's own StatefulBuilder.
                             onTap: () {
-                              widget.onPaymentStatusChanged(null);
-                              widget.onInvoiceDraftChanged(false);
-                              widget.onQuoteStatusChanged(null);
-                              widget.onReceiptStatusChanged(null);
-                              widget.onReceiptDraftChanged(false);
-                              widget.onDateRangeChanged(DateRangePreset.values.first);
-                              widget.onCustomRangeChanged(null, null);
-                              _minController.clear();
-                              _maxController.clear();
-                              widget.onAmountRangeChanged(null, null);
-                              widget.onFolderChanged(null);
+                              _clearAllFilters();
                               setSheetState(() {});
                             },
                             child: Text(
@@ -771,9 +727,12 @@ class _DocumentFilterBarState extends State<DocumentFilterBar> {
                 ),
               ),
               const SizedBox(width: 8),
+              // CLEARABLE FILTERS BADGE PASS: onClear now wired to the
+              // shared _clearAllFilters() — see that method's comment.
               _FiltersButton(
                 active: _hasActiveAdvancedFilters,
                 onTap: _openFiltersSheet,
+                onClear: _clearAllFilters,
               ),
             ],
           ),
@@ -907,55 +866,76 @@ class _QuickEntry {
 }
 
 // ── Filters button — sits next to search, opens the bottom sheet ──────────
+//
+// CLEARABLE FILTERS BADGE PASS: the button itself is now wrapped in an
+// outer Stack (clipBehavior: Clip.none) instead of putting the Stack
+// INSIDE the 42×42 Container as before — that's what lets the new "×"
+// badge sit at negative top/right offsets, rendering OUTSIDE the
+// button's own square rather than clipped to it. The old plain
+// "active" dot is gone; the badge itself now carries both jobs (shows
+// filters are active, AND clears them on tap).
 
 class _FiltersButton extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback onClear;
 
-  const _FiltersButton({required this.active, required this.onTap});
+  const _FiltersButton({required this.active, required this.onTap, required this.onClear});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 42,
-        width: 42,
-        decoration: BoxDecoration(
-          color: active ? cs.primary.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.045),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active ? cs.primary.withValues(alpha: 0.45) : cs.outline.withValues(alpha: 0.18),
-          ),
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Center(
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: active ? cs.primary.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.045),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? cs.primary.withValues(alpha: 0.45) : cs.outline.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Center(
               child: Icon(
                 Icons.tune_rounded,
                 size: 20,
                 color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
               ),
             ),
-            if (active)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (active)
+          Positioned(
+            top: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: onClear,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.close_rounded, size: 12, color: cs.onPrimary),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -1,38 +1,9 @@
-// quote_provider.dart
-// lib/providers/quote_provider.dart
-//
-// PAYMENT INFO + TERMS PASS (this update): added updateBankName(),
-// updateAccountName(), updateAccountNumber(),
-// updateOtherPaymentDetails(), updateTermsAndConditions() — thin
-// pass-throughs to QuoteData.copyWith's new fields (quote_data.dart's
-// own PAYMENT INFO + TERMS PASS), mirroring updateSignatureMode's exact
-// shape. Also added applyPaymentAndTermsFromTemplate() — a single
-// bundled call meant for the still-missing template-select sync step
-// (the Quote equivalent of Invoice's
-// StepCreateInvoice._syncSelectedToProvider()) to call once that sync
-// point is identified; until then nothing calls these new methods.
-//
-// SIGNATURE PASS (earlier): added updateSignatureMode(),
-// updateSignatureName(), updateSignatureImagePath(),
-// updateSignatureFontSize(), updateSignatureFontFamily() — thin
-// pass-throughs to QuoteData.copyWith's new signature fields, mirroring
-// InvoiceProvider's updateSignatureFontSize/updateSignatureFontFamily
-// shape exactly. Backs the new Signature section on
-// quote_step_customise.dart's Fields section.
-//
-// HISTORY LOGGING PASS (earlier): saveCurrentQuote() and
-// deleteQuote() each gained an optional [historyProvider] param.
-//
-// FONT SIZE PASS, TEMPLATE/CLIENT RESTORE-ON-EDIT PASS, TEMPLATE FIELD
-// VISIBILITY PASS, CURRENCY DISPLAY PASS, ALERTPREFS PUSH WIRING,
-// NO-DUPLICATE-PUSH FIX, TEMPLATE + LOGO SIZER PASS, PUSH ALERTS (all
-// earlier) — see prior header comments; unaffected by this update.
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/quote_data.dart';
+import '../models/footer_tagline.dart';
 import '../models/invoice_data.dart' show LineItem;
 import '../models/history_event.dart' show HistoryDocType;
 import '../alerts/notifications/document_alert_scheduler.dart';
@@ -52,8 +23,6 @@ class QuoteProvider extends ChangeNotifier {
   QuoteData        get quoteData     => _quoteData;
   List<SavedQuote> get savedQuotes   => List.unmodifiable(_savedQuotes);
   String?          get activeQuoteId => _activeQuoteId;
-
-  // ── Persistence ────────────────────────────────────────────────────────────
 
   Future<void> loadPersistedQuotes() async {
     try {
@@ -102,8 +71,6 @@ class QuoteProvider extends ChangeNotifier {
     }
   }
 
-  // ── AlertPrefs push wiring ─────────────────────────────────────────────────
-
   Future<void> applyExpiringAlertsEnabled(bool enabled) async {
     for (final q in _savedQuotes) {
       try {
@@ -128,8 +95,6 @@ class QuoteProvider extends ChangeNotifier {
     }
   }
 
-  // ── Active session ─────────────────────────────────────────────────────────
-
   void resetQuoteData() {
     _quoteData     = QuoteData();
     _activeQuoteId = null;
@@ -147,8 +112,6 @@ class QuoteProvider extends ChangeNotifier {
     _activeQuoteId = null;
     notifyListeners();
   }
-
-  // ── CRUD ───────────────────────────────────────────────────────────────────
 
   SavedQuote saveCurrentQuote({
     required String title,
@@ -237,13 +200,11 @@ class QuoteProvider extends ChangeNotifier {
     }
   }
 
-  // ── Status ─────────────────────────────────────────────────────────────────
-
   void updateSavedQuoteStatus(String id, QuoteStatus status) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
     if (index == -1) return;
     _savedQuotes[index] = _savedQuotes[index].copyWith(
-      data: _savedQuotes[index].data.copyWith(quoteStatus: status),
+      data: _savedQuotes[index].data.copyWith(quoteStatus: status, statusHidden: false),
       lastEditedAt: DateTime.now(),
     );
     _persist();
@@ -251,7 +212,16 @@ class QuoteProvider extends ChangeNotifier {
     unawaited(DocumentAlertScheduler.instance.syncQuoteExpiringAlert(_savedQuotes[index]));
   }
 
-  // ── Folder ─────────────────────────────────────────────────────────────────
+  void updateSavedQuoteStatusHidden(String id, bool hidden) {
+    final index = _savedQuotes.indexWhere((q) => q.id == id);
+    if (index == -1) return;
+    _savedQuotes[index] = _savedQuotes[index].copyWith(
+      data: _savedQuotes[index].data.copyWith(statusHidden: hidden),
+      lastEditedAt: DateTime.now(),
+    );
+    _persist();
+    notifyListeners();
+  }
 
   void updateQuoteFolder(String id, String? folderName) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
@@ -265,8 +235,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Reports exclusion ─────────────────────────────────────────────────────
-
   void updateQuoteExcludeFromReports(String id, bool exclude) {
     final index = _savedQuotes.indexWhere((q) => q.id == id);
     if (index == -1) return;
@@ -277,8 +245,6 @@ class QuoteProvider extends ChangeNotifier {
     _persist();
     notifyListeners();
   }
-
-  // ── Data mutations ─────────────────────────────────────────────────────────
 
   void updateQuoteData(QuoteData data) {
     _quoteData = data;
@@ -314,6 +280,91 @@ class QuoteProvider extends ChangeNotifier {
       businessLogoDisplaySize: businessLogoDisplaySize,
       sourceTemplateId: sourceTemplateId,
       clearSourceTemplateId: clearSourceTemplateId,
+    );
+    notifyListeners();
+  }
+
+  // BACKGROUND-IMAGE PASS: mirrors InvoiceProvider's identical two
+  // methods exactly.
+  void updateHeaderBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _quoteData = _quoteData.copyWith(
+      headerBackgroundImagePath: path,
+      clearHeaderBackgroundImage: path == null,
+      headerBackgroundEnabled: enabled,
+      headerBackgroundOpacity: opacity,
+      headerBackgroundOffsetDx: offsetDx,
+      headerBackgroundOffsetDy: offsetDy,
+      headerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateFooterBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _quoteData = _quoteData.copyWith(
+      footerBackgroundImagePath: path,
+      clearFooterBackgroundImage: path == null,
+      footerBackgroundEnabled: enabled,
+      footerBackgroundOpacity: opacity,
+      footerBackgroundOffsetDx: offsetDx,
+      footerBackgroundOffsetDy: offsetDy,
+      footerBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateBodyBackgroundImage({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+  }) {
+    _quoteData = _quoteData.copyWith(
+      bodyBackgroundImagePath: path,
+      clearBodyBackgroundImage: path == null,
+      bodyBackgroundEnabled: enabled,
+      bodyBackgroundOpacity: opacity,
+      bodyBackgroundOffsetDx: offsetDx,
+      bodyBackgroundOffsetDy: offsetDy,
+      bodyBackgroundScale: scale,
+    );
+    notifyListeners();
+  }
+
+  void updateBusinessTaglineEnabled(bool enabled) {
+    _quoteData = _quoteData.copyWith(businessTaglineEnabled: enabled);
+    notifyListeners();
+  }
+
+  void updateFooterTaglinesEnabled(bool enabled) {
+    _quoteData = _quoteData.copyWith(footerTaglinesEnabled: enabled);
+    notifyListeners();
+  }
+
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text.
+  void updateFooterTaglinesFontSize(double size) {
+    _quoteData = _quoteData.copyWith(footerTaglinesFontSize: size);
+    notifyListeners();
+  }
+
+  void updateFooterTaglines(List<FooterTaglineItem> items) {
+    _quoteData = _quoteData.copyWith(
+      footerTaglines: items.map((i) => i.copyWith()).toList(),
     );
     notifyListeners();
   }
@@ -414,13 +465,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // SIGNATURE PASS: mirrors InvoiceProvider's updateSignatureFontSize/
-  // updateSignatureFontFamily shape exactly, plus mode/name/imagePath
-  // pass-throughs the same way Quote's own step_templates signature UI
-  // (quote_step_template_signature.dart) already writes to
-  // QuoteTemplate — these instead write onto the live QuoteData via
-  // copyWith, driven by the Signature section on
-  // quote_step_customise.dart's Fields section.
   void updateSignatureMode(String mode) {
     _quoteData = _quoteData.copyWith(signatureMode: mode);
     notifyListeners();
@@ -449,11 +493,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // PAYMENT INFO + TERMS PASS: thin pass-throughs to QuoteData.copyWith,
-  // same shape as updateSignatureMode/etc just above. Nothing calls
-  // these yet in the app — see this file's header comment for the
-  // still-missing template -> QuoteData sync step that would actually
-  // drive them with real values from a selected QuoteTemplate.
   void updateBankName(String v) {
     _quoteData = _quoteData.copyWith(bankName: v);
     notifyListeners();
@@ -479,9 +518,6 @@ class QuoteProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Bundles all of the above plus signature into one call — the shape a
-  // future template-select sync step should call once it exists,
-  // rather than firing eight separate notifyListeners() rebuilds.
   void applyPaymentAndTermsFromTemplate({
     required String bankName,
     required String accountName,
@@ -505,8 +541,6 @@ class QuoteProvider extends ChangeNotifier {
     );
     notifyListeners();
   }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   int _calcCompletion() {
     int score = 0;

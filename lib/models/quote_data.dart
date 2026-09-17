@@ -1,105 +1,19 @@
-// quote_data.dart
-// lib/models/quote_data.dart
-//
-// PAYMENT INFO + TERMS PASS (this update): QuoteData gains
-// bankName/accountName/accountNumber/otherPaymentDetails (Payment Info)
-// and termsAndConditions — the two blocks Invoice's own
-// buildPaymentInfoPanel()/buildTermsPanel()
-// (executive_invoice_payment_terms_signature.dart) already know how to
-// render, now ported into executive_quote_stationary_layout.dart's own
-// buildPaymentInfoPanel()/buildTermsPanel() and wired into
-// buildFooterSection() there. Matching 'bankName', 'accountName',
-// 'accountNumber', 'otherPaymentDetails', 'termsAndConditions' keys were
-// added to defaultQuoteEnabledFields() so each has its own show/hide
-// toggle, same as every other field. All new fields default to '' so
-// every persisted quote loads exactly as before this pass.
-//
-// NOT YET WIRED: these fields (like signatureMode/signatureName before
-// them) still need a sync step wherever a QuoteTemplate is applied to
-// QuoteProvider on template selection — that's the piece copying
-// QuoteTemplate.bankName/termsAndConditions/etc onto live QuoteData.
-// Until that sync exists, these fields can only be set by directly
-// calling QuoteData.copyWith with real values (e.g. eventually via a
-// provider method mirroring updateSignatureMode's shape).
-//
-// Deliberately NOT adding a Sender/Contact block (senderName/
-// senderEmail/senderPhone/senderPosition/senderAddress/senderWebsite)
-// in this pass — Invoice's own InvoiceData has no equivalent fields
-// either (only its InvoiceTemplate/BusinessInfo model does), and there
-// is no confirmed render site for sender fields in Invoice's own
-// stationary layout to port from. Adding them here without a render
-// target would be dead model weight. Revisit once Invoice's own
-// sender-field render site (if one exists) is available for parity.
-//
-// SIGNATURE PASS (earlier): QuoteData gains a three-mode Signature
-// block, mirroring InvoiceData's own signature fields exactly:
-//   - signatureMode ('typed' | 'image' | 'blank' | '' deselected)
-//   - signatureName (typed caption, used when signatureMode == 'typed')
-//   - signatureImagePath (used when signatureMode == 'image')
-//   - signatureFontSize (double, default 22.0)
-//   - signatureFontFamily (String, default '' — one of the six
-//     locally-bundled script families in
-//     executive_invoice_payment_terms_signature.dart's kSignatureFonts,
-//     or '' to render in the default italic body-font look)
-// All new fields default to '' / 'blank' / null / 22.0 / '' so every
-// persisted quote loads exactly as before this pass. A new 'signature'
-// key was added to defaultQuoteEnabledFields() so the Signature row has
-// its own show/hide toggle on the Customise step, same as every other
-// field. Rendered by executive_quote_stationary_layout.dart's
-// buildFooterSection via a new buildSignatureBlock() call (mirrors
-// Invoice's identical call into
-// executive_invoice_payment_terms_signature.dart) and exported by
-// quote_pdf_service.dart's Executive PDF builder.
-//
-// PER-ITEM TOTALS PARITY FIX (earlier): QuoteData was missing
-// itemTaxExtra / itemDiscountExtra / itemTaxExtraByName /
-// itemDiscountExtraByName — the four getters InvoiceData uses to fold
-// each LineItem's own discountEnabled/taxEnabled rate into the
-// document's grand total and into the footer's grouped-by-name "Item
-// Tax (GST)" / "Item Discounts (Trade)" rows.
-//
-// grandTotal now mirrors InvoiceData.grandTotal's formula exactly:
-//   subtotal - discountAmount + taxAmount - itemDiscountExtra + itemTaxExtra
-//
-// CREATE-QUOTE PARITY PASS (earlier): brought QuoteData up to the
-// same per-invoice field set InvoiceData already has, for exactly the
-// fields that are generic (not invoice-specific).
-//
-// FONT SIZE PASS, TEMPLATE/CLIENT RESTORE-ON-EDIT PASS, TEMPLATE FIELD
-// VISIBILITY PASS, LOGO FALLBACK MARK PASS, TEMPLATE + LOGO SIZER PASS,
-// CURRENCY DISPLAY PASS (all earlier) — see prior header comments for
-// each of these; unaffected by this update.
-
 import 'invoice_data.dart' show LineItem;
 import 'address_info.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────────────────────
+import 'footer_tagline.dart';
 
 enum QuoteStatus { draft, sent, accepted, declined, expired }
 
 enum QuoteColor { blue, green, purple, orange, red, teal, black, indigo }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Default field-visibility map
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// PAYMENT INFO + TERMS PASS: added 'bankName', 'accountName',
-// 'accountNumber', 'otherPaymentDetails', 'termsAndConditions' — one
-// toggle key per new field/block, same as every existing field. All
-// default true so existing behaviour (nothing new to show since the
-// fields are all still empty strings) is unaffected until they're
-// actually filled in.
-//
-// SIGNATURE PASS: added 'signature' — gates the Signature block, same
-// key name InvoiceData/DocTemplateAdapter already use.
 Map<String, bool> defaultQuoteEnabledFields() => {
       'invoiceNumber': true, 'date': true, 'dueDate': true,
       'tax': true, 'discount': true,
       'notes': true, 'thankYouMessage': true,
       'customerName': true, 'customerEmail': true, 'customerPhone': true,
       'customerAddress': true,
+      'businessName': true, 'businessEmail': true, 'businessPhone': true,
+      'businessAddress': true,
       'businessLogo': true,
       'signature': true,
       'bankName': true, 'accountName': true, 'accountNumber': true,
@@ -107,15 +21,21 @@ Map<String, bool> defaultQuoteEnabledFields() => {
       'termsAndConditions': true,
     };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// QuoteData
-// ─────────────────────────────────────────────────────────────────────────────
-
 class QuoteData {
   String businessName;
+  String businessTagline;
+  bool businessTaglineEnabled;
+  bool footerTaglinesEnabled;
+  // TAGLINE SIZE PASS: font size (pt) for footer tagline text —
+  // adjustable via the Customise step. Clamped in the UI to a
+  // range that, combined with autoFitText's own shrink-to-fit,
+  // cannot overflow the footer band even at max size with 6 items.
+  double footerTaglinesFontSize;
+  List<FooterTaglineItem> footerTaglines;
   String businessEmail;
   String businessPhone;
   String businessAddress;
+  AddressInfo businessAddressInfo;
   String? businessLogoPath;
 
   double businessLogoOffsetDx;
@@ -126,6 +46,32 @@ class QuoteData {
 
   bool businessLogoShowInitial;
   String businessLogoInitialLetter;
+
+  // BACKGROUND-IMAGE PASS: mirrors InvoiceData's identical new fields —
+  // see that file's header comment for the full rationale. Both
+  // null/false by default, so every existing persisted quote loads and
+  // renders exactly as before this pass.
+  String? headerBackgroundImagePath;
+  bool headerBackgroundEnabled;
+  double headerBackgroundOpacity;
+  double headerBackgroundOffsetDx;
+  double headerBackgroundOffsetDy;
+  double headerBackgroundScale;
+  String? footerBackgroundImagePath;
+  bool footerBackgroundEnabled;
+  double footerBackgroundOpacity;
+  double footerBackgroundOffsetDx;
+  double footerBackgroundOffsetDy;
+  double footerBackgroundScale;
+
+  // MID-PAGE BACKGROUND PASS: mirrors InvoiceData's identical new
+  // fields — see that file's header comment for the full rationale.
+  String? bodyBackgroundImagePath;
+  bool bodyBackgroundEnabled;
+  double bodyBackgroundOpacity;
+  double bodyBackgroundOffsetDx;
+  double bodyBackgroundOffsetDy;
+  double bodyBackgroundScale;
 
   String clientName;
   String clientEmail;
@@ -170,37 +116,32 @@ class QuoteData {
 
   bool excludeFromReports;
 
-  // SIGNATURE PASS: three mutually exclusive modes, mirrors
-  // InvoiceData's identical fields exactly. 'typed' renders
-  // signatureName in signatureFontFamily (or the default italic look
-  // when signatureFontFamily is ''); 'image' renders signatureImagePath
-  // as-is; 'blank' renders neither, just an empty signing line; ''
-  // (deselected) renders nothing at all.
-  String signatureMode; // 'typed' | 'image' | 'blank' | ''
+  bool statusHidden;
+
+  String signatureMode;
   String signatureName;
   String? signatureImagePath;
   double signatureFontSize;
   String signatureFontFamily;
 
-  // PAYMENT INFO PASS: bank details — bankName/accountName/
-  // accountNumber are the three named fields; otherPaymentDetails is a
-  // single freeform field for anything that doesn't fit those three
-  // (IBAN, SWIFT/BIC, routing/sort code, PayPal handle, etc), exactly
-  // mirroring InvoiceData's identical four fields.
   String bankName;
   String accountName;
   String accountNumber;
   String otherPaymentDetails;
 
-  // TERMS PASS: freeform Terms & Conditions text, mirrors
-  // InvoiceData.termsAndConditions exactly.
   String termsAndConditions;
 
   QuoteData({
     this.businessName     = '',
+    this.businessTagline  = '',
+    this.businessTaglineEnabled = true,
+    this.footerTaglinesEnabled = false,
+    this.footerTaglinesFontSize = 8.0,
+    List<FooterTaglineItem>? footerTaglines,
     this.businessEmail    = '',
     this.businessPhone    = '',
     this.businessAddress  = '',
+    AddressInfo? businessAddressInfo,
     this.businessLogoPath,
     this.businessLogoOffsetDx = 0.0,
     this.businessLogoOffsetDy = 0.0,
@@ -209,6 +150,24 @@ class QuoteData {
     this.businessLogoDisplaySize = 40.0,
     this.businessLogoShowInitial = true,
     this.businessLogoInitialLetter = '',
+    this.headerBackgroundImagePath,
+    this.headerBackgroundEnabled = false,
+    this.headerBackgroundOpacity = 1.0,
+    this.headerBackgroundOffsetDx = 0.0,
+    this.headerBackgroundOffsetDy = 0.0,
+    this.headerBackgroundScale = 1.0,
+    this.footerBackgroundImagePath,
+    this.footerBackgroundEnabled = false,
+    this.footerBackgroundOpacity = 1.0,
+    this.footerBackgroundOffsetDx = 0.0,
+    this.footerBackgroundOffsetDy = 0.0,
+    this.footerBackgroundScale = 1.0,
+    this.bodyBackgroundImagePath,
+    this.bodyBackgroundEnabled = false,
+    this.bodyBackgroundOpacity = 1.0,
+    this.bodyBackgroundOffsetDx = 0.0,
+    this.bodyBackgroundOffsetDy = 0.0,
+    this.bodyBackgroundScale = 1.0,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -237,6 +196,7 @@ class QuoteData {
     this.sourceTemplateId,
     this.sourceClientId,
     this.excludeFromReports = false,
+    this.statusHidden        = false,
     this.signatureMode       = 'blank',
     this.signatureName       = '',
     this.signatureImagePath,
@@ -249,7 +209,9 @@ class QuoteData {
     this.termsAndConditions  = '',
   }) : lineItems = lineItems ?? [],
        enabledFields = enabledFields ?? defaultQuoteEnabledFields(),
-       clientAddressInfo = clientAddressInfo ?? AddressInfo();
+       clientAddressInfo = clientAddressInfo ?? AddressInfo(),
+       businessAddressInfo = businessAddressInfo ?? AddressInfo(),
+       footerTaglines = footerTaglines ?? [];
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
   double get discountAmount => discountEnabled ? subtotal * (discountRate / 100) : 0.0;
@@ -292,9 +254,15 @@ class QuoteData {
 
   Map<String, dynamic> toJson() => {
         'businessName':     businessName,
+        'businessTagline':  businessTagline,
+        'businessTaglineEnabled': businessTaglineEnabled,
+        'footerTaglinesEnabled':  footerTaglinesEnabled,
+        'footerTaglinesFontSize': footerTaglinesFontSize,
+        'footerTaglines':   footerTaglinesToJson(footerTaglines),
         'businessEmail':    businessEmail,
         'businessPhone':    businessPhone,
         'businessAddress':  businessAddress,
+        'businessAddressInfo': businessAddressInfo.toJson(),
         'businessLogoPath': businessLogoPath,
         'businessLogoOffsetDx': businessLogoOffsetDx,
         'businessLogoOffsetDy': businessLogoOffsetDy,
@@ -303,6 +271,24 @@ class QuoteData {
         'businessLogoDisplaySize': businessLogoDisplaySize,
         'businessLogoShowInitial': businessLogoShowInitial,
         'businessLogoInitialLetter': businessLogoInitialLetter,
+        'headerBackgroundImagePath': headerBackgroundImagePath,
+        'headerBackgroundEnabled':   headerBackgroundEnabled,
+        'headerBackgroundOpacity': headerBackgroundOpacity,
+        'headerBackgroundOffsetDx': headerBackgroundOffsetDx,
+        'headerBackgroundOffsetDy': headerBackgroundOffsetDy,
+        'headerBackgroundScale': headerBackgroundScale,
+        'footerBackgroundImagePath': footerBackgroundImagePath,
+        'footerBackgroundEnabled':   footerBackgroundEnabled,
+        'footerBackgroundOpacity': footerBackgroundOpacity,
+        'footerBackgroundOffsetDx': footerBackgroundOffsetDx,
+        'footerBackgroundOffsetDy': footerBackgroundOffsetDy,
+        'footerBackgroundScale': footerBackgroundScale,
+        'bodyBackgroundImagePath': bodyBackgroundImagePath,
+        'bodyBackgroundEnabled':   bodyBackgroundEnabled,
+        'bodyBackgroundOpacity': bodyBackgroundOpacity,
+        'bodyBackgroundOffsetDx': bodyBackgroundOffsetDx,
+        'bodyBackgroundOffsetDy': bodyBackgroundOffsetDy,
+        'bodyBackgroundScale': bodyBackgroundScale,
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -331,6 +317,7 @@ class QuoteData {
         'sourceTemplateId': sourceTemplateId,
         'sourceClientId':   sourceClientId,
         'excludeFromReports': excludeFromReports,
+        'statusHidden':        statusHidden,
         'signatureMode':       signatureMode,
         'signatureName':       signatureName,
         'signatureImagePath':  signatureImagePath,
@@ -345,9 +332,16 @@ class QuoteData {
 
   factory QuoteData.fromJson(Map<String, dynamic> j) => QuoteData(
         businessName:     j['businessName']     as String? ?? '',
+        businessTagline:  j['businessTagline']  as String? ?? '',
+        businessTaglineEnabled: j['businessTaglineEnabled'] as bool? ?? true,
+        footerTaglinesEnabled:  j['footerTaglinesEnabled']  as bool? ?? false,
+        footerTaglinesFontSize: (j['footerTaglinesFontSize'] as num?)?.toDouble() ?? 8.0,
+        footerTaglines:   footerTaglinesFromJson(j['footerTaglines']),
         businessEmail:    j['businessEmail']    as String? ?? '',
         businessPhone:    j['businessPhone']    as String? ?? '',
         businessAddress:  j['businessAddress']  as String? ?? '',
+        businessAddressInfo: AddressInfo.fromJson(
+            j['businessAddressInfo'] ?? j['businessAddress']),
         businessLogoPath: j['businessLogoPath'] as String?,
         businessLogoOffsetDx: (j['businessLogoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         businessLogoOffsetDy: (j['businessLogoOffsetDy'] as num?)?.toDouble() ?? 0.0,
@@ -356,6 +350,24 @@ class QuoteData {
         businessLogoDisplaySize: (j['businessLogoDisplaySize'] as num?)?.toDouble() ?? 40.0,
         businessLogoShowInitial: j['businessLogoShowInitial'] as bool? ?? true,
         businessLogoInitialLetter: j['businessLogoInitialLetter'] as String? ?? '',
+        headerBackgroundImagePath: j['headerBackgroundImagePath'] as String?,
+        headerBackgroundEnabled:   j['headerBackgroundEnabled']   as bool?   ?? false,
+        headerBackgroundOpacity: (j['headerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        headerBackgroundOffsetDx: (j['headerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundOffsetDy: (j['headerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        headerBackgroundScale: (j['headerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundImagePath: j['footerBackgroundImagePath'] as String?,
+        footerBackgroundEnabled:   j['footerBackgroundEnabled']   as bool?   ?? false,
+        footerBackgroundOpacity: (j['footerBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        footerBackgroundOffsetDx: (j['footerBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundOffsetDy: (j['footerBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        footerBackgroundScale: (j['footerBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundImagePath: j['bodyBackgroundImagePath'] as String?,
+        bodyBackgroundEnabled:   j['bodyBackgroundEnabled']   as bool?   ?? false,
+        bodyBackgroundOpacity: (j['bodyBackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        bodyBackgroundOffsetDx: (j['bodyBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundOffsetDy: (j['bodyBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        bodyBackgroundScale: (j['bodyBackgroundScale'] as num?)?.toDouble() ?? 1.0,
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -396,6 +408,7 @@ class QuoteData {
         sourceTemplateId: j['sourceTemplateId'] as String?,
         sourceClientId:   j['sourceClientId']   as String?,
         excludeFromReports: j['excludeFromReports'] as bool? ?? false,
+        statusHidden:        j['statusHidden']        as bool?   ?? false,
         signatureMode:       j['signatureMode']       as String? ?? 'blank',
         signatureName:       j['signatureName']       as String? ?? '',
         signatureImagePath:  j['signatureImagePath']  as String?,
@@ -410,9 +423,15 @@ class QuoteData {
 
   QuoteData copyWith({
     String?         businessName,
+    String?         businessTagline,
+    bool?           businessTaglineEnabled,
+    bool?           footerTaglinesEnabled,
+    double?         footerTaglinesFontSize,
+    List<FooterTaglineItem>? footerTaglines,
     String?         businessEmail,
     String?         businessPhone,
     String?         businessAddress,
+    AddressInfo?    businessAddressInfo,
     String?         businessLogoPath,
     bool            clearBusinessLogo = false,
     double?         businessLogoOffsetDx,
@@ -422,6 +441,27 @@ class QuoteData {
     double?         businessLogoDisplaySize,
     bool?           businessLogoShowInitial,
     String?         businessLogoInitialLetter,
+    String?         headerBackgroundImagePath,
+    bool            clearHeaderBackgroundImage = false,
+    bool?           headerBackgroundEnabled,
+    double?         headerBackgroundOpacity,
+    double?         headerBackgroundOffsetDx,
+    double?         headerBackgroundOffsetDy,
+    double?         headerBackgroundScale,
+    String?         footerBackgroundImagePath,
+    bool            clearFooterBackgroundImage = false,
+    bool?           footerBackgroundEnabled,
+    double?         footerBackgroundOpacity,
+    double?         footerBackgroundOffsetDx,
+    double?         footerBackgroundOffsetDy,
+    double?         footerBackgroundScale,
+    String?         bodyBackgroundImagePath,
+    bool            clearBodyBackgroundImage = false,
+    bool?           bodyBackgroundEnabled,
+    double?         bodyBackgroundOpacity,
+    double?         bodyBackgroundOffsetDx,
+    double?         bodyBackgroundOffsetDy,
+    double?         bodyBackgroundScale,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -452,6 +492,7 @@ class QuoteData {
     String?         sourceClientId,
     bool            clearSourceClientId = false,
     bool?           excludeFromReports,
+    bool?           statusHidden,
     String?         signatureMode,
     String?         signatureName,
     String?         signatureImagePath,
@@ -466,9 +507,15 @@ class QuoteData {
   }) =>
       QuoteData(
         businessName:     businessName     ?? this.businessName,
+        businessTagline:  businessTagline  ?? this.businessTagline,
+        businessTaglineEnabled: businessTaglineEnabled ?? this.businessTaglineEnabled,
+        footerTaglinesEnabled:  footerTaglinesEnabled  ?? this.footerTaglinesEnabled,
+        footerTaglinesFontSize: footerTaglinesFontSize ?? this.footerTaglinesFontSize,
+        footerTaglines: footerTaglines ?? List<FooterTaglineItem>.from(this.footerTaglines),
         businessEmail:    businessEmail    ?? this.businessEmail,
         businessPhone:    businessPhone    ?? this.businessPhone,
         businessAddress:  businessAddress  ?? this.businessAddress,
+        businessAddressInfo: businessAddressInfo ?? this.businessAddressInfo,
         businessLogoPath: clearBusinessLogo ? null : (businessLogoPath ?? this.businessLogoPath),
         businessLogoOffsetDx: businessLogoOffsetDx ?? this.businessLogoOffsetDx,
         businessLogoOffsetDy: businessLogoOffsetDy ?? this.businessLogoOffsetDy,
@@ -477,6 +524,30 @@ class QuoteData {
         businessLogoDisplaySize: businessLogoDisplaySize ?? this.businessLogoDisplaySize,
         businessLogoShowInitial: businessLogoShowInitial ?? this.businessLogoShowInitial,
         businessLogoInitialLetter: businessLogoInitialLetter ?? this.businessLogoInitialLetter,
+        headerBackgroundImagePath: clearHeaderBackgroundImage
+            ? null
+            : (headerBackgroundImagePath ?? this.headerBackgroundImagePath),
+        headerBackgroundEnabled: headerBackgroundEnabled ?? this.headerBackgroundEnabled,
+        headerBackgroundOpacity: headerBackgroundOpacity ?? this.headerBackgroundOpacity,
+        headerBackgroundOffsetDx: headerBackgroundOffsetDx ?? this.headerBackgroundOffsetDx,
+        headerBackgroundOffsetDy: headerBackgroundOffsetDy ?? this.headerBackgroundOffsetDy,
+        headerBackgroundScale: headerBackgroundScale ?? this.headerBackgroundScale,
+        footerBackgroundImagePath: clearFooterBackgroundImage
+            ? null
+            : (footerBackgroundImagePath ?? this.footerBackgroundImagePath),
+        footerBackgroundEnabled: footerBackgroundEnabled ?? this.footerBackgroundEnabled,
+        footerBackgroundOpacity: footerBackgroundOpacity ?? this.footerBackgroundOpacity,
+        footerBackgroundOffsetDx: footerBackgroundOffsetDx ?? this.footerBackgroundOffsetDx,
+        footerBackgroundOffsetDy: footerBackgroundOffsetDy ?? this.footerBackgroundOffsetDy,
+        footerBackgroundScale: footerBackgroundScale ?? this.footerBackgroundScale,
+        bodyBackgroundImagePath: clearBodyBackgroundImage
+            ? null
+            : (bodyBackgroundImagePath ?? this.bodyBackgroundImagePath),
+        bodyBackgroundEnabled: bodyBackgroundEnabled ?? this.bodyBackgroundEnabled,
+        bodyBackgroundOpacity: bodyBackgroundOpacity ?? this.bodyBackgroundOpacity,
+        bodyBackgroundOffsetDx: bodyBackgroundOffsetDx ?? this.bodyBackgroundOffsetDx,
+        bodyBackgroundOffsetDy: bodyBackgroundOffsetDy ?? this.bodyBackgroundOffsetDy,
+        bodyBackgroundScale: bodyBackgroundScale ?? this.bodyBackgroundScale,
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -505,6 +576,7 @@ class QuoteData {
         sourceTemplateId: clearSourceTemplateId ? null : (sourceTemplateId ?? this.sourceTemplateId),
         sourceClientId:   clearSourceClientId   ? null : (sourceClientId   ?? this.sourceClientId),
         excludeFromReports: excludeFromReports ?? this.excludeFromReports,
+        statusHidden:        statusHidden        ?? this.statusHidden,
         signatureMode:       signatureMode       ?? this.signatureMode,
         signatureName:       signatureName       ?? this.signatureName,
         signatureImagePath: clearSignatureImage ? null : (signatureImagePath ?? this.signatureImagePath),
@@ -521,12 +593,10 @@ class QuoteData {
         lineItems: lineItems.map((i) => i.copyWith()).toList(),
         enabledFields: Map<String, bool>.from(enabledFields),
         clientAddressInfo: clientAddressInfo.copyWith(),
+        businessAddressInfo: businessAddressInfo.copyWith(),
+        footerTaglines: footerTaglines.map((t) => t.copyWith()).toList(),
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedQuote  — wrapper stored in SharedPreferences
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedQuote {
   final String    id;
@@ -608,10 +678,6 @@ class SavedQuote {
         folderName: clearFolderName ? null : (folderName ?? this.folderName),
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedQuoteDraft
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedQuoteDraft {
   String id;
@@ -722,10 +788,6 @@ class SavedQuoteDraft {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedQuoteLineItem
-// ─────────────────────────────────────────────────────────────────────────────
-
 class SavedQuoteLineItem {
   String id;
   String? name;
@@ -778,10 +840,6 @@ class SavedQuoteLineItem {
         lastEditedAt: lastEditedAt ?? this.lastEditedAt,
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SavedQuoteLineItemSet
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedQuoteLineItemSet {
   String id;

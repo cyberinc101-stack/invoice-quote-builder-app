@@ -1,6 +1,50 @@
 // lib/models/client_info.dart
 //
-// PAYMENT TERMS REMOVAL PASS (this update): BusinessInfo.paymentTerms has
+// CUSTOMER LOGO FALLBACK MARK PASS (this update): ClientInfo gains
+// logoShowInitial (bool, default true) and logoInitialLetter (String,
+// default '') — mirrors BusinessInfo's identically-named/purposed fields
+// exactly (see LOGO FALLBACK MARK PASS below). Needed so
+// step_customers.dart's SharedLogoPicker can wire up the "show letter
+// mark when there's no logo" switch + optional letter override, the
+// same as Create Invoice's Container Logo section already does — this
+// was the missing piece that made the Customer sheet's logo section
+// look different (no switch/letter box) even though the widget itself
+// supports it identically on both sheets.
+//
+// Default logoShape also changed from 'circle' to 'roundedSquare' —
+// matches InvoiceData.businessLogoShape's own default exactly, so a
+// brand-new customer's fallback-letter avatar renders the same shape
+// Create Invoice already defaults to, instead of the mismatched circle
+// it used before this pass. Existing saved customers are unaffected —
+// fromJson still reads whatever shape they already have stored;
+// this only changes what a NEW customer (or one saved before logoShape
+// existed as a field at all) defaults to.
+//
+// HEADER STYLE / FOOTER BACKGROUND IMAGE PASS (earlier): BusinessInfo
+// gains headerMode ('built' | 'imageFull' | 'logoText') plus
+// headerImagePath, and footerBackgroundEnabled/footerBackgroundImagePath.
+// headerMode picks between the existing live-rendered header ('built'),
+// a single pre-made image replacing the whole header ('imageFull'), or
+// logo + business name + the EXISTING tagline field ('logoText' — no
+// separate short tagline field; logoText mode simply uses the same
+// `tagline` field 'built' mode already uses). footerBackgroundEnabled/
+// footerBackgroundImagePath are independent of footerTaglinesEnabled/
+// footerTaglines below (the icon+text row) — a background image slot for
+// the footer. All UI/model plumbing only for now, scoped to the
+// Executive template's step_templates.dart sheet — not yet wired into
+// any renderer or the Customise-step switches. Defaults ('built', false)
+// preserve existing behaviour for every persisted template, no migration
+// needed.
+//
+// TAGLINE PASS (earlier): BusinessInfo gains `tagline` (String,
+// default '') — a short line rendered under the business name in the
+// document header (e.g. "TECHNOLOGY | WEBSITES | SUPPORT"). Kept
+// separate from `name` since it's optional styling text, not part of
+// the business's actual name. Synced onto InvoiceData/QuoteData/
+// ReceiptData's own `businessTagline` field at template-select time,
+// the same way `name` is synced onto `businessName`.
+//
+// PAYMENT TERMS REMOVAL PASS (earlier): BusinessInfo.paymentTerms has
 // been removed entirely — field, toJson/fromJson keys, and the
 // constructor param are all gone. Matches the corresponding removal in
 // invoice_data.dart (InvoiceData.paymentTerms + its enabledFields toggle),
@@ -65,6 +109,7 @@
 
 import 'invoice_data.dart'; // for InvoiceColor
 import 'address_info.dart';
+import 'footer_tagline.dart';
 
 // ─────────────────────────────────────────────────────────────────────────
 // ClientInfo  (aliased as Customer via invoice_models.dart)
@@ -91,6 +136,10 @@ class ClientInfo {
   double logoOffsetDy;
   double logoScale;
   String logoShape;
+  // CUSTOMER LOGO FALLBACK MARK PASS: mirrors BusinessInfo's identically-
+  // named/purposed fields exactly — see file header note above.
+  bool logoShowInitial;
+  String logoInitialLetter;
 
   double defaultTaxRate;
 
@@ -105,7 +154,9 @@ class ClientInfo {
     this.logoOffsetDx = 0.0,
     this.logoOffsetDy = 0.0,
     this.logoScale    = 1.0,
-    this.logoShape    = 'circle',
+    this.logoShape    = 'roundedSquare',
+    this.logoShowInitial   = true,
+    this.logoInitialLetter = '',
     this.defaultTaxRate = 0.0,
   })  : id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         addressInfo = addressInfo ?? AddressInfo();
@@ -122,6 +173,8 @@ class ClientInfo {
         'logoOffsetDy': logoOffsetDy,
         'logoScale':    logoScale,
         'logoShape':    logoShape,
+        'logoShowInitial':   logoShowInitial,
+        'logoInitialLetter': logoInitialLetter,
         'defaultTaxRate':  defaultTaxRate,
       };
 
@@ -140,7 +193,9 @@ class ClientInfo {
         logoOffsetDx: (j['logoOffsetDx'] as num?)?.toDouble() ?? 0.0,
         logoOffsetDy: (j['logoOffsetDy'] as num?)?.toDouble() ?? 0.0,
         logoScale:    (j['logoScale'] as num?)?.toDouble() ?? 1.0,
-        logoShape:    j['logoShape'] as String? ?? 'circle',
+        logoShape:    j['logoShape'] as String? ?? 'roundedSquare',
+        logoShowInitial:   j['logoShowInitial'] as bool? ?? true,
+        logoInitialLetter: j['logoInitialLetter'] as String? ?? '',
         defaultTaxRate:  (j['defaultTaxRate'] as num?)?.toDouble() ?? 0.0,
       );
 }
@@ -165,9 +220,52 @@ class ClientInfo {
 // step_templates_payment.dart / step_templates_terms.dart /
 // step_templates_signature.dart). paymentTerms was removed from this
 // group entirely — see PAYMENT TERMS REMOVAL PASS above.
+//
+// TAGLINE PASS (earlier): `tagline` — see file header note above.
+//
+// HEADER STYLE / FOOTER BACKGROUND IMAGE PASS (this update): headerMode/
+// headerImagePath/footerBackgroundEnabled/footerBackgroundImagePath —
+// see file header note above.
 
 class BusinessInfo {
   String  name;
+  String  tagline;
+  // FOOTER TAGLINES PASS: whether the header tagline above actually
+  // renders — the on/off switch lives on Customise; the text itself
+  // stays authored here. Default true so every business that already
+  // typed a tagline before this pass keeps showing it unchanged.
+  bool taglineEnabled;
+  // HEADER STYLE PASS: which of three header layouts this template
+  // uses. 'built' (default) is the existing live-rendered header —
+  // logo widget + businessName text + tagline text, all separately
+  // editable. 'imageFull' replaces the entire header with a single
+  // pre-made image (already containing logo/name/tagline baked in),
+  // meant to be uploaded at an exact size matching the header slot on
+  // the rendered document. 'logoText' keeps the logo as a live widget
+  // paired with businessName + the SAME `tagline` field above (no
+  // separate short tagline — logoText just means "skip the rest of the
+  // built header's extra chrome, show logo + name + tagline only").
+  // Only 'built' is wired into any renderer yet — 'imageFull'/
+  // 'logoText' are UI/model plumbing only on this pass, scoped to the
+  // Executive template's step_templates.dart sheet.
+  String headerMode; // 'built' | 'imageFull' | 'logoText'
+  // HEADER STYLE PASS: the pre-made header image for 'imageFull' mode.
+  String? headerImagePath;
+  // FOOTER TAGLINES PASS: a row of 3–6 icon+text items shown at the
+  // bottom of the document alongside the thank-you message (e.g.
+  // Instagram icon + "@yourbusiness"). Authored here on the template;
+  // footerTaglinesEnabled is the Customise-step on/off switch. Default
+  // false/empty — this is a new, opt-in feature, so no existing
+  // template suddenly grows a footer row it never had.
+  bool footerTaglinesEnabled;
+  List<FooterTaglineItem> footerTaglines;
+  // FOOTER BACKGROUND IMAGE PASS: independent of footerTaglinesEnabled/
+  // footerTaglines above — a background image slot for the footer,
+  // meant to be uploaded at an exact size matching the footer slot on
+  // the rendered document. Off by default so no existing template
+  // suddenly grows a footer image it never had.
+  bool footerBackgroundEnabled;
+  String? footerBackgroundImagePath;
   String  email;
   String  phone;
   String  address; // legacy single-line business address — kept in sync
@@ -219,6 +317,14 @@ class BusinessInfo {
 
   BusinessInfo({
     this.name           = '',
+    this.tagline        = '',
+    this.taglineEnabled = true,
+    this.headerMode = 'built',
+    this.headerImagePath,
+    this.footerTaglinesEnabled = false,
+    List<FooterTaglineItem>? footerTaglines,
+    this.footerBackgroundEnabled = false,
+    this.footerBackgroundImagePath,
     this.email          = '',
     this.phone          = '',
     this.address        = '',
@@ -249,10 +355,19 @@ class BusinessInfo {
     this.signatureName       = '',
     this.signatureImagePath,
   })  : addressInfo = addressInfo ?? AddressInfo(),
-        senderAddressInfo = senderAddressInfo ?? AddressInfo();
+        senderAddressInfo = senderAddressInfo ?? AddressInfo(),
+        footerTaglines = footerTaglines ?? [];
 
   Map<String, dynamic> toJson() => {
         'name':           name,
+        'tagline':        tagline,
+        'taglineEnabled': taglineEnabled,
+        'headerMode':     headerMode,
+        'headerImagePath': headerImagePath,
+        'footerTaglinesEnabled': footerTaglinesEnabled,
+        'footerTaglines': footerTaglinesToJson(footerTaglines),
+        'footerBackgroundEnabled': footerBackgroundEnabled,
+        'footerBackgroundImagePath': footerBackgroundImagePath,
         'email':          email,
         'phone':          phone,
         'address':        address,
@@ -286,6 +401,14 @@ class BusinessInfo {
 
   factory BusinessInfo.fromJson(Map<String, dynamic> j) => BusinessInfo(
         name:           j['name']           as String? ?? '',
+        tagline:        j['tagline']        as String? ?? '',
+        taglineEnabled: j['taglineEnabled'] as bool? ?? true,
+        headerMode:     j['headerMode']     as String? ?? 'built',
+        headerImagePath: j['headerImagePath'] as String?,
+        footerTaglinesEnabled: j['footerTaglinesEnabled'] as bool? ?? false,
+        footerTaglines: footerTaglinesFromJson(j['footerTaglines']),
+        footerBackgroundEnabled: j['footerBackgroundEnabled'] as bool? ?? false,
+        footerBackgroundImagePath: j['footerBackgroundImagePath'] as String?,
         email:          j['email']          as String? ?? '',
         phone:          j['phone']          as String? ?? '',
         address:        j['address']        as String? ?? '',

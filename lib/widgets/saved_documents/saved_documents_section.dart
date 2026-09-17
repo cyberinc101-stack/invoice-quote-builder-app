@@ -1163,18 +1163,36 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
       context,
       title: q.title,
       accent: const Color(0xFF7B1FA2),
-      statusOptions: QuoteStatus.values.map((s) {
-        final info = _quoteStatusInfo(s);
-        return StatusOption(
-          label: info.label,
-          color: info.color,
-          selected: q.data.quoteStatus == s,
+      statusOptions: [
+        ...QuoteStatus.values.map((s) {
+          final info = _quoteStatusInfo(s);
+          return StatusOption(
+            label: info.label,
+            color: info.color,
+            // "None" PASS: was `q.data.quoteStatus == s` -- selected now
+            // also requires !statusHidden, same as Invoice's status menu,
+            // so a real status doesn't show as "selected" alongside None
+            // once the chip is hidden.
+            selected: !q.data.statusHidden && q.data.quoteStatus == s,
+            onSelect: () {
+              Navigator.pop(context);
+              provider.updateSavedQuoteStatus(q.id, s);
+            },
+          );
+        }),
+        // "None" PASS: new option, mirrors Invoice's identical entry in
+        // _showInvoiceMenu above exactly -- hides the status chip/dot on
+        // this quote's cards without touching quoteStatus itself.
+        StatusOption(
+          label: 'None',
+          color: Colors.grey,
+          selected: q.data.statusHidden,
           onSelect: () {
             Navigator.pop(context);
-            provider.updateSavedQuoteStatus(q.id, s);
+            provider.updateSavedQuoteStatusHidden(q.id, true);
           },
-        );
-      }).toList(),
+        ),
+      ],
       onRename: () => _showRenameDialogFor(type: 'quote', id: q.id, currentTitle: q.title),
       onMoveToFolder: () => _openFolderSheet(
         availableFolders: folders,
@@ -1196,13 +1214,27 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
           return StatusOption(
             label: info.label,
             color: info.color,
-            selected: r.data.status == s,
+            // "None" PASS: was `r.data.status == s` -- selected now also
+            // requires !statusHidden, same as Invoice's status menu.
+            selected: !r.data.statusHidden && r.data.status == s,
             onSelect: () {
               Navigator.pop(context);
               provider.updateSavedReceiptStatus(r.id, s);
             },
           );
         }),
+        // "None" PASS: new option, mirrors Invoice's identical entry in
+        // _showInvoiceMenu above exactly -- hides the status chip/dot on
+        // this receipt's cards without touching status itself.
+        StatusOption(
+          label: 'None',
+          color: Colors.grey,
+          selected: r.data.statusHidden,
+          onSelect: () {
+            Navigator.pop(context);
+            provider.updateSavedReceiptStatusHidden(r.id, true);
+          },
+        ),
         // INVOICE/RECEIPT DRAFT STATUS-MENU PASS: same treatment as the
         // invoice status menu above -- "Draft" is a read-only indicator
         // (completionPercent < 100, see receiptIsDraft() in
@@ -1816,6 +1848,12 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   createdLabel: _formatShortDate(q.createdAt),
                   itemCount: q.data.lineItems.length,
                   totalAmount: q.data.grandTotal,
+                  // "None" PASS: was missing entirely -- statusHidden
+                  // silently defaulted to false on every quote entry, so
+                  // the dot always showed regardless of what the (now
+                  // added) "None" menu option set. Mirrors
+                  // invoiceEntries above.
+                  statusHidden: q.data.statusHidden,
                 );
             })
             .toList();
@@ -1855,6 +1893,9 @@ class _SavedDocumentsSectionState extends State<SavedDocumentsSection> {
                   createdLabel: _formatShortDate(r.createdAt),
                   itemCount: r.data.lineItems.length,
                   totalAmount: r.data.amountPaid,
+                  // "None" PASS: was missing entirely -- same fix as
+                  // quoteEntries above, mirrors invoiceEntries.
+                  statusHidden: r.data.statusHidden,
                 );
             })
             .toList();

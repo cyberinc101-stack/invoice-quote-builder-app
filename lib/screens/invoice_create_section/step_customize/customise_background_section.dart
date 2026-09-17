@@ -10,7 +10,23 @@
 // reference the dialog class directly. Behavior unchanged from the
 // original file.
 //
-// ZOOM-OUT RANGE PASS (this update): the reposition dialog's zoom floor
+// THUMBNAIL OPACITY-INVERSION FIX (this update): the on-card thumbnail
+// preview (the small 90px box showing the uploaded background image)
+// used to wrap the image itself in Opacity(opacity: opacity...) — the
+// exact bug the real document render (background_render.dart /
+// BackgroundSpec) was already fixed away from: at 0% this made the
+// thumbnail show nothing at all, and any value above 0% always looked
+// like the same fixed wash, since nothing about the actual image alpha
+// changed in proportion. That's backwards, and meant this thumbnail was
+// actively lying about what the real document does with the same
+// value. Fixed to match background_render.dart's model exactly: the
+// image always renders at full strength, and a white scrim on TOP of it
+// is what scales with `opacity` (0% = raw image, no wash; 100% = the
+// same 0.82 base wash strength BackgroundSpec's default scrimOpacity
+// uses). The pre-existing dim-for-the-edit-icon overlay (black at 0.15)
+// is unchanged and still sits above the new scrim.
+//
+// ZOOM-OUT RANGE PASS (earlier): the reposition dialog's zoom floor
 // (_minScale below) is lowered from 1.0 to kBackgroundMinZoomOutScale
 // (imported from background_spec.dart — the same constant
 // BackgroundSpec.clampedScale itself now uses as its render-time floor,
@@ -74,6 +90,14 @@ import 'customise_shared_widgets.dart';
 // =============================================================================
 
 enum BackgroundImageTarget { header, body, footer }
+
+// THUMBNAIL OPACITY-INVERSION FIX: matches BackgroundSpec's own default
+// scrimOpacity (background_spec.dart) so this preview's wash strength at
+// 100% opacity is identical to what the real document renders at 100%.
+// Kept as a local constant rather than importing BackgroundSpec's default
+// directly, since that default lives on the class constructor, not as a
+// standalone top-level value.
+const double _kThumbnailScrimOpacity = 0.82;
 
 class BackgroundImageSection extends StatelessWidget {
   final String title;
@@ -252,18 +276,35 @@ class BackgroundImageSection extends StatelessWidget {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        Opacity(
-                          opacity: opacity.clamp(0.0, 1.0),
-                          child: Transform.scale(
-                            scale: _scaleOf(data).clamp(kBackgroundMinZoomOutScale, 3.0),
+                        // THUMBNAIL OPACITY-INVERSION FIX: the image
+                        // itself is no longer wrapped in Opacity() — it
+                        // always paints at full strength here, exactly
+                        // like the real document render. Panning/zooming
+                        // (Transform.scale/alignment) still applies
+                        // exactly as before.
+                        Transform.scale(
+                          scale: _scaleOf(data).clamp(kBackgroundMinZoomOutScale, 3.0),
+                          alignment: Alignment(_offsetDxOf(data).clamp(-1.0, 1.0), _offsetDyOf(data).clamp(-1.0, 1.0)),
+                          child: Image.file(
+                            File(path),
+                            fit: BoxFit.cover,
                             alignment: Alignment(_offsetDxOf(data).clamp(-1.0, 1.0), _offsetDyOf(data).clamp(-1.0, 1.0)),
-                            child: Image.file(
-                              File(path),
-                              fit: BoxFit.cover,
-                              alignment: Alignment(_offsetDxOf(data).clamp(-1.0, 1.0), _offsetDyOf(data).clamp(-1.0, 1.0)),
-                            ),
                           ),
                         ),
+                        // THUMBNAIL OPACITY-INVERSION FIX: `opacity` now
+                        // scales a white scrim drawn ON TOP of the image
+                        // — 0% = none of it (raw, undimmed photo), 100%
+                        // = the same base wash strength
+                        // (_kThumbnailScrimOpacity, matching
+                        // BackgroundSpec's own default scrimOpacity) the
+                        // real document applies at full opacity. This is
+                        // what makes the slider read correctly here as a
+                        // fade/wash control, matching the real render
+                        // instead of contradicting it.
+                        if (opacity.clamp(0.0, 1.0) > 0)
+                          Container(
+                            color: Colors.white.withValues(alpha: _kThumbnailScrimOpacity * opacity.clamp(0.0, 1.0)),
+                          ),
                         Container(color: Colors.black.withValues(alpha: 0.15)),
                         const Center(
                           child: Icon(Icons.edit_rounded, color: Colors.white, size: 22),

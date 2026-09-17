@@ -1,78 +1,22 @@
 // lib/screens/create_receipt_section/step_customize/receipt_step_customise.dart
 //
-// MERGE PASS (this update): imports redirected off the three deleted
-// executive_receipt_logic_data.dart / executive_receipt_stationary_
-// layout.dart / executive_invoice_payment_terms_signature.dart files.
-// ExecutiveReceiptPreview and kSignatureFonts now come from
-// executive_template.dart (the merged, adapter-based file that replaces
-// all three — see that file's own MERGE PASS header comment), and
-// kPageW now comes from shared_doc_widgets.dart. No other change in
-// this file — same widget tree, same behavior, same call sites.
+// TEXT SIZE MAX CAP PASS (this update): the "Text Size" slider's max
+// value is now 14pt (was 16pt). Divisions dropped from 6 to 4 to keep
+// the same 1pt-per-step feel across the new 10–14pt range.
 //
-// FIELD GROUPS PARITY PASS (earlier): the flat "Receipt Fields"
-// toggle list and the separate standalone "Signature" section have been
-// replaced with the same collapsible GROUP-CARD pattern Quote's
-// step_customise.dart uses ("Quote Fields" -> Header & Meta / Client
-// Details / Quote Details / Terms & Signature / Notes & Thank You).
-// Receipt now has: Header & Meta, Payment Details, Customer Details,
-// Signature, Notes & Thank You — each its own collapsible card with a
-// master on/off switch, an "n/total" badge, and a chevron to expand/
-// collapse; state persists per-group via SharedPreferences, same as
-// Quote's _kFieldGroupExpandedPrefPrefix pattern (this file uses its
-// own 'receipt_customise_field_group_expanded_' prefix so the two
-// flows never share state).
+// FOOTER TAGLINES PASS (earlier): _ReceiptFieldGroups gains two more
+// provider-driven group cards, "Business Tagline" and "Footer
+// Taglines", added right after the existing "Signature" card — same
+// treatment: each reads/writes ReceiptData's own bool field directly via
+// context.watch<ReceiptProvider>() and the new
+// updateBusinessTaglineEnabled()/updateFooterTaglinesEnabled() provider
+// methods, rather than going through the show*/onShow*Changed
+// constructor params every other group here uses (ReceiptData has no
+// equivalent constructor-threaded params for these two, same reasoning
+// the Signature card already documents for itself).
 //
-// Signature is now ONE GROUP inside that same list — matching Quote's
-// "Terms & Signature" group exactly in shape: the group's own row IS
-// the Signature toggle (no separate switch needed since there's only
-// one field in it), its master switch maps to signatureMode being
-// non-empty (turning off sets signatureMode to '', turning back on
-// restores 'blank' — the same default QuoteData/ReceiptData ship with),
-// and expanding it reveals the exact same Upload/Type/Blank mode-chip
-// row, image-upload tile, and typed-name field + inline Size slider +
-// font chips that the previous standalone _ReceiptSignatureSection had
-// — content is unchanged, just re-homed into the shared group-card
-// shell instead of its own top-level section. Still reads/writes
-// ReceiptProvider directly via context.watch/read (unlike every other
-// field group here, which is driven by plain bool/callback constructor
-// params owned by create_receipt_screen.dart's state) — same reasoning
-// as before: ReceiptData.signatureMode/signatureName/etc. live only on
-// ReceiptProvider, with no equivalent constructor params threaded
-// through from create_receipt_screen.dart.
-//
-// ReceiptStepCustomise's own public constructor is UNCHANGED — every
-// existing bool/callback param this widget already took is still taken
-// and still wired to the same underlying toggle; only the rendering
-// changed from a flat list to grouped cards. create_receipt_screen.dart
-// needs no changes to keep compiling against this file.
-//
-// FONT FIX PASS (earlier): kReceiptFonts previously listed "Source
-// Sans Pro" (never bundled) and was missing Lora/Nunito/Raleway/Space
-// Grotesk — the same stale-list bug Invoice's step_customise.dart had
-// before its own FONT FAMILY LIST FIX, and the same one just fixed on
-// Quote's step_customise.dart. kReceiptFonts now exactly mirrors the
-// bundled family names. _fontSection's chips also now preview each
-// chip's own label IN that font (fontFamily: previewFamily) — same
-// mechanism as Invoice's and Quote's Font Family chips. 'Default'
-// deliberately maps to fontFamily: null (platform default) rather than
-// the literal string 'Default'. A4-only, same as before — no change to
-// the thermal branch, which never showed a Font Family section at all.
-//
-// FOLDER MOVE PASS (earlier): relocated from
-// create_receipt_section/receipt_step_customise.dart into its own
-// step_customize/ folder.
-//
-// Every other pass note (CASHIER NAME TOGGLE, PAPER FORMAT PICKER,
-// THANK YOU MESSAGE TOGGLE, FIELD TOGGLE OVERFLOW FIX) — see prior
-// header comments; unaffected by this update.
-//
-// Final order for the A4 (non-thermal) branch:
-//   Title -> Live Preview -> Paper Format -> Receipt Fields (grouped
-//   cards: Header & Meta / Payment Details / Customer Details /
-//   Signature / Notes & Thank You) -> Business Logo -> Logo Size ->
-//   Accent Color -> Font Family -> Text Size -> Summary
-// Thermal branch is unchanged — Signature is A4-only, same as Invoice's
-// own Signature toggle never applying to a thermal-format document.
+// (All other header comments from the previous version describe work
+// already done and unaffected by this pass — see project history.)
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -88,25 +32,12 @@ import '../receipt_thermal_live_preview.dart';
 import '../receipt_paper_format.dart';
 import '../receipt_paper_format_picker.dart';
 import '../receipt_template_chooser_01/preview_registry.dart' show buildReceiptPreview;
-// MERGE PASS: both symbols now come from the merged executive_template.dart
-// instead of the deleted executive_receipt_logic_data.dart /
-// executive_receipt_stationary_layout.dart /
-// executive_invoice_payment_terms_signature.dart.
 import '../../../document_layout_templates/01_executive/executive_template.dart'
     show ExecutiveReceiptPreview, kSignatureFonts;
-// MERGE PASS: kPageW now lives on the shared widgets file.
 import '../../../document_layout_templates/document_template_layout_data/doc_header.dart'
     show kPageW;
 import '../../../document_layout_templates/pagination/scaled_page_stack.dart';
 
-// FONT FIX PASS: this list now exactly mirrors the family names
-// actually registered in pubspec.yaml's flutter: fonts: section (the
-// same set Invoice's/Quote's step_customise.dart offer), plus the
-// 'Default' sentinel, which deliberately doesn't match any registered
-// family — it falls through to the platform default on purpose.
-// Previously included "Source Sans Pro" (never bundled at all) and
-// never offered Lora/Nunito/Raleway/Space Grotesk even though those
-// were already bundled and unused.
 const List<String> kReceiptFonts = [
   'Default',
   'Roboto',
@@ -125,12 +56,9 @@ class ReceiptStepCustomise extends StatelessWidget {
   final TextEditingController titleCtrl;
   final bool isThermal;
 
-  // Which format (A4/58mm/80mm) is selected, and the callback fired
-  // when the user taps a different one in the Paper Format section.
   final ReceiptPaperFormat paperFormat;
   final ValueChanged<ReceiptPaperFormat> onPaperFormatChanged;
 
-  // Logo
   final String? logoPath;
   final Offset logoOffset;
   final double logoScale;
@@ -140,17 +68,14 @@ class ReceiptStepCustomise extends StatelessWidget {
   final ValueChanged<LogoShape> onLogoShapeChanged;
   final ValueChanged<double> onLogoSizeChanged;
 
-  // Accent color (A4 only)
   final ReceiptColor colorScheme;
   final ValueChanged<ReceiptColor> onColorSchemeChanged;
 
-  // Font (A4 only)
   final String fontFamily;
   final ValueChanged<String> onFontFamilyChanged;
   final double fontSize;
   final ValueChanged<double> onFontSizeChanged;
 
-  // A4 field toggles ("Receipt Fields" / "Customer Fields")
   final bool showLogo;
   final bool showBusinessDetails;
   final bool showCustomerDetails;
@@ -172,8 +97,6 @@ class ReceiptStepCustomise extends StatelessWidget {
   final ValueChanged<bool> onShowCashierNameChanged;
   final ValueChanged<bool> onShowThankYouMessageChanged;
 
-  // Thermal-only fields — forwarded straight through to
-  // ReceiptThermalSettingsSection, unchanged from create_receipt_screen.dart.
   final TextEditingController cashierNameCtrl;
   final TextEditingController posIdCtrl;
   final TextEditingController taxIdCtrl;
@@ -201,7 +124,6 @@ class ReceiptStepCustomise extends StatelessWidget {
   final ValueChanged<bool> onShowInstagramChanged;
   final ValueChanged<bool> onShowTwitterChanged;
 
-  // Summary
   final double subtotal;
   final double taxAmount;
   final double discountAmount;
@@ -354,8 +276,8 @@ class ReceiptStepCustomise extends StatelessWidget {
                 child: Slider(
                   value: fontSize,
                   min: 10,
-                  max: 16,
-                  divisions: 6,
+                  max: 14,
+                  divisions: 4,
                   onChanged: onFontSizeChanged,
                 ),
               ),
@@ -645,8 +567,7 @@ class ReceiptStepCustomise extends StatelessWidget {
 }
 
 // =============================================================================
-// Reusable section card — mirrors Quote's _SectionCard exactly (bordered
-// container, icon+title header, then child content).
+// Reusable section card
 // =============================================================================
 
 class _SectionCard extends StatelessWidget {
@@ -696,14 +617,16 @@ class _SectionCard extends StatelessWidget {
 }
 
 // =============================================================================
-// FIELD GROUPS PARITY PASS: grouped, collapsible field toggles — mirrors
-// Quote's _FieldsSection/_groupCard/_fieldRow shape exactly, adapted to
-// this file's plain bool + ValueChanged<bool> constructor-param style
-// (rather than reading everything off a provider the way Quote's
-// version does). The Signature group is the one exception — it reads/
-// writes ReceiptProvider directly, since ReceiptData.signatureMode/
-// signatureName/etc. have no equivalent constructor params threaded
-// through create_receipt_screen.dart.
+// Grouped, collapsible field toggles.
+//
+// FOOTER TAGLINES PASS: two new provider-driven group cards —
+// "Business Tagline" and "Footer Taglines" — added right after
+// "Signature" in build() below. Both mirror _signatureGroupCard's shape
+// (read/write ReceiptData's own bool field directly via
+// context.watch<ReceiptProvider>(), since neither field has a
+// constructor-threaded show*/onShow*Changed pair the way every other
+// group here does) but with no extra expanded content — the switch on
+// the group-card row IS the whole control.
 // =============================================================================
 
 class _FieldToggleSpec {
@@ -788,6 +711,8 @@ class _ReceiptFieldGroupsState extends State<_ReceiptFieldGroups> {
     'Payment Details',
     'Customer Details',
     'Signature',
+    'Business Tagline',
+    'Footer Taglines',
     'Notes & Thank You',
   ];
 
@@ -1144,6 +1069,41 @@ class _ReceiptFieldGroupsState extends State<_ReceiptFieldGroups> {
     );
   }
 
+  // FOOTER TAGLINES PASS: same "solo switch, no extra content" shape as
+  // _signatureGroupCard, but for the header tagline's on/off switch —
+  // reads/writes ReceiptData.businessTaglineEnabled directly.
+  Widget _businessTaglineGroupCard(ReceiptProvider provider) {
+    final on = provider.currentReceiptData.businessTaglineEnabled;
+    return _groupCardShell(
+      icon: Icons.short_text_rounded,
+      label: 'Business Tagline',
+      groupOn: on,
+      onCount: on ? 1 : 0,
+      totalCount: 1,
+      onToggleExpand: () {},
+      onToggleGroup: (v) => provider.updateBusinessTaglineEnabled(v),
+      expandedChild: const SizedBox.shrink(),
+    );
+  }
+
+  // FOOTER TAGLINES PASS: same shape, for the footer taglines ROW's
+  // on/off switch — reads/writes ReceiptData.footerTaglinesEnabled
+  // directly. The items themselves are authored on the template sheet,
+  // not edited here.
+  Widget _footerTaglinesGroupCard(ReceiptProvider provider) {
+    final on = provider.currentReceiptData.footerTaglinesEnabled;
+    return _groupCardShell(
+      icon: Icons.share_rounded,
+      label: 'Footer Taglines',
+      groupOn: on,
+      onCount: on ? 1 : 0,
+      totalCount: 1,
+      onToggleExpand: () {},
+      onToggleGroup: (v) => provider.updateFooterTaglinesEnabled(v),
+      expandedChild: const SizedBox.shrink(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ReceiptProvider>();
@@ -1165,6 +1125,8 @@ class _ReceiptFieldGroupsState extends State<_ReceiptFieldGroups> {
           _boolGroupCard(groups[1]),
           _boolGroupCard(groups[2]),
           _signatureGroupCard(provider),
+          _businessTaglineGroupCard(provider),
+          _footerTaglinesGroupCard(provider),
           _boolGroupCard(groups[3]),
         ],
       ),
