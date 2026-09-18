@@ -1,6 +1,75 @@
 // lib/widgets/shared_logo_picker.dart
 //
-// WIDE LOGO INTERACTIVE PASS (this update): `wide` used to render as a
+// COVER-FIT DEFAULT PASS (this update): `wide`'s pan/zoom used to start
+// from BoxFit.contain — the whole image always fully visible, zero
+// cropping until the person deliberately zoomed in. That guarantee only
+// actually holds if the source PNG is already close to the box's own
+// 2.6:1 aspect ratio — for a typical uploaded logo (roughly square, an
+// icon stacked over a wordmark) `contain` fits by height and leaves
+// large empty gaps left/right, and reaching the box's true edges then
+// needs FAR more zoom than the 1.0-3.0x range was ever sized for —
+// often enough to crop the icon/wordmark off the top or bottom before
+// the sides ever catch up. In practice "never crops by default" and
+// "actually reaches every edge of the box" can't both hold for a
+// same-shaped source image, and reaching the edges is what people
+// actually need a logo banner to do.
+//
+// Fixed by switching `wide` to the same crop-to-fill approach circle/
+// square/roundedSquare already use: BoxFit.cover with an explicit
+// width/height (boxSize * scale — Flutter's own cover algorithm crops
+// whichever axis overflows, regardless of the source image's own
+// aspect ratio, no intrinsic-dimension lookup needed), inside an
+// OverflowBox + Transform.translate for panning.
+//
+// NO-OVERSCALE-MARGIN NOTE: unlike circle/square/roundedSquare, `wide`
+// deliberately does NOT multiply by the extra `_overScale` (1.35)
+// safety-margin those three shapes use to leave a little spare pan
+// travel room beyond the tightest possible crop. A near-square logo
+// squeezed into this box's wide 2.6:1 shape already needs heavy,
+// unavoidable cropping on one axis just to cover it (typically height)
+// — applying that same uniform 1.35x margin to BOTH axes zoomed in
+// another 35% on the axis that was already an exact fit (typically
+// width), clipping into the edges of a wordmark that had no cropping
+// margin to spare. Dropping the margin means 100%/no-zoom now renders
+// at the exact minimum crop BoxFit.cover requires — no more, no less —
+// and any further zoom is purely what the person dials in themselves.
+// The image now fills the box completely and flush to every edge at
+// ANY zoom level, for ANY source image — the same guarantee the other
+// three shapes already had. Zoom is still available (up to 3.0x) for
+// choosing which part of the image shows, same slider/pinch/corner-
+// handle controls as before; only the FIT baseline changed, from
+// "fully visible" to "fills the box".
+//
+// The stored/returned value (businessLogoOffsetDx/Dy) keeps the exact
+// same normalised -1..1 meaning and storage format as before — only the
+// FORMULA used to turn that normalised value into a pixel translate
+// changed, and it's applied identically everywhere a saved wide logo
+// renders — this file's SharedLogoThumbnail, SharedLogoPicker's compact
+// box, and _LogoRepositionDialog's own preview — each using its own
+// actual rendered box width/height, so panning always reads back
+// exactly as it was set regardless of which box size it's displayed in.
+// doc_header.dart's buildSharedLogo() needed no changes — it already
+// delegates to SharedLogoThumbnail rather than rendering the image
+// itself.
+//
+// PAN/ZOOM DECOUPLING PASS (earlier): the render technique before this
+// pass used the SAME live Alignment for both the Image's own
+// BoxFit.contain fit-position AND the Transform.scale zoom anchor —
+// since that value changed every frame during a drag, the anchor point
+// itself was moving WHILE the scale transform was applied around it,
+// producing erratic, non-linear panning. That coupling bug is now moot
+// for `wide` (no more Transform.scale/contain/alignment involved at
+// all — cover + explicit width/height + translate needs none of it),
+// but the underlying lesson (keep pan and zoom independent, rebase
+// pixel position through raw pixel space across a scale change rather
+// than mixing normalised deltas computed at different scales) still
+// shapes the gesture math below (onScaleUpdate / onPanUpdate), which
+// rebases the stored normalised offset through raw pixel space across
+// a scale change — start-of-gesture pixel position + raw finger delta,
+// re-normalised against the CURRENT scale's travel range — rather than
+// mixing normalised deltas computed at two different scales.
+//
+// WIDE LOGO INTERACTIVE PASS (earlier): `wide` used to render as a
 // completely static image — no drag, no zoom, logoOffset/logoScale
 // simply ignored ("there's nothing to crop"). That kept a logo with a
 // baked-in wordmark from ever losing text to a crop, but it also meant
@@ -11,21 +80,6 @@
 // (pinch, a corner-drag handle, and the slider) in
 // _LogoRepositionDialog, plus renders that same offset/scale live in
 // SharedLogoThumbnail and SharedLogoPicker's compact box.
-//
-// The technique is deliberately NOT the same OverflowBox+Transform.
-// translate+BoxFit.cover approach circle/square/roundedSquare use (that
-// crops-by-default, which is exactly what `wide` exists to avoid).
-// Instead it mirrors withOptionalBackgroundImage() in doc_header.dart:
-// Transform.scale anchored at `alignment`, wrapping an Image already
-// fit via BoxFit.contain at that SAME alignment. At the default
-// logoScale == 1.0 / logoOffset == (0,0) — every existing saved wide
-// logo — this renders BYTE-IDENTICAL to the old static branch: the
-// whole image, uncropped, centred. Only once a person actually drags or
-// zooms does anything change: zooming in enlarges the still-fully-
-// visible contained image from that alignment point, and the ambient
-// ClipRRect/Container clip (already present at every call site) crops
-// whatever now overflows the box — a safe "starts fully visible, crop
-// in only if you choose to" zoom, instead of crop-by-default.
 //
 // The corner-drag resize handle is `wide`-only, per what was actually
 // asked for — circle/square/roundedSquare keep pinch + slider only,
@@ -246,21 +300,45 @@ class SharedLogoThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // WIDE LOGO INTERACTIVE PASS: Transform.scale anchored at
-    // `alignment`, wrapping a BoxFit.contain image fit at that SAME
-    // alignment. At logoScale 1.0 / logoOffset (0,0) — the default for
-    // every logo saved before this pass — this is byte-identical to the
-    // old "just show the whole image" branch. The caller (buildSharedLogo
-    // in doc_header.dart) already wraps this in a ClipRRect sized to the
-    // box, so anything that overflows once zoomed in gets cropped there;
-    // no extra clip needed in here.
+    // COVER-FIT DEFAULT PASS: see this file's top-of-file pass comment.
+    // `wide` now fills its box completely (BoxFit.cover, explicit
+    // width/height — no extra safety margin the way circle/square/
+    // roundedSquare's `_overScale` adds, since a near-square logo in
+    // this box's wide 2.6:1 shape already needs heavy cropping on one
+    // axis just to cover it; adding a uniform margin on top of that
+    // started cropping into the OTHER axis too, even where it was
+    // already an exact fit — see NO-OVERSCALE-MARGIN note below) —
+    // panning is a Transform.translate in pixel space, computed from
+    // this box's own ACTUAL rendered width/height (via LayoutBuilder —
+    // the caller already gives this widget tight constraints matching
+    // LogoShapeX.boxSizeFor, via its own outer SizedBox), so a saved
+    // pan/zoom reads back identically regardless of which box size
+    // it's displayed at (compact picker vs document header vs this
+    // thumbnail all use different boxSize values for the same logo).
     if (logoShape == LogoShape.wide) {
-      final alignment = Alignment(logoOffset.dx.clamp(-1.0, 1.0), logoOffset.dy.clamp(-1.0, 1.0));
       final clampedScale = logoScale.clamp(1.0, 3.0);
-      return Transform.scale(
-        scale: clampedScale,
-        alignment: alignment,
-        child: Image.file(File(logoPath), fit: BoxFit.contain, alignment: alignment),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final boxWidth = constraints.maxWidth;
+          final boxHeight = constraints.maxHeight;
+          final renderW = boxWidth * clampedScale;
+          final renderH = boxHeight * clampedScale;
+          final maxTravelX = (renderW - boxWidth) / 2;
+          final maxTravelY = (renderH - boxHeight) / 2;
+          final translate = Offset(
+            logoOffset.dx.clamp(-1.0, 1.0) * maxTravelX,
+            logoOffset.dy.clamp(-1.0, 1.0) * maxTravelY,
+          );
+          return OverflowBox(
+            alignment: Alignment.center,
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: Transform.translate(
+              offset: translate,
+              child: Image.file(File(logoPath), fit: BoxFit.cover, width: renderW, height: renderH),
+            ),
+          );
+        },
       );
     }
 
@@ -482,24 +560,42 @@ class SharedLogoPicker extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: _hasLogo
             ? (isWide
-                // WIDE LOGO INTERACTIVE PASS: same Transform.scale +
-                // alignment approach as SharedLogoThumbnail's wide
-                // branch — safe default (fully visible, uncropped) at
-                // logoScale 1.0 / logoOffset (0,0), zoomable/pannable
-                // beyond that via the Reposition dialog. The old fixed
-                // 8px inset is dropped so this box can use its full
-                // area exactly like every other shape now can — the
-                // Container above already clips to bounds
-                // (clipBehavior: Clip.antiAlias), so nothing bleeds
-                // past the border.
-                ? Transform.scale(
-                    scale: logoScale.clamp(1.0, 3.0),
-                    alignment: Alignment(logoOffset.dx.clamp(-1.0, 1.0), logoOffset.dy.clamp(-1.0, 1.0)),
-                    child: Image.file(
-                      File(logoPath!),
-                      fit: BoxFit.contain,
-                      alignment: Alignment(logoOffset.dx.clamp(-1.0, 1.0), logoOffset.dy.clamp(-1.0, 1.0)),
-                    ),
+                // COVER-FIT DEFAULT PASS: see this file's top-of-file
+                // pass comment — same cover + OverflowBox +
+                // Transform.translate formula as SharedLogoThumbnail
+                // above, using this box's own known `boxSize` (already
+                // a Size with real width/height, no LayoutBuilder
+                // needed here since boxSize is computed directly
+                // above). Deliberately NOT multiplied by the local
+                // `overScale` constant below (that's for the non-wide
+                // branch only) — see this file's top pass comment's
+                // NO-OVERSCALE-MARGIN note for why.
+                ? Builder(
+                    builder: (context) {
+                      final clampedScale = logoScale.clamp(1.0, 3.0);
+                      final renderW = boxSize.width * clampedScale;
+                      final renderH = boxSize.height * clampedScale;
+                      final maxTravelX = (renderW - boxSize.width) / 2;
+                      final maxTravelY = (renderH - boxSize.height) / 2;
+                      final translate = Offset(
+                        logoOffset.dx.clamp(-1.0, 1.0) * maxTravelX,
+                        logoOffset.dy.clamp(-1.0, 1.0) * maxTravelY,
+                      );
+                      return OverflowBox(
+                        alignment: Alignment.center,
+                        maxWidth: double.infinity,
+                        maxHeight: double.infinity,
+                        child: Transform.translate(
+                          offset: translate,
+                          child: Image.file(
+                            File(logoPath!),
+                            fit: BoxFit.cover,
+                            width: renderW,
+                            height: renderH,
+                          ),
+                        ),
+                      );
+                    },
                   )
                 : OverflowBox(
                     alignment: Alignment.center,
@@ -766,21 +862,26 @@ class _OptionTile extends StatelessWidget {
 // =============================================================================
 // _LogoRepositionDialog — drag/pinch to reposition + zoom, plus shape picker
 //
-// WIDE LOGO INTERACTIVE PASS (this update): `wide` now gets its own
+// WIDE LOGO INTERACTIVE PASS (earlier): `wide` now gets its own
 // interactive branch instead of a static, gesture-free preview:
 //   - Drag (one finger) or pinch (two fingers) directly on the preview,
-//     exactly like every other shape — but driven by `_wideOffset`
-//     (already-normalised -1..1, matching Alignment's own coordinate
-//     space) and rendered via Transform.scale + BoxFit.contain instead
-//     of circle/square/roundedSquare's OverflowBox + BoxFit.cover, so
-//     the default (scale 1.0, offset centred) still shows the whole
-//     image uncropped — see this file's top-of-file pass comment for
-//     why that matters.
+//     exactly like every other shape — driven by `_wideOffset`
+//     (normalised -1..1) and, as of the COVER-FIT DEFAULT PASS above,
+//     rendered the same OverflowBox + BoxFit.cover way circle/square/
+//     roundedSquare already were, just with the wider box.
 //   - A small corner-drag resize handle, bottom-right of the preview,
 //     `wide`-only — a single-finger-friendly alternative to pinch. Not
 //     added to the other three shapes, which keep pinch + slider only.
 //   - The zoom slider + "Reset to centre" row, previously hidden
 //     entirely for `wide`, now always shows.
+//
+// PAN/ZOOM DECOUPLING PASS (earlier still): see this file's top-of-file
+// pass comment for the bug this fixes. `_wideOffset` keeps the exact
+// same normalised -1..1 meaning and is still what gets returned to the
+// caller — only the render formula (now fixed-center anchor +
+// Transform.translate) and the gesture math (now rebases through raw
+// pixel space across a scale change, instead of mixing normalised
+// deltas computed at two different scales) changed.
 // =============================================================================
 
 class _LogoRepositionDialog extends StatefulWidget {
@@ -812,10 +913,12 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
   late Offset _pixelOffset;
   // WIDE LOGO INTERACTIVE PASS: wide's own offset, kept separate from
   // _pixelOffset since it's used a completely different way at render
-  // time (Alignment for Transform.scale/Image.alignment, not a raw
-  // pixel Transform.translate distance). It's already in the same
-  // normalised -1..1 format this dialog returns, so — unlike
-  // _pixelOffset — no conversion is needed going in or out.
+  // time (see PAN/ZOOM DECOUPLING PASS above: a Transform.translate
+  // derived from normalised-offset * (boxSize * (scale-1) / 2), not a
+  // raw pixel Transform.translate distance the way _pixelOffset is).
+  // It's already in the same normalised -1..1 format this dialog
+  // returns, so — unlike _pixelOffset — no conversion is needed going
+  // in or out.
   late Offset _wideOffset;
   late LogoShape _shape;
 
@@ -880,11 +983,12 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.onSurface)),
             const SizedBox(height: 6),
             Text(
-              // WIDE LOGO INTERACTIVE PASS: copy updated to describe the
-              // new drag/pinch/corner-handle/slider capability, while
-              // still being clear the image starts fully visible.
+              // COVER-FIT DEFAULT PASS: copy updated — the image now
+              // fills the box by default (cropping whatever doesn't
+              // fit), same as every other shape, instead of always
+              // starting fully visible.
               isWide
-                  ? 'Starts fully visible, uncropped. Drag or pinch to move and zoom, or drag the corner handle to zoom in and crop closer.'
+                  ? 'Fills the box, cropping what doesn\'t fit. Drag or pinch to reposition, or drag the corner handle to zoom in.'
                   : 'Drag to move · Pinch or use slider to zoom',
               style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withValues(alpha: 0.45)),
               textAlign: TextAlign.center,
@@ -902,7 +1006,6 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                 final clampedPreviewSize = isWide
                     ? Size(previewSize.width.clamp(0.0, previewConstraints.maxWidth), previewSize.height)
                     : previewSize;
-                final wideAlignment = Alignment(_wideOffset.dx, _wideOffset.dy);
 
                 final previewContent = ClipRRect(
                   borderRadius: _shape.radiusFor(_viewSize),
@@ -910,12 +1013,16 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                     width: clampedPreviewSize.width,
                     height: clampedPreviewSize.height,
                     child: isWide
-                        // WIDE LOGO INTERACTIVE PASS: real drag + pinch,
+                        // COVER-FIT DEFAULT PASS: real drag + pinch,
                         // driven by _wideOffset/_scale, rendered via
-                        // Transform.scale + BoxFit.contain (see this
-                        // file's top pass comment for why this — not
-                        // OverflowBox + cover — is the right approach
-                        // for a shape that must never crop by default).
+                        // BoxFit.cover with an explicit oversized
+                        // width/height (Flutter's own cover algorithm
+                        // crops whichever axis overflows, regardless of
+                        // the source image's own aspect ratio) inside
+                        // an OverflowBox + Transform.translate for
+                        // panning — see this file's top pass comment
+                        // for why this replaced the old "always fully
+                        // visible" contain-based approach.
                         ? GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onScaleStart: (d) {
@@ -927,13 +1034,50 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                               if (_focalStart == null) return;
                               final newScale = (_scaleAtGestureStart! * d.scale).clamp(_minScale, _maxScale);
                               final delta = d.localFocalPoint - _focalStart!;
-                              final halfW = clampedPreviewSize.width / 2;
-                              final halfH = clampedPreviewSize.height / 2;
+                              // COVER-FIT DEFAULT PASS: rebuild the
+                              // pixel position from the gesture's
+                              // STARTING normalised offset at the
+                              // STARTING scale's travel range, add the
+                              // raw finger delta in that same pixel
+                              // space, then re-normalise against the
+                              // CURRENT (possibly just-pinched) scale's
+                              // travel range. Mixing normalised deltas
+                              // computed at two different scales would
+                              // produce the same erratic panning the
+                              // earlier contain-based approach had; this
+                              // keeps pixel space as the single source
+                              // of truth for the duration of one
+                              // gesture, exactly like the (already
+                              // correct) non-wide branch below. Travel
+                              // range now uses the COVER formula
+                              // (boxDim * scale - boxDim) / 2, matching
+                              // the render formula below and in
+                              // SharedLogoThumbnail /
+                              // SharedLogoPicker._logoBox exactly — no
+                              // extra _overScale margin (see this
+                              // build()'s wide-branch comment above for
+                              // why that margin doesn't belong here the
+                              // way it does for circle/square/
+                              // roundedSquare's own _pixelOffset/
+                              // _maxTravel further down this file).
+                              final startMaxTravelX =
+                                  (clampedPreviewSize.width * _scaleAtGestureStart! - clampedPreviewSize.width) / 2;
+                              final startMaxTravelY =
+                                  (clampedPreviewSize.height * _scaleAtGestureStart! - clampedPreviewSize.height) /
+                                      2;
+                              final startPixelX = _wideOffsetAtGestureStart!.dx * startMaxTravelX;
+                              final startPixelY = _wideOffsetAtGestureStart!.dy * startMaxTravelY;
+                              final combinedPixelX = startPixelX + delta.dx;
+                              final combinedPixelY = startPixelY + delta.dy;
+                              final newMaxTravelX =
+                                  (clampedPreviewSize.width * newScale - clampedPreviewSize.width) / 2;
+                              final newMaxTravelY =
+                                  (clampedPreviewSize.height * newScale - clampedPreviewSize.height) / 2;
                               setState(() {
                                 _scale = newScale;
                                 _wideOffset = Offset(
-                                  (_wideOffsetAtGestureStart!.dx + delta.dx / (halfW * newScale)).clamp(-1.0, 1.0),
-                                  (_wideOffsetAtGestureStart!.dy + delta.dy / (halfH * newScale)).clamp(-1.0, 1.0),
+                                  newMaxTravelX > 0 ? (combinedPixelX / newMaxTravelX).clamp(-1.0, 1.0) : 0.0,
+                                  newMaxTravelY > 0 ? (combinedPixelY / newMaxTravelY).clamp(-1.0, 1.0) : 0.0,
                                 );
                               });
                             },
@@ -942,10 +1086,33 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                               _wideOffsetAtGestureStart = null;
                               _scaleAtGestureStart = null;
                             },
-                            child: Transform.scale(
-                              scale: _scale,
-                              alignment: wideAlignment,
-                              child: Image.file(File(widget.imagePath), fit: BoxFit.contain, alignment: wideAlignment),
+                            child: Builder(
+                              builder: (context) {
+                                // COVER-FIT DEFAULT PASS: matches the
+                                // render formula in SharedLogoThumbnail /
+                                // SharedLogoPicker._logoBox exactly, so
+                                // what's previewed here is exactly what
+                                // ends up on the actual document.
+                                final renderW = clampedPreviewSize.width * _scale;
+                                final renderH = clampedPreviewSize.height * _scale;
+                                final travelX = (renderW - clampedPreviewSize.width) / 2;
+                                final travelY = (renderH - clampedPreviewSize.height) / 2;
+                                final translate = Offset(_wideOffset.dx * travelX, _wideOffset.dy * travelY);
+                                return OverflowBox(
+                                  alignment: Alignment.center,
+                                  maxWidth: double.infinity,
+                                  maxHeight: double.infinity,
+                                  child: Transform.translate(
+                                    offset: translate,
+                                    child: Image.file(
+                                      File(widget.imagePath),
+                                      fit: BoxFit.cover,
+                                      width: renderW,
+                                      height: renderH,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           )
                         : GestureDetector(
@@ -1003,15 +1170,34 @@ class _LogoRepositionDialogState extends State<_LogoRepositionDialog> {
                       bottom: -6,
                       child: GestureDetector(
                         onPanUpdate: (d) {
-                          // Plain per-frame delta is fine here — this
-                          // dialog always renders at a fixed 1:1 scale,
-                          // unlike the live document preview elsewhere
-                          // (see doc_header.dart's _DraggableHeaderLogo)
-                          // which needs a global-to-local conversion
-                          // because of an ancestor zoom transform.
                           final avgDelta = (d.delta.dx + d.delta.dy) / 2;
+                          final oldScale = _scale;
+                          final newScale = (_scale + avgDelta / _viewSize).clamp(_minScale, _maxScale);
+                          // COVER-FIT DEFAULT PASS: rebase the same way
+                          // onScaleUpdate above does, so resizing via
+                          // this handle doesn't visually shift the
+                          // image's pan position — only its zoom level
+                          // changes. Travel now uses the COVER formula,
+                          // matching the render formula above. Plain
+                          // per-frame delta is still fine for the SCALE
+                          // part here — this dialog always renders at a
+                          // fixed 1:1 scale, unlike the live document
+                          // preview elsewhere (see doc_header.dart's
+                          // _DraggableHeaderLogo) which needs a
+                          // global-to-local conversion because of an
+                          // ancestor zoom transform.
+                          final oldTravelX = (clampedPreviewSize.width * oldScale - clampedPreviewSize.width) / 2;
+                          final oldTravelY = (clampedPreviewSize.height * oldScale - clampedPreviewSize.height) / 2;
+                          final pixelX = _wideOffset.dx * oldTravelX;
+                          final pixelY = _wideOffset.dy * oldTravelY;
+                          final newTravelX = (clampedPreviewSize.width * newScale - clampedPreviewSize.width) / 2;
+                          final newTravelY = (clampedPreviewSize.height * newScale - clampedPreviewSize.height) / 2;
                           setState(() {
-                            _scale = (_scale + avgDelta / _viewSize).clamp(_minScale, _maxScale);
+                            _scale = newScale;
+                            _wideOffset = Offset(
+                              newTravelX > 0 ? (pixelX / newTravelX).clamp(-1.0, 1.0) : 0.0,
+                              newTravelY > 0 ? (pixelY / newTravelY).clamp(-1.0, 1.0) : 0.0,
+                            );
                           });
                         },
                         child: Container(

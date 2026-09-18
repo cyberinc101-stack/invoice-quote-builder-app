@@ -1,7 +1,21 @@
 // customise_logo_section.dart
 // lib/screens/invoice_create_section/step_customize/customise_logo_section.dart
 //
-// SHAPE-GATES-FREEFORM RULE PASS (this update): freeform header-logo
+// PERCENTAGE-DISPLAY REMAP PASS (this update): the "Logo Size in
+// Header" readout used to show headerLogoFreeformScale directly as a
+// percentage (e.g. 900% at the max of 9.0) — technically correct but a
+// strange number for anyone not thinking in raw multipliers. The
+// slider's actual min/max (kHeaderLogoFreeformMinScale..
+// kHeaderLogoFreeformMaxScale) and the real on-canvas maximum logo
+// size are UNCHANGED by this pass — only the number shown under the
+// slider is remapped so the min reads 0% and the max reads 100%,
+// linearly across the same range the slider already covers. See
+// doc_header.dart's own WIDE-WIDTH-CAP + PAN-HEADROOM FIX for the
+// separate (functional) fix to the "doesn't move left-right at max
+// size" bug — that fix is unrelated to this cosmetic one and lives
+// entirely in doc_header.dart.
+//
+// SHAPE-GATES-FREEFORM RULE PASS (earlier): freeform header-logo
 // positioning (drag/pinch across the whole header) is now tied
 // EXCLUSIVELY to the Wide shape — Circle/Square/Rounded can never
 // enter freeform mode at all, regardless of what Business Name/Tagline
@@ -449,9 +463,12 @@ class LogoSection extends StatelessWidget {
                         trackHeight:        3,
                       ),
                       child: Slider(
-                        // SINGLE-SIZER FIX: range now matches
-                        // doc_header.dart's raised ceiling so the
-                        // slider and pinch gesture always agree.
+                        // SINGLE-SIZER FIX: range still matches
+                        // doc_header.dart's ceiling so the slider and
+                        // pinch gesture always agree — the underlying
+                        // stored value and its real min/max are
+                        // UNCHANGED by the percentage-display remap
+                        // below.
                         value: data.headerLogoFreeformScale.clamp(
                             kHeaderLogoFreeformMinScale, kHeaderLogoFreeformMaxScale),
                         min: kHeaderLogoFreeformMinScale,
@@ -469,7 +486,14 @@ class LogoSection extends StatelessWidget {
               ),
               Center(
                 child: Text(
-                  '${(data.headerLogoFreeformScale * 100).round()}%',
+                  // PERCENTAGE-DISPLAY REMAP PASS: linearly remaps the
+                  // real stored scale (kHeaderLogoFreeformMinScale..Max)
+                  // onto a 0-100% readout instead of showing the raw
+                  // multiplier as a percentage (which topped out at
+                  // 900%). The slider's own position, range, and the
+                  // actual on-canvas logo size are all untouched — only
+                  // this number's presentation changed.
+                  '${(((data.headerLogoFreeformScale.clamp(kHeaderLogoFreeformMinScale, kHeaderLogoFreeformMaxScale) - kHeaderLogoFreeformMinScale) / (kHeaderLogoFreeformMaxScale - kHeaderLogoFreeformMinScale)) * 100).round()}%',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accent),
                 ),
               ),

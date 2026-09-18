@@ -4,6 +4,7 @@ import '../../models/quote_data.dart';
 import '../../models/receipt_data.dart';
 import '../../models/address_info.dart';
 import '../../models/footer_tagline.dart';
+import '../document_backgrounds/page_background_spec.dart';
 import '../../document_layout_templates/01_executive/executive_template.dart'
     show invoiceAccent, quoteAccent, receiptAccent;
 
@@ -37,7 +38,7 @@ class DocTemplateAdapter {
   final String businessLogoInitialLetter;
 
   // FREEFORM HEADER LOGO PASS: mirrors InvoiceData's identically-named
-  // fields — see that model's doc comment. Defaults keep Quote/Receipt
+  // fields â€” see that model's doc comment. Defaults keep Quote/Receipt
   // adapters (whose own data models don't yet carry these fields)
   // rendering exactly as before this pass; the invoice-only wiring
   // happens in invoiceToAdapter() below.
@@ -48,11 +49,11 @@ class DocTemplateAdapter {
   // BACKGROUND-IMAGE PASS: header/footer background image path +
   // on/off toggle, mirroring InvoiceData/QuoteData/ReceiptData's
   // identically-named new fields. Null path or enabled=false means
-  // "no background" — every existing document loads and renders
+  // "no background" â€” every existing document loads and renders
   // exactly as before this pass, since both default to
   // null/false. See doc_header.dart's withOptionalBackgroundImage()
   // for the actual render-side handling (image + translucent scrim,
-  // so existing dark text always stays readable — no color picker
+  // so existing dark text always stays readable â€” no color picker
   // needed).
   final String? headerBackgroundImagePath;
   final bool headerBackgroundEnabled;
@@ -68,7 +69,7 @@ class DocTemplateAdapter {
   final double footerBackgroundScale;
 
   // MID-PAGE BACKGROUND PASS: same treatment for the page body area
-  // (line items + totals) — see doc_header.dart's
+  // (line items + totals) â€” see doc_header.dart's
   // withOptionalBackgroundImage and a4_paginator.dart's own
   // bodyBackgroundImagePath/bodyBackgroundEnabled for the render side.
   final String? bodyBackgroundImagePath;
@@ -77,6 +78,21 @@ class DocTemplateAdapter {
   final double bodyBackgroundOffsetDx;
   final double bodyBackgroundOffsetDy;
   final double bodyBackgroundScale;
+
+  // PER-PAGE BACKGROUND PASS: one continuous image behind the WHOLE
+  // page (header + meta row + items + footer), as opposed to
+  // header/footer/body above which each paint a separately-clipped
+  // ZONE. Defaults ('none' scope) mean every existing document
+  // renders exactly as before this pass.
+  final String pageBackgroundScope;
+  final String? page1BackgroundImagePath;
+  final bool page1BackgroundEnabled;
+  final double page1BackgroundOpacity;
+  final double page1BackgroundOffsetDx;
+  final double page1BackgroundOffsetDy;
+  final double page1BackgroundScale;
+  final bool page1BackgroundFitToPage;
+  final Map<int, PageBackgroundSpec> otherPageBackgrounds;
 
   final String clientName;
   final String clientEmail;
@@ -179,6 +195,15 @@ class DocTemplateAdapter {
     this.bodyBackgroundOffsetDx = 0.0,
     this.bodyBackgroundOffsetDy = 0.0,
     this.bodyBackgroundScale = 1.0,
+    this.pageBackgroundScope = 'none',
+    this.page1BackgroundImagePath,
+    this.page1BackgroundEnabled = false,
+    this.page1BackgroundOpacity = 1.0,
+    this.page1BackgroundOffsetDx = 0.0,
+    this.page1BackgroundOffsetDy = 0.0,
+    this.page1BackgroundScale = 1.0,
+    this.page1BackgroundFitToPage = false,
+    this.otherPageBackgrounds = const {},
     required this.clientName,
     required this.clientEmail,
     required this.clientPhone,
@@ -247,6 +272,31 @@ class DocTemplateAdapter {
         return hasSymbol ? '$currencySymbol$amount' : amount;
     }
   }
+
+  // PER-PAGE BACKGROUND PASS: (pageIndex, pageCount) -> PageBackgroundSpec?
+  // matches PageBackgroundResolver exactly, so any template's
+  // Preview/Editor can pass adapter.pageBackgroundFor straight into
+  // TemplateDocument(pageBackgroundResolver: ...).
+  PageBackgroundSpec? pageBackgroundFor(int pageIndex, int pageCount) {
+    final scope = pageBackgroundScopeFromString(pageBackgroundScope);
+    if (scope == PageBackgroundScope.none) return null;
+    final page1Spec = PageBackgroundSpec(
+      imagePath: page1BackgroundImagePath,
+      enabled: page1BackgroundEnabled,
+      opacity: page1BackgroundOpacity,
+      offsetDx: page1BackgroundOffsetDx,
+      offsetDy: page1BackgroundOffsetDy,
+      scale: page1BackgroundScale,
+      fitToPage: page1BackgroundFitToPage,
+    );
+    return resolvePageBackground(
+      scope: scope,
+      pageIndex: pageIndex,
+      pageCount: pageCount,
+      page1Spec: page1Spec,
+      otherPages: otherPageBackgrounds,
+    );
+  }
 }
 
 bool docFieldOn(DocTemplateAdapter a, String key) => a.enabledFields[key] ?? true;
@@ -301,17 +351,17 @@ String _paymentMethodLabel(PaymentMethod m) => switch (m) {
 };
 
 // SENDER-AS-FROM-CONTACT PASS (this update): the FROM block's
-// email/phone/address slots on this adapter are generic — they don't
+// email/phone/address slots on this adapter are generic â€” they don't
 // care WHERE the caller sources them from. For invoices specifically,
 // they're now fed from InvoiceData's senderEmail/senderPhone/
 // senderAddressInfo (synced down from the selected template's
-// BusinessInfo.sender* fields — see step_create_invoice.dart) instead
+// BusinessInfo.sender* fields â€” see step_create_invoice.dart) instead
 // of the business* fields, since the template sheet's own Business
 // Information section no longer collects a separate business address/
-// email/phone (see step_templates.dart) — Sender / Contact Person is
+// email/phone (see step_templates.dart) â€” Sender / Contact Person is
 // now the single source of "who do I contact about this document".
 // businessName still comes from d.businessName (the FROM block's name
-// line is unchanged). Quote and Receipt are NOT touched by this pass —
+// line is unchanged). Quote and Receipt are NOT touched by this pass â€”
 // their own data models don't have sender* fields, so they keep
 // sourcing the FROM block from their own business* fields exactly as
 // before.
@@ -363,6 +413,15 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) {
       bodyBackgroundOffsetDx: d.bodyBackgroundOffsetDx,
       bodyBackgroundOffsetDy: d.bodyBackgroundOffsetDy,
       bodyBackgroundScale: d.bodyBackgroundScale,
+      pageBackgroundScope: d.pageBackgroundScope,
+      page1BackgroundImagePath: d.page1BackgroundImagePath,
+      page1BackgroundEnabled: d.page1BackgroundEnabled,
+      page1BackgroundOpacity: d.page1BackgroundOpacity,
+      page1BackgroundOffsetDx: d.page1BackgroundOffsetDx,
+      page1BackgroundOffsetDy: d.page1BackgroundOffsetDy,
+      page1BackgroundScale: d.page1BackgroundScale,
+      page1BackgroundFitToPage: d.page1BackgroundFitToPage,
+      otherPageBackgrounds: d.otherPageBackgrounds,
       clientName: d.clientName,
       clientEmail: d.clientEmail,
       clientPhone: d.clientPhone,
@@ -408,7 +467,7 @@ DocTemplateAdapter invoiceToAdapter(InvoiceData d) {
       fontSize: d.fontSize,
       accent: invoiceAccent(d),
       thankYouLabel: d.senderEmail.isNotEmpty
-          ? 'Thank you for your business — ${d.senderEmail}'
+          ? 'Thank you for your business â€” ${d.senderEmail}'
           : 'Thank you for your business',
       enabledFields: d.enabledFields,
     );
@@ -500,7 +559,7 @@ DocTemplateAdapter quoteToAdapter(QuoteData d) => DocTemplateAdapter(
       fontSize: d.fontSize,
       accent: quoteAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for considering us — ${d.businessEmail}'
+          ? 'Thank you for considering us â€” ${d.businessEmail}'
           : 'Thank you for considering us',
       enabledFields: d.enabledFields,
     );
@@ -586,7 +645,7 @@ DocTemplateAdapter receiptToAdapter(ReceiptData d) => DocTemplateAdapter(
       fontSize: d.fontSize,
       accent: receiptAccent(d),
       thankYouLabel: d.businessEmail.isNotEmpty
-          ? 'Thank you for your payment — ${d.businessEmail}'
+          ? 'Thank you for your payment â€” ${d.businessEmail}'
           : 'Thank you for your payment',
       enabledFields: {
         'businessLogo': d.showLogo,

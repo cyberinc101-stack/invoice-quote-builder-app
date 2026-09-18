@@ -1,5 +1,6 @@
 import 'address_info.dart';
 import 'footer_tagline.dart';
+import '../document_layout_templates/document_backgrounds/page_background_spec.dart';
 
 const List<String> kLineItemUnits = [
   '',
@@ -304,6 +305,34 @@ class InvoiceData {
   double bodyBackgroundOffsetDy;
   double bodyBackgroundScale;
 
+  // PER-PAGE BACKGROUND PASS: one continuous background image running
+  // behind the WHOLE page (header + FROM/BILLED-TO meta row + items +
+  // footer), as opposed to header/footer/body above, which each paint
+  // a separately-clipped ZONE instead of one continuous photo. See
+  // page_background_spec.dart for PageBackgroundScope/PageBackgroundSpec.
+  //
+  // pageBackgroundScope decides WHICH pages get one at all (stored as
+  // the enum's .name string, same convention InvoiceColor/PaymentStatus
+  // already use elsewhere in this file). page1Background* is always
+  // page 1's own spec — the source of truth for anything linked.
+  // otherPageBackgrounds holds whatever's been explicitly stored for
+  // pages after the first; it's intentionally sparse — a page with no
+  // entry here just mirrors page 1 live whenever the scope calls for it
+  // to have a background at all (see resolvePageBackground). Defaults
+  // ('none' scope, empty map) mean every existing persisted invoice
+  // loads and renders exactly as before this pass.
+  String pageBackgroundScope;
+  String? page1BackgroundImagePath;
+  bool page1BackgroundEnabled;
+  double page1BackgroundOpacity;
+  double page1BackgroundOffsetDx;
+  double page1BackgroundOffsetDy;
+  double page1BackgroundScale;
+  // FIT-TO-PAGE PASS: false (default) = crop-to-fill (BoxFit.cover).
+  // true = show the whole image, letterboxed if needed (BoxFit.contain).
+  bool page1BackgroundFitToPage;
+  Map<int, PageBackgroundSpec> otherPageBackgrounds;
+
   String clientName;
   String clientEmail;
   String clientPhone;
@@ -411,6 +440,15 @@ class InvoiceData {
     this.bodyBackgroundOffsetDx = 0.0,
     this.bodyBackgroundOffsetDy = 0.0,
     this.bodyBackgroundScale = 1.0,
+    this.pageBackgroundScope = 'none',
+    this.page1BackgroundImagePath,
+    this.page1BackgroundEnabled = false,
+    this.page1BackgroundOpacity = 1.0,
+    this.page1BackgroundOffsetDx = 0.0,
+    this.page1BackgroundOffsetDy = 0.0,
+    this.page1BackgroundScale = 1.0,
+    this.page1BackgroundFitToPage = false,
+    Map<int, PageBackgroundSpec>? otherPageBackgrounds,
     this.clientName       = '',
     this.clientEmail      = '',
     this.clientPhone      = '',
@@ -456,6 +494,7 @@ class InvoiceData {
        businessAddressInfo = businessAddressInfo ?? AddressInfo(),
        senderAddressInfo = senderAddressInfo ?? AddressInfo(),
        clientAddressInfo = clientAddressInfo ?? AddressInfo(),
+       otherPageBackgrounds = otherPageBackgrounds ?? {},
        footerTaglines = footerTaglines ?? [];
 
   double get subtotal       => lineItems.fold(0.0, (sum, i) => sum + i.total);
@@ -541,6 +580,15 @@ class InvoiceData {
         'bodyBackgroundOffsetDx': bodyBackgroundOffsetDx,
         'bodyBackgroundOffsetDy': bodyBackgroundOffsetDy,
         'bodyBackgroundScale': bodyBackgroundScale,
+        'pageBackgroundScope': pageBackgroundScope,
+        'page1BackgroundImagePath': page1BackgroundImagePath,
+        'page1BackgroundEnabled': page1BackgroundEnabled,
+        'page1BackgroundOpacity': page1BackgroundOpacity,
+        'page1BackgroundOffsetDx': page1BackgroundOffsetDx,
+        'page1BackgroundOffsetDy': page1BackgroundOffsetDy,
+        'page1BackgroundScale': page1BackgroundScale,
+        'page1BackgroundFitToPage': page1BackgroundFitToPage,
+        'otherPageBackgrounds': otherPageBackgroundsToJson(otherPageBackgrounds),
         'clientName':       clientName,
         'clientEmail':      clientEmail,
         'clientPhone':      clientPhone,
@@ -629,6 +677,15 @@ class InvoiceData {
         bodyBackgroundOffsetDx: (j['bodyBackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
         bodyBackgroundOffsetDy: (j['bodyBackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
         bodyBackgroundScale: (j['bodyBackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        pageBackgroundScope: j['pageBackgroundScope'] as String? ?? 'none',
+        page1BackgroundImagePath: j['page1BackgroundImagePath'] as String?,
+        page1BackgroundEnabled: j['page1BackgroundEnabled'] as bool? ?? false,
+        page1BackgroundOpacity: (j['page1BackgroundOpacity'] as num?)?.toDouble() ?? 1.0,
+        page1BackgroundOffsetDx: (j['page1BackgroundOffsetDx'] as num?)?.toDouble() ?? 0.0,
+        page1BackgroundOffsetDy: (j['page1BackgroundOffsetDy'] as num?)?.toDouble() ?? 0.0,
+        page1BackgroundScale: (j['page1BackgroundScale'] as num?)?.toDouble() ?? 1.0,
+        page1BackgroundFitToPage: j['page1BackgroundFitToPage'] as bool? ?? false,
+        otherPageBackgrounds: otherPageBackgroundsFromJson(j['otherPageBackgrounds']),
         clientName:       j['clientName']       as String? ?? '',
         clientEmail:      j['clientEmail']      as String? ?? '',
         clientPhone:      j['clientPhone']      as String? ?? '',
@@ -734,6 +791,16 @@ class InvoiceData {
     double?         bodyBackgroundOffsetDx,
     double?         bodyBackgroundOffsetDy,
     double?         bodyBackgroundScale,
+    String?         pageBackgroundScope,
+    String?         page1BackgroundImagePath,
+    bool            clearPage1BackgroundImage = false,
+    bool?           page1BackgroundEnabled,
+    double?         page1BackgroundOpacity,
+    double?         page1BackgroundOffsetDx,
+    double?         page1BackgroundOffsetDy,
+    double?         page1BackgroundScale,
+    bool?           page1BackgroundFitToPage,
+    Map<int, PageBackgroundSpec>? otherPageBackgrounds,
     String?         clientName,
     String?         clientEmail,
     String?         clientPhone,
@@ -829,6 +896,18 @@ class InvoiceData {
         bodyBackgroundOffsetDx: bodyBackgroundOffsetDx ?? this.bodyBackgroundOffsetDx,
         bodyBackgroundOffsetDy: bodyBackgroundOffsetDy ?? this.bodyBackgroundOffsetDy,
         bodyBackgroundScale: bodyBackgroundScale ?? this.bodyBackgroundScale,
+        pageBackgroundScope: pageBackgroundScope ?? this.pageBackgroundScope,
+        page1BackgroundImagePath: clearPage1BackgroundImage
+            ? null
+            : (page1BackgroundImagePath ?? this.page1BackgroundImagePath),
+        page1BackgroundEnabled: page1BackgroundEnabled ?? this.page1BackgroundEnabled,
+        page1BackgroundOpacity: page1BackgroundOpacity ?? this.page1BackgroundOpacity,
+        page1BackgroundOffsetDx: page1BackgroundOffsetDx ?? this.page1BackgroundOffsetDx,
+        page1BackgroundOffsetDy: page1BackgroundOffsetDy ?? this.page1BackgroundOffsetDy,
+        page1BackgroundScale: page1BackgroundScale ?? this.page1BackgroundScale,
+        page1BackgroundFitToPage: page1BackgroundFitToPage ?? this.page1BackgroundFitToPage,
+        otherPageBackgrounds: otherPageBackgrounds ??
+            Map<int, PageBackgroundSpec>.from(this.otherPageBackgrounds),
         clientName:       clientName       ?? this.clientName,
         clientEmail:      clientEmail      ?? this.clientEmail,
         clientPhone:      clientPhone      ?? this.clientPhone,
@@ -878,6 +957,7 @@ class InvoiceData {
         senderAddressInfo: senderAddressInfo.copyWith(),
         clientAddressInfo: clientAddressInfo.copyWith(),
         footerTaglines: footerTaglines.map((t) => t.copyWith()).toList(),
+        otherPageBackgrounds: Map<int, PageBackgroundSpec>.from(otherPageBackgrounds),
       );
 }
 

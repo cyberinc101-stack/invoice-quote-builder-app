@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/invoice_data.dart';
 import '../models/footer_tagline.dart';
 import '../models/history_event.dart' show HistoryDocType;
+import '../document_layout_templates/document_backgrounds/page_background_spec.dart';
 import '../alerts/notifications/document_alert_scheduler.dart';
 import 'history_provider.dart';
 
@@ -473,6 +474,51 @@ class InvoiceProvider extends ChangeNotifier {
       bodyBackgroundOffsetDy: offsetDy,
       bodyBackgroundScale: scale,
     );
+    notifyListeners();
+  }
+
+  // PER-PAGE BACKGROUND PASS: scope + page-1 spec + per-page overrides.
+  void updatePageBackgroundScope(PageBackgroundScope scope) {
+    _invoiceData = _invoiceData.copyWith(
+      pageBackgroundScope: pageBackgroundScopeToString(scope),
+    );
+    notifyListeners();
+  }
+
+  void updatePage1Background({
+    required String? path,
+    required bool enabled,
+    double? opacity,
+    double? offsetDx,
+    double? offsetDy,
+    double? scale,
+    bool? fitToPage,
+  }) {
+    _invoiceData = _invoiceData.copyWith(
+      page1BackgroundImagePath: path,
+      clearPage1BackgroundImage: path == null,
+      page1BackgroundEnabled: enabled,
+      page1BackgroundOpacity: opacity,
+      page1BackgroundOffsetDx: offsetDx,
+      page1BackgroundOffsetDy: offsetDy,
+      page1BackgroundScale: scale,
+      page1BackgroundFitToPage: fitToPage,
+    );
+    notifyListeners();
+  }
+
+  // Sets (or, passing null, clears) an independent spec for one page
+  // after page 1 - this is what breaks that page's live link to page 1
+  // (see PageBackgroundSpec.linkedToPage1). Passing a spec with
+  // linkedToPage1: true re-links it.
+  void updateOtherPageBackground(int pageIndex, PageBackgroundSpec? spec) {
+    final updated = Map<int, PageBackgroundSpec>.from(_invoiceData.otherPageBackgrounds);
+    if (spec == null) {
+      updated.remove(pageIndex);
+    } else {
+      updated[pageIndex] = spec;
+    }
+    _invoiceData = _invoiceData.copyWith(otherPageBackgrounds: updated);
     notifyListeners();
   }
 
